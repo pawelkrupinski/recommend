@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>recommend — what to watch tonight</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <!-- Login gate, shown when no session -->
+  <div id="login" class="login hidden">
+    <div class="login-card">
+      <h1>🎬 recommend</h1>
+      <p class="sub">Sign in to get movie picks tuned to your taste.</p>
+      <div id="login-buttons"></div>
+      <p id="login-error" class="login-error"></p>
+    </div>
+  </div>
+
+  <!-- The app, shown once signed in -->
+  <div id="app" class="hidden">
+    <header>
+      <h1>🎬 recommend</h1>
+      <nav id="tabs">
+        <button data-tab="discover" class="active">Discover</button>
+        <button data-tab="rate">Rate</button>
+        <button data-tab="import">Import</button>
+        <button data-tab="ratings">My ratings</button>
+        <button data-tab="settings">Settings</button>
+      </nav>
+      <div id="userbar"></div>
+    </header>
+
+    <main>
+      <section id="discover" class="tab active">
+        <div class="bar">
+          <p id="discover-info">Building your picks…</p>
+          <select id="genre-filter" title="Filter picks by genre">
+            <option value="">All genres</option>
+          </select>
+          <button id="refresh">↻ Refresh picks</button>
+        </div>
+        <div id="recs" class="grid"></div>
+      </section>
+
+      <section id="rate" class="tab">
+        <p class="hint">Rate films you've seen so the engine learns your taste. Skip ones you haven't.</p>
+        <div id="rate-grid" class="grid"></div>
+        <button id="more-rate">Load more →</button>
+      </section>
+
+      <section id="import" class="tab">
+        <p class="hint">Bootstrap your taste from an existing export — <b>Letterboxd</b> (ratings.csv),
+          <b>IMDb</b> (ratings.csv) or <b>Criticker</b>. We match each title to TMDB.</p>
+        <input type="file" id="csv-file" accept=".csv,text/csv" />
+        <button id="do-import">Import ratings</button>
+        <pre id="import-log"></pre>
+      </section>
+
+      <section id="ratings" class="tab">
+        <p id="ratings-count" class="hint"></p>
+        <div id="ratings-list"></div>
+      </section>
+
+      <section id="settings" class="tab">
+        <div class="form">
+          <h3>Your streaming services</h3>
+          <p class="hint">Picks are filtered to titles streamable on these in your country.</p>
+          <label>Country
+            <select id="country"></select>
+          </label>
+          <div id="provider-list" class="providers"></div>
+          <button id="save-providers">Save services</button>
+
+          <!-- Admin-only: global API keys -->
+          <div id="admin-keys" class="admin-only hidden">
+            <h3>API keys <span class="sub">(admin · shared by everyone)</span></h3>
+            <label>TMDB API key <span class="sub">(<a href="https://www.themoviedb.org/settings/api" target="_blank">get one free</a>)</span>
+              <input id="tmdbKey" type="password" placeholder="v3 key or v4 token" />
+            </label>
+            <label>Movie of the Night / RapidAPI key <span class="sub">(optional — adds deep links)</span>
+              <input id="rapidApiKey" type="password" placeholder="RapidAPI key" />
+            </label>
+            <label>Trakt API key <span class="sub">(optional — adds <a href="https://trakt.tv/oauth/applications" target="_blank">community picks</a>)</span>
+              <input id="traktKey" type="password" placeholder="Trakt Client ID" />
+            </label>
+            <button id="save-keys">Save keys</button>
+            <p id="key-status" class="sub"></p>
+          </div>
+
+          <!-- Admin-only: user management -->
+          <div id="admin-users" class="admin-only hidden">
+            <h3>Users <span class="sub">(admin)</span></h3>
+            <div id="users-list"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modal-body"></div></div>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

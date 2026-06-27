@@ -1,0 +1,46 @@
+# Render Blueprint for the "recommend" web app.
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: recommend
+    runtime: docker
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    disk:
+      # Persistent disk holding the SQLite database (survives deploys/restarts).
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      # Non-secret, value provided here.
+      - key: NODE_ENV
+        value: production
+      - key: DB_PATH
+        value: /var/data/recommend.db
+      # BASE_URL must be the public Render URL (e.g. https://recommend.onrender.com).
+      # It is used to build the OAuth callback URLs, so it must match the value
+      # registered with the Google/Facebook OAuth apps.
+      - key: BASE_URL
+        sync: false
+      # Secrets: set these in the Render dashboard (Environment tab).
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: FACEBOOK_APP_ID
+        sync: false
+      - key: FACEBOOK_APP_SECRET
+        sync: false
+      - key: APPLICATION_SECRET
+        sync: false
+      - key: TMDB_API_KEY
+        sync: false
+      - key: ADMIN_ALLOWLIST
+        sync: false
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: TRAKT_KEY
+        sync: false

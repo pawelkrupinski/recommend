@@ -1,0 +1,8 @@
+node_modules/
+data/
+.env
+.env.local
+.env.*
+*.bak*
+.claude/
+.DS_Store

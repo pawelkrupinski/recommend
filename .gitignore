@@ -6,3 +6,9 @@ data/
 *.bak*
 .claude/
 .DS_Store
+
+# Test artifacts
+test-results/
+playwright-report/
+blob-report/
+.playwright/

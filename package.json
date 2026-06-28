@@ -10,11 +10,18 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "test": "node --test --test-force-exit \"test/unit/**/*.test.js\" \"test/integration/**/*.test.js\"",
+    "test:unit": "node --test --test-force-exit \"test/unit/**/*.test.js\"",
+    "test:integration": "node --test --test-force-exit \"test/integration/**/*.test.js\"",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
     "service:install": "bash service/recommend-service.sh install",
     "service:uninstall": "bash service/recommend-service.sh uninstall",
     "service:restart": "bash service/recommend-service.sh restart",
     "service:status": "bash service/recommend-service.sh status",
     "service:logs": "bash service/recommend-service.sh logs"
   },
-  "dependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
 }

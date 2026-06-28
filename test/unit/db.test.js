@@ -1,0 +1,129 @@
+// Unit tests for the SQLite data layer (src/db.js). Runs against a throwaway
+// database created per process; no network, no server.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { freshDbEnv } from '../helpers/env.js';
+
+freshDbEnv();
+const db = await import('../../src/db.js');
+
+// A fresh user for each test that needs one, so tests stay independent.
+let seq = 0;
+function newUser(overrides = {}) {
+  const email = `u${seq++}@example.com`;
+  return db.upsertUserFromLogin({ email, name: 'U', provider: 'dev', provider_sub: `sub-${email}`, ...overrides });
+}
+
+test('upsertUserFromLogin inserts then updates the same row by email', () => {
+  const a = db.upsertUserFromLogin({ email: 'Dup@Example.com', name: 'First', provider: 'google', provider_sub: 'g1' });
+  const b = db.upsertUserFromLogin({ email: 'dup@example.com', name: 'Second', provider: 'google', provider_sub: 'g1' });
+  assert.equal(a.id, b.id, 'same email (case-insensitive) reuses the row');
+  assert.equal(b.name, 'Second', 'update overwrites name');
+  assert.equal(b.email, 'dup@example.com', 'email is lower-cased');
+});
+
+test('getUserByEmail is case-insensitive; getUserById round-trips', () => {
+  const u = newUser({ email: 'Case@Example.com' });
+  assert.equal(db.getUserByEmail('CASE@EXAMPLE.COM').id, u.id);
+  assert.equal(db.getUserById(u.id).email, 'case@example.com');
+  assert.equal(db.getUserById(999999), undefined);
+});
+
+test('getUserByProviderSub matches on provider + sub, and guards null', () => {
+  const u = db.upsertUserFromLogin({ email: 'fb@example.com', name: 'FB', provider: 'facebook', provider_sub: 'FBID' });
+  assert.equal(db.getUserByProviderSub('facebook', 'FBID').id, u.id);
+  assert.equal(db.getUserByProviderSub('google', 'FBID'), undefined, 'provider must match too');
+  assert.equal(db.getUserByProviderSub('facebook', null), undefined);
+});
+
+test('admin allowlist promotes matching emails on login', async () => {
+  // Re-import db with an allowlist set so isAdminEmail() sees it. A second import
+  // of the same module is cached, so use a child db env instead.
+  const u = newUser();
+  assert.equal(u.is_admin, 0, 'non-allowlisted user is not admin by default');
+  db.setUserAdmin(u.id, true);
+  assert.equal(db.getUserById(u.id).is_admin, 1);
+  db.setUserAdmin(u.id, false);
+  assert.equal(db.getUserById(u.id).is_admin, 0);
+});
+
+test('countUsers / listUsers reflect inserts', () => {
+  const before = db.countUsers();
+  newUser(); newUser();
+  assert.equal(db.countUsers(), before + 2);
+  assert.ok(Array.isArray(db.listUsers()));
+});
+
+test('global settings JSON round-trip with fallback', () => {
+  assert.equal(db.getSetting('missing', 'fb'), 'fb');
+  db.setSetting('obj', { a: 1, b: [2, 3] });
+  assert.deepEqual(db.getSetting('obj'), { a: 1, b: [2, 3] });
+  db.setSetting('obj', 'replaced');
+  assert.equal(db.getSetting('obj'), 'replaced', 'upsert replaces');
+});
+
+test('per-user settings are isolated by user', () => {
+  const a = newUser(), b = newUser();
+  db.setUserSetting(a.id, 'country', 'PL');
+  db.setUserSetting(b.id, 'country', 'US');
+  assert.equal(db.getUserSetting(a.id, 'country'), 'PL');
+  assert.equal(db.getUserSetting(b.id, 'country'), 'US');
+  assert.equal(db.getUserSetting(a.id, 'missing', 'def'), 'def');
+});
+
+test('ratings upsert/get/delete and per-user isolation', () => {
+  const a = newUser(), b = newUser();
+  db.upsertRating({ user_id: a.id, tmdb_id: 10, rating: 8, title: 'X', year: 2000 });
+  db.upsertRating({ user_id: a.id, tmdb_id: 10, rating: 9, title: 'X2', year: 2001 }); // conflict → update
+  db.upsertRating({ user_id: b.id, tmdb_id: 10, rating: 3, title: 'Y' });
+
+  const aRatings = db.getRatings(a.id);
+  assert.equal(aRatings.length, 1, 'conflict updates in place, no duplicate row');
+  assert.equal(aRatings[0].rating, 9);
+  assert.equal(aRatings[0].title, 'X2');
+  assert.equal(db.getRatings(b.id).length, 1, "other user's rating is separate");
+
+  db.deleteRating(a.id, 10);
+  assert.equal(db.getRatings(a.id).length, 0);
+  assert.equal(db.getRatings(b.id).length, 1, 'delete is scoped to the user');
+});
+
+test('dismiss is idempotent and per-user', () => {
+  const a = newUser(), b = newUser();
+  db.dismiss(a.id, 55);
+  db.dismiss(a.id, 55); // INSERT OR IGNORE — no error, no dup
+  db.dismiss(b.id, 55);
+  assert.deepEqual(db.getDismissed(a.id).map((d) => d.tmdb_id), [55]);
+  assert.equal(db.getDismissed(b.id).length, 1);
+});
+
+test('markNotSeen is idempotent and per-user', () => {
+  const a = newUser();
+  db.markNotSeen(a.id, 77);
+  db.markNotSeen(a.id, 77);
+  assert.deepEqual(db.getNotSeen(a.id).map((d) => d.tmdb_id), [77]);
+});
+
+test('deleteAccount cascades all per-user rows and is idempotent', () => {
+  const u = newUser();
+  db.upsertRating({ user_id: u.id, tmdb_id: 1, rating: 5 });
+  db.dismiss(u.id, 2);
+  db.markNotSeen(u.id, 3);
+  db.setUserSetting(u.id, 'country', 'PL');
+
+  assert.equal(db.deleteAccount(u.id), true);
+  assert.equal(db.getUserById(u.id), undefined);
+  assert.equal(db.getRatings(u.id).length, 0);
+  assert.equal(db.getDismissed(u.id).length, 0);
+  assert.equal(db.getNotSeen(u.id).length, 0);
+  assert.equal(db.getUserSetting(u.id, 'country', 'gone'), 'gone');
+  assert.equal(db.deleteAccount(u.id), false, 'second delete is a no-op');
+});
+
+test('cache honours maxAge expiry', () => {
+  db.cacheSet('k', { v: 1 });
+  assert.deepEqual(db.cacheGet('k'), { v: 1 }, 'no maxAge → always fresh');
+  assert.deepEqual(db.cacheGet('k', 60_000), { v: 1 }, 'within maxAge → hit');
+  assert.equal(db.cacheGet('k', -1), undefined, 'past maxAge → miss');
+  assert.equal(db.cacheGet('nope'), undefined, 'unknown key → undefined');
+});

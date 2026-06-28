@@ -13,6 +13,10 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
+    # Deploys are gated on CI: GitHub Actions triggers Render via a deploy hook
+    # only after unit + integration + e2e tests pass (see .github/workflows/ci.yml).
+    # Disable Render's own deploy-on-push so an untested commit never ships.
+    autoDeploy: false
     envVars:
       # Non-secret, value provided here.
       - key: NODE_ENV

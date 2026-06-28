@@ -18,6 +18,12 @@ function auth() {
 }
 
 async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
+  // Test mode: serve canned fixtures instead of hitting the network, so the
+  // suite runs offline and deterministically. Gated behind TMDB_STUB=1.
+  if (process.env.TMDB_STUB === '1') {
+    const { stub } = await import('./tmdb-stub.js');
+    return stub(path, params);
+  }
   const { headers, query } = auth();
   const usp = new URLSearchParams(params);
   if (query) usp.set(...query.split('=').map(decodeURIComponent));
@@ -55,7 +61,8 @@ async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
   throw lastErr || new Error(`TMDB request failed: ${path}`);
 }
 
-export const tmdbConfigured = () => !!getSetting('tmdbKey', config.tmdbKey);
+export const tmdbConfigured = () =>
+  process.env.TMDB_STUB === '1' || !!getSetting('tmdbKey', config.tmdbKey);
 
 export const search = (query, year) =>
   tmdb('/search/movie', { query, ...(year ? { year } : {}) });

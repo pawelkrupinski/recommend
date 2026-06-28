@@ -6,7 +6,7 @@
 // path per provider: /auth/<provider>/callback.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from './env.js';
-import { upsertUserFromLogin, getUserById } from './db.js';
+import { upsertUserFromLogin, getUserById, setUserAdmin, setUserSetting } from './db.js';
 
 const SESSION_COOKIE = 'rid';
 const STATE_COOKIE = 'oauth';
@@ -161,6 +161,25 @@ export async function handleAuth(req, res, url) {
 
   if (path === '/auth/logout') {
     redirect(res, '/', [cookie(SESSION_COOKIE, '', { maxAge: 0, secure: isSecure(req) })]);
+    return true;
+  }
+
+  // Test-only login bypass. Skips the real OAuth round-trip so automated tests
+  // (and local dev) can sign in as an arbitrary account. Strictly gated behind
+  // ALLOW_DEV_LOGIN=1 — never set in production, so this is inert on Render.
+  //   GET /auth/dev-login?email=&name=&admin=1&onboarded=0
+  if (path === '/auth/dev-login' && req.method === 'GET') {
+    if (process.env.ALLOW_DEV_LOGIN !== '1') { redirect(res, '/?error=dev_login_disabled'); return true; }
+    const email = (url.searchParams.get('email') || 'tester@example.com').toLowerCase();
+    const name = url.searchParams.get('name') || 'Test User';
+    const user = upsertUserFromLogin({ email, name, provider: 'dev', provider_sub: `dev-${email}` });
+    if (url.searchParams.get('admin') === '1') setUserAdmin(user.id, true);
+    // Default brand-new dev users straight into the app; pass onboarded=0 to
+    // exercise the first-run onboarding screen.
+    if (url.searchParams.get('onboarded') !== '0') setUserSetting(user.id, 'onboarded', true);
+    setSession(res, req, user.id);
+    res.writeHead(302, { Location: '/' });
+    res.end();
     return true;
   }
 

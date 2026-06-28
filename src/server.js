@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import './env.js';
 import {
   db,
@@ -34,11 +35,11 @@ const readBody = (req) =>
 
 // Normalize a service name for cross-source matching: lowercase, drop "+"/"plus"
 // and any non-alphanumerics. "Disney+" / "Disney Plus" -> "disney".
-const norm = (s) => String(s).toLowerCase().replace(/\+/g, '').replace(/\bplus\b/g, '').replace(/[^a-z0-9]/g, '');
+export const norm = (s) => String(s).toLowerCase().replace(/\+/g, '').replace(/\bplus\b/g, '').replace(/[^a-z0-9]/g, '');
 
 // Match a MotN service name to a TMDB provider (exact normalized match preferred,
 // then shortest substring match to avoid "… Store"/"… Channel" variants).
-function matchTmdb(motnName, tmdbProviders) {
+export function matchTmdb(motnName, tmdbProviders) {
   const m = norm(motnName);
   let exact = null, sub = null;
   for (const p of tmdbProviders) {
@@ -70,7 +71,7 @@ const VARIANT_RE = /(amazon channel|apple ?tv channel|with ads|\bkids\b)/i;
 const MAJOR = ['netflix', 'disney', 'hbo max', 'max', 'hulu', 'prime video', 'amazon prime',
   'apple tv', 'paramount', 'peacock', 'skyshowtime', 'now', 'sky go', 'canal+', 'player',
   'viaplay', 'filmbox', 'mubi', 'crunchyroll', 'britbox', 'starz', 'showtime', 'curiosity', 'zee5'];
-const majorRank = (name) => {
+export const majorRank = (name) => {
   const n = String(name).toLowerCase();
   const i = MAJOR.findIndex((m) => n.includes(m));
   return i === -1 ? 1000 : i;
@@ -80,7 +81,7 @@ const majorRank = (name) => {
 // top N: drop storefronts and reseller/tier variants, dedupe by provider id, by
 // normalized name, and by recognized brand (so we don't show "Netflix" twice),
 // then order by recognized popularity (majorRank) with dp as a tie-breaker.
-function topServices(primary, tmdbProviders) {
+export function topServices(primary, tmdbProviders) {
   const haveId = new Set(primary.filter((p) => p.id != null).map((p) => p.id));
   const haveName = new Set(primary.map((p) => norm(p.name)));
   const haveBrand = new Set(primary.map((p) => majorRank(p.name)).filter((r) => r < 1000));
@@ -305,20 +306,9 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.on('error', (err) => {
-  // e.g. EADDRINUSE — exit non-zero so launchd's KeepAlive restarts us cleanly.
-  console.error('server error:', err.message);
-  process.exit(1);
-});
-
-server.listen(PORT, () => {
-  console.log(`\n  🎬  recommend running →  http://localhost:${PORT}\n`);
-  if (!tmdb.tmdbConfigured()) console.log('  ⚠  No TMDB key yet — set TMDB_API_KEY or add it on the Settings tab (admin).\n');
-  if (!enabledProviders().length) console.log('  ⚠  No OAuth providers configured — set GOOGLE_CLIENT_ID/SECRET and/or FACEBOOK_APP_ID/SECRET.\n');
-  // Warm each user's per-genre recommendation caches in the background so the
-  // first Discover load and genre switches are instant.
-  warmRecommendations();
-});
+// Exported so tests can drive the server in-process (listen on an ephemeral
+// port, fetch against it, close) without the production boot side effects below.
+export { server };
 
 // ---- resilience -----------------------------------------------------------
 // Graceful shutdown: stop accepting connections, flush the DB, then exit 0 so
@@ -335,16 +325,38 @@ function shutdown(signal) {
   // Don't hang forever if a connection is stuck.
   setTimeout(() => process.exit(0), 5000).unref();
 }
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-// A single bad request shouldn't take the whole service down. Log and keep
-// serving on unhandled rejections; on a truly fatal uncaught error, exit so
-// launchd restarts a fresh process.
-process.on('unhandledRejection', (reason) => {
-  console.error('unhandledRejection:', reason);
-});
-process.on('uncaughtException', (err) => {
-  console.error('uncaughtException:', err);
-  shutdown('uncaughtException');
-});
+// Only boot the listener + process-wide handlers when run as the entrypoint
+// (`node src/server.js`). When imported by a test, the module just exposes
+// `server` and its handlers without binding a port or trapping signals.
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  server.on('error', (err) => {
+    // e.g. EADDRINUSE — exit non-zero so launchd's KeepAlive restarts us cleanly.
+    console.error('server error:', err.message);
+    process.exit(1);
+  });
+
+  server.listen(PORT, () => {
+    console.log(`\n  🎬  recommend running →  http://localhost:${PORT}\n`);
+    if (!tmdb.tmdbConfigured()) console.log('  ⚠  No TMDB key yet — set TMDB_API_KEY or add it on the Settings tab (admin).\n');
+    if (!enabledProviders().length) console.log('  ⚠  No OAuth providers configured — set GOOGLE_CLIENT_ID/SECRET and/or FACEBOOK_APP_ID/SECRET.\n');
+    // Warm each user's per-genre recommendation caches in the background so the
+    // first Discover load and genre switches are instant.
+    warmRecommendations();
+  });
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+  // A single bad request shouldn't take the whole service down. Log and keep
+  // serving on unhandled rejections; on a truly fatal uncaught error, exit so
+  // launchd restarts a fresh process.
+  process.on('unhandledRejection', (reason) => {
+    console.error('unhandledRejection:', reason);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('uncaughtException:', err);
+    shutdown('uncaughtException');
+  });
+}

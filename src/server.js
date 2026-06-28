@@ -52,6 +52,10 @@ function matchTmdb(motnName, tmdbProviders) {
   return exact || sub;
 }
 
+// Both the onboarding screen and Settings show this list; keep it to the top
+// services so the picker stays scannable instead of a wall of niche channels.
+const TOP_SERVICES = 20;
+
 // Build the Settings provider picker for a region. When a MotN key is present we use
 // MotN's clean per-country service list (1 cached request) and map each service to a
 // TMDB provider id (needed for the free /discover filtering). Otherwise we fall back
@@ -63,15 +67,22 @@ async function providerPicker(region) {
   if (motnConfigured()) {
     const services = await countryServices(region);
     if (services?.length) {
-      const providers = services.map((s) => {
-        const t = matchTmdb(s.name, tmdbProviders);
-        return { id: t?.provider_id ?? null, name: s.name, logo: t?.logo_path ?? null, source: 'motn' };
-      });
+      // Order by TMDB's per-region popularity (display_priority) and keep the top
+      // 20; this also floats Discover-capable (TMDB-matched) services to the front.
+      const providers = services
+        .map((s) => {
+          const t = matchTmdb(s.name, tmdbProviders);
+          return { id: t?.provider_id ?? null, name: s.name, logo: t?.logo_path ?? null,
+            dp: t?.display_priority ?? 9999, source: 'motn' };
+        })
+        .sort((a, b) => a.dp - b.dp)
+        .slice(0, TOP_SERVICES)
+        .map(({ dp, ...p }) => p);
       return { providers, source: 'movieofthenight' };
     }
   }
 
-  // Fallback: TMDB list, floating well-known names up, no arbitrary cap.
+  // Fallback: TMDB list, floating well-known names up, capped at the top 20.
   const MAJOR = ['netflix', 'hbo max', 'max', 'disney plus', 'amazon prime video',
     'apple tv', 'skyshowtime', 'canal+', 'player', 'viaplay', 'mubi', 'crunchyroll', 'filmbox'];
   const rank = (name) => {
@@ -81,6 +92,7 @@ async function providerPicker(region) {
   const providers = tmdbProviders
     .map((x) => ({ id: x.provider_id, name: x.provider_name, logo: x.logo_path, dp: x.display_priority ?? 99 }))
     .sort((a, b) => rank(a.name) - rank(b.name) || a.dp - b.dp)
+    .slice(0, TOP_SERVICES)
     .map(({ id, name, logo }) => ({ id, name, logo }));
   return { providers, source: 'tmdb' };
 }

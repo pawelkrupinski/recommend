@@ -250,6 +250,21 @@ test('recommendations carry runtime from TMDB details', async () => {
   assert.ok(data.results.every((m) => m.runtime === 107), 'every pick carries runtime');
 });
 
+test('the served pool runs deeper than the old 80-title cap', async () => {
+  // The pool advances one title at a time as the user rates/dismisses/saves, so
+  // pool DEPTH is how many picks a session yields. Provider 9 streams a 220-title
+  // backfill catalogue; the pool should now fill well past the former 80 cap (it
+  // truncated there before, which is why a heavy user "ran out of picks").
+  const { recommend } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'deep@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [9] } });
+  const me = (await c.json('/api/me')).data;
+  const { results } = await recommend({
+    userId: me.user.id, region: 'PL', providerIds: [9], limit: 1000, force: true, language: 'en-US',
+  });
+  assert.ok(results.length > 80, `pool runs deeper than the old 80 cap (got ${results.length})`);
+});
+
 test('recommendations include titles only a non-Discover source surfaces', async () => {
   const c = await client().login({ email: 'trending@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });

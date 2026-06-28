@@ -43,7 +43,9 @@ const TRENDING = [
 // picks that provider a pool well over the ~36 the UI shows at once. That surplus
 // is what the picks grid's background refill surfaces as cards leave.
 const BACKFILL_PROVIDER = 9; // Amazon Prime Test (see PROVIDERS)
-const DEEP_DISCOVER = Array.from({ length: 50 }, (_, i) => ({ id: 5001 + i, title: `Stub Deep ${i + 1}` }));
+// Over POOL_SIZE (200) so a provider-9 user's pool is capped by POOL_SIZE, not by
+// the stub running short — that's what the pool-depth test asserts against.
+const DEEP_DISCOVER = Array.from({ length: 220 }, (_, i) => ({ id: 5001 + i, title: `Stub Deep ${i + 1}` }));
 
 const GENRES = [
   { id: 28, name: 'Action' },
@@ -126,7 +128,12 @@ export function stub(path, params = {}) {
     if (!params.with_watch_providers) {
       return { page, total_pages: 1, results: POPULAR.map((m) => card(m, params.language)) };
     }
-    return { page, total_pages: 1, results: [...DISCOVER, ...DEEP_DISCOVER].map((m) => card(m, params.language)) };
+    // The big backfill pool only streams on BACKFILL_PROVIDER, so only surface it
+    // when that provider is the one being queried — keeping the provider-8 tests'
+    // candidate set small (just DISCOVER) while a provider-9 user gets the depth.
+    const providers = String(params.with_watch_providers).split('|').map(Number);
+    const deep = providers.includes(BACKFILL_PROVIDER) ? DEEP_DISCOVER : [];
+    return { page, total_pages: 1, results: [...DISCOVER, ...deep].map((m) => card(m, params.language)) };
   }
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };

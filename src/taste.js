@@ -182,12 +182,16 @@ export function userServices(full, region, userSet) {
 // How many scored titles we keep per (user, region, services, genre) pool. We
 // cache a surplus over what the UI shows (server asks for 36) so titles rated or
 // dismissed mid-session can be filtered out at serve time without depleting it.
-const POOL_SIZE = 80;
+// Sized large because the served pool advances one title at a time as the user
+// rates/dismisses/saves — so the pool depth IS how many picks a session yields.
+// At 80 a heavy user exhausted the default "all genres" view after ~50 picks;
+// 200 lets it run as deep as the per-genre pools collectively reach.
+const POOL_SIZE = 200;
 // Upper bound on candidates we fetch full details for per pool. With many
 // sources the merged set can run large; this caps the per-build TMDB detail
 // fetches (and latency) while still leaving ample headroom over POOL_SIZE after
 // the streamability gate drops most candidates.
-const CANDIDATE_CAP = 250;
+const CANDIDATE_CAP = 500;
 // How many of each pool's top titles get IMDb/Metacritic ratings attached during
 // the (background) build. Enough to cover the ~36 shown plus dismissal headroom,
 // so serving never has to make those slow web lookups itself.

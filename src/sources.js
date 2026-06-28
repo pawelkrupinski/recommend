@@ -45,7 +45,7 @@ const seeds = (ratings) =>
 // few pages were all already-handled and the pool came up empty. Counting *fresh*
 // titles lets a light user stop after one page while a heavy user pages deeper
 // into the freshly-streamable long tail. `consumed` = ids already handled.
-const DISCOVER_PAGE_CEIL = 20;     // TMDB caps /discover at 500 pages; stay modest.
+const DISCOVER_PAGE_CEIL = 40;     // TMDB caps /discover at 500 pages; stay modest.
 export async function pageUntilFresh({ fetchPage, want, consumed, ceil = DISCOVER_PAGE_CEIL }) {
   const out = [];
   let fresh = 0;
@@ -68,8 +68,10 @@ const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCou
 // How many not-yet-handled candidates each provider-scoped sweep aims to surface
 // — enough that the merged pool still fills POOL_SIZE after the streamability gate
 // and de-duplication. Popularity carries the bulk; the acclaimed sweep tops up.
-const DISCOVER_FRESH_TARGET = 80;
-const DISCOVER_TOP_RATED_TARGET = 40;
+// Sized well over POOL_SIZE so a heavy user who has rated/dismissed the popular
+// head still gets a deep "all genres" pool instead of running dry after ~50 picks.
+const DISCOVER_FRESH_TARGET = 160;
+const DISCOVER_TOP_RATED_TARGET = 80;
 
 // Expand each seed film through a TMDB list endpoint (recommendations | similar),
 // collecting every result. A dud seed is skipped, not fatal.

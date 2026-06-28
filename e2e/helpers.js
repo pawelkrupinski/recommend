@@ -23,3 +23,19 @@ export async function login(page, email, { admin = false, onboarded = true } = {
 // cross-test interference (ratings/dismissals are per-user).
 let n = 0;
 export const uniqEmail = (tag) => `${tag}-${process.pid}-${n++}@e2e.test`;
+
+// Drive a fresh account straight into Discover's personalized-picks mode: pick
+// the stub streaming provider and seed 10 ratings via the API (the client only
+// swaps the onboarding rate queue for real picks once RATE_GOAL is reached).
+export async function enterPicks(page) {
+  await page.evaluate(async () => {
+    await fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ providers: [8] }) });
+    for (let i = 0; i < 10; i++) {
+      await fetch('/api/ratings', { method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tmdb_id: 900 + i, rating: 8, title: `Seed ${i}`, year: 2020 }) });
+    }
+  });
+  await page.goto('/#discover');
+  await expect(page.locator('#recs .card').first()).toBeVisible();
+}

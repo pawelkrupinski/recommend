@@ -1,21 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { login, uniqEmail } from './helpers.js';
-
-// Drive a fresh account straight into Discover's personalized-picks mode: pick
-// the stub streaming provider and seed 10 ratings via the API (the client only
-// swaps the onboarding rate queue for real picks once RATE_GOAL is reached).
-async function enterPicks(page) {
-  await page.evaluate(async () => {
-    await fetch('/api/settings', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ providers: [8] }) });
-    for (let i = 0; i < 10; i++) {
-      await fetch('/api/ratings', { method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ tmdb_id: 900 + i, rating: 8, title: `Seed ${i}`, year: 2020 }) });
-    }
-  });
-  await page.goto('/#discover');
-  await expect(page.locator('#recs .card').first()).toBeVisible();
-}
+import { login, uniqEmail, enterPicks } from './helpers.js';
 
 test('the + button on a Discover card saves the title to the Watchlist tab', async ({ page }) => {
   await login(page, uniqEmail('watchlist'));

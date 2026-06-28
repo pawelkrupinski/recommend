@@ -538,10 +538,14 @@ $('#save-providers').onclick = async () => {
 };
 const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.stringify({ [k]: v }) });
 
-// Permanently delete the signed-in account and all its data, then reload to the
-// login gate (the server clears the session cookie in its response).
+// Wipe all of the current account's data and reload (the server clears the
+// session cookie, so an anonymous user simply starts fresh, a signed-in one is
+// fully deleted). The confirm/label adapt to which kind of account it is.
 $('#delete-account').onclick = async () => {
-  if (!confirm('Delete your account and all your ratings and preferences? This cannot be undone.')) return;
+  const msg = ME.anonymous
+    ? 'Clear all your ratings and preferences on this device? This cannot be undone.'
+    : 'Delete your account and all your ratings and preferences? This cannot be undone.';
+  if (!confirm(msg)) return;
   const btn = $('#delete-account');
   btn.disabled = true; btn.textContent = 'Deleting…';
   try {
@@ -558,6 +562,8 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp
 // ---- auth / bootstrap -----------------------------------------------------
 let ME = null;
 const PROVIDER_LABELS = { google: 'Sign in with Google', facebook: 'Sign in with Facebook' };
+// Populate the (optional) sign-in overlay's provider buttons. Called once at
+// startup so the overlay is ready the moment an anonymous user taps "Sign in".
 function renderLogin(providers) {
   $('#login-buttons').innerHTML = providers.length
     ? providers.map((p) => `<a class="btn-oauth ${p}" href="/auth/${p}">${PROVIDER_LABELS[p] || ('Sign in with ' + p)}</a>`).join('')
@@ -565,7 +571,24 @@ function renderLogin(providers) {
   const err = new URLSearchParams(location.search).get('error');
   if (err) $('#login-error').textContent = '⚠ ' + err;
 }
-function renderUserbar(user) {
+// Show/hide the sign-in overlay; an anonymous user can dismiss it and keep using
+// the app, so it behaves like a modal rather than a gate.
+const showLogin = () => $('#login').classList.remove('hidden');
+const hideLogin = () => $('#login').classList.add('hidden');
+$('#login-close').onclick = hideLogin;
+$('#login').onclick = (e) => { if (e.target.id === 'login') hideLogin(); };
+
+// The userbar offers "Sign in" while anonymous (only when a provider exists),
+// and the avatar + "Sign out" once signed in.
+function renderUserbar() {
+  if (ME.anonymous) {
+    $('#userbar').innerHTML = (ME.providers || []).length
+      ? '<a class="logout" id="show-signin">Sign in</a>' : '';
+    const link = $('#show-signin');
+    if (link) link.onclick = showLogin;
+    return;
+  }
+  const user = ME.user;
   const avatar = user.picture ? `<img src="${user.picture}" alt="" referrerpolicy="no-referrer" />` : '';
   $('#userbar').innerHTML =
     `${avatar}<span class="uname">${esc(user.name || user.email)}</span>`
@@ -597,17 +620,17 @@ async function startOnboarding() {
 
 function enterApp() {
   $('#app').classList.remove('hidden');
-  renderUserbar(ME.user);
+  renderUserbar();
   activateTab(parseHash().tab); // open whatever tab the URL points at (default Discover)
 }
 
 async function init() {
-  try { ME = await api('/api/me'); } catch { ME = { user: null, providers: [] }; }
-  if (!ME.user) {
-    $('#login').classList.remove('hidden');
-    renderLogin(ME.providers || []);
-    return;
-  }
+  // /api/me mints an anonymous session if there's none, so there is always a
+  // user — no login gate. The overlay is prepared up front in case the user later
+  // taps "Sign in" (e.g. to sync across devices); it surfaces any ?error= too.
+  try { ME = await api('/api/me'); } catch { ME = { user: null, anonymous: true, providers: [] }; }
+  renderLogin(ME.providers || []);
+  if (new URLSearchParams(location.search).get('error')) showLogin();
   // Drop any ?error= left over from a failed prior attempt, keep the tab hash.
   if (location.search) history.replaceState(null, '', location.pathname + location.hash);
   if (!ME.onboarded) return startOnboarding();

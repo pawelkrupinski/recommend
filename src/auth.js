@@ -6,7 +6,9 @@
 // path per provider: /auth/<provider>/callback.
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from './env.js';
-import { upsertUserFromLogin, getUserById, setUserAdmin, setUserSetting } from './db.js';
+import { upsertUserFromLogin, getUserById, setUserAdmin, setUserSetting,
+  createAnonUser, mergeUserData, deleteAccount } from './db.js';
+import { invalidateRecommendations } from './taste.js';
 import { fetchWithTimeout } from './fetch.js';
 
 const SESSION_COOKIE = 'rid';
@@ -69,6 +71,31 @@ export function currentUser(req) {
   const sess = unpack(parseCookies(req)[SESSION_COOKIE]);
   if (!sess?.uid) return null;
   return getUserById(sess.uid) || null;
+}
+// Resolve the session's user, minting a fresh anonymous account (and setting the
+// session cookie on `res`) when there isn't one. This is what removes the need to
+// log in: every API request is backed by a real user row, anonymous or not, so
+// the rest of the server treats anon and signed-in users identically.
+export function getOrCreateUser(req, res) {
+  const existing = currentUser(req);
+  if (existing) return existing;
+  const user = createAnonUser();
+  setSession(res, req, user.id);
+  return user;
+}
+// Complete a sign-in: upsert the real account, fold in any anonymous session the
+// visitor built before logging in (so pre-login ratings/saves aren't lost), then
+// start a session for the real user. Shared by the dev-login bypass and the real
+// OAuth callback. Returns the real user.
+function signInAs(req, res, profile, extraCookies = []) {
+  const anon = currentUser(req);
+  const user = upsertUserFromLogin(profile);
+  if (anon?.provider === 'anon' && anon.id !== user.id) {
+    if (mergeUserData(anon.id, user.id)) invalidateRecommendations(user.id);
+    deleteAccount(anon.id);
+  }
+  setSession(res, req, user.id, extraCookies);
+  return user;
 }
 function setSession(res, req, userId, extraCookies = []) {
   res.setHeader('Set-Cookie', [
@@ -173,12 +200,11 @@ export async function handleAuth(req, res, url) {
     if (process.env.ALLOW_DEV_LOGIN !== '1') { redirect(res, '/?error=dev_login_disabled'); return true; }
     const email = (url.searchParams.get('email') || 'tester@example.com').toLowerCase();
     const name = url.searchParams.get('name') || 'Test User';
-    const user = upsertUserFromLogin({ email, name, provider: 'dev', provider_sub: `dev-${email}` });
+    const user = signInAs(req, res, { email, name, provider: 'dev', provider_sub: `dev-${email}` });
     if (url.searchParams.get('admin') === '1') setUserAdmin(user.id, true);
     // Default brand-new dev users straight into the app; pass onboarded=0 to
     // exercise the first-run onboarding screen.
     if (url.searchParams.get('onboarded') !== '0') setUserSetting(user.id, 'onboarded', true);
-    setSession(res, req, user.id);
     res.writeHead(302, { Location: '/' });
     res.end();
     return true;
@@ -208,8 +234,7 @@ export async function handleAuth(req, res, url) {
       if (!saved || saved.provider !== name || saved.state !== returnedState) throw new Error('Invalid OAuth state');
       if (Date.now() - saved.iat > STATE_MAX_AGE) throw new Error('OAuth state expired');
       const prof = await PROVIDERS[name].profile(req, code);
-      const user = upsertUserFromLogin(prof);
-      setSession(res, req, user.id, [cookie(STATE_COOKIE, '', { maxAge: 0, secure: isSecure(req) })]);
+      signInAs(req, res, prof, [cookie(STATE_COOKIE, '', { maxAge: 0, secure: isSecure(req) })]);
       res.writeHead(302, { Location: '/' });
       res.end();
     } catch (e) {

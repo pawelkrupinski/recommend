@@ -26,12 +26,14 @@ test('changing country persists across a reload', async ({ page }) => {
   await expect(page.locator('#country')).toHaveValue('US');
 });
 
-test('deleting the account returns to the login gate', async ({ page }) => {
+test('deleting the account drops to a fresh anonymous session', async ({ page }) => {
   await login(page, uniqEmail('doomed'));
   await openSettings(page);
   // The delete button asks for confirmation via a native dialog — accept it.
   page.on('dialog', (d) => d.accept());
   await page.locator('#delete-account').click();
-  await expect(page.locator('#login')).toBeVisible();
+  // The account is gone and we reload into a brand-new anonymous session, which
+  // (being un-onboarded) lands on onboarding rather than any login gate.
+  await expect(page.locator('#onboarding')).toBeVisible();
   await expect(page.locator('#app')).toBeHidden();
 });

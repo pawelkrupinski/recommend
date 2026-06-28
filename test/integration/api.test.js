@@ -45,17 +45,43 @@ function client() {
   };
 }
 
-test('GET /api/me is open and reports no user when logged out', async () => {
-  const { status, data } = await client().json('/api/me');
+test('GET /api/me mints an anonymous session for a first-time visitor', async () => {
+  const c = client();
+  const { status, data } = await c.json('/api/me');
   assert.equal(status, 200);
-  assert.equal(data.user, null);
+  assert.equal(data.anonymous, true, 'flagged anonymous');
+  assert.ok(data.user.id, 'a real (anonymous) user row backs the session');
+  assert.equal(data.user.email, null, 'anonymous users have no email');
+  assert.ok(c.cookie, 'a session cookie was set so the identity persists');
   assert.ok(Array.isArray(data.providers));
 });
 
-test('protected endpoints 401 without a session', async () => {
-  const { status, data } = await client().json('/api/ratings');
-  assert.equal(status, 401);
-  assert.equal(data.error, 'login required');
+test('data endpoints work anonymously — no login required', async () => {
+  const c = client();
+  let r = await c.json('/api/ratings');
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.data.ratings, [], 'fresh anon user starts with no ratings');
+  r = await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 42, rating: 8, title: 'Anon Pick' } });
+  assert.equal(r.status, 200);
+  r = await c.json('/api/ratings');
+  assert.equal(r.data.ratings.length, 1, 'the anonymous rating persisted via the session cookie');
+});
+
+test('signing in folds the anonymous session into the account', async () => {
+  const c = client();
+  // Build up an anonymous session first…
+  await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 77, rating: 9, title: 'Pre-login Fave' } });
+  await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 88, title: 'Saved Anon' } });
+  // …then sign in (the client keeps the anon cookie across the dev-login call).
+  await c.login({ email: 'merger@example.com' });
+  const me = await c.json('/api/me');
+  assert.equal(me.data.anonymous, false, 'now a real account');
+  assert.equal(me.data.user.email, 'merger@example.com');
+  const ratings = await c.json('/api/ratings');
+  assert.equal(ratings.data.ratings.length, 1, 'anonymous rating carried into the account');
+  assert.equal(ratings.data.ratings[0].title, 'Pre-login Fave');
+  const wl = await c.json('/api/watchlist');
+  assert.equal(wl.data.watchlist.length, 1, 'anonymous watchlist carried over');
 });
 
 test('dev-login establishes a session usable by /api/me', async () => {
@@ -154,9 +180,13 @@ test('delete account erases the user and ends the session', async () => {
   await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 8, title: 'Saved' } });
   const del = await c.raw('/api/me', { method: 'DELETE' });
   assert.equal(del.status, 200);
-  // The same (now cleared/invalid) cookie no longer resolves to a user.
+  // The signed-in account is gone; the cleared cookie now resolves to a fresh
+  // anonymous session (the app no longer drops to a login gate) with no data.
   const me = await c.json('/api/me');
-  assert.equal(me.data.user, null);
+  assert.equal(me.data.anonymous, true, 'back to an anonymous session');
+  assert.notEqual(me.data.user.email, 'doomed@example.com', 'the old account is gone');
+  const ratings = await c.json('/api/ratings');
+  assert.deepEqual(ratings.data.ratings, [], 'the deleted account left no data behind');
 });
 
 test('onboarded=0 dev-login leaves the user needing onboarding', async () => {

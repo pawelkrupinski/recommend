@@ -40,6 +40,11 @@ export default defineConfig({
       RAPIDAPI_KEY: '',
       APPLICATION_SECRET: 'e2e-secret-do-not-use-in-prod',
       ADMIN_ALLOWLIST: 'boss@example.com',
+      // Enable a (dummy) OAuth provider so the optional "Sign in" affordance the
+      // anonymous-mode tests assert on actually renders. We never complete the
+      // real OAuth round-trip in tests — dev-login is the bypass for that.
+      GOOGLE_CLIENT_ID: 'e2e-google-id',
+      GOOGLE_CLIENT_SECRET: 'e2e-google-secret',
     },
   },
 });

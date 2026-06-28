@@ -13,7 +13,7 @@ import {
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
-import { handleAuth, currentUser, enabledProviders, sessionClearingCookie } from './auth.js';
+import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 
 const PORT = process.env.PORT || 9002;
@@ -126,28 +126,28 @@ async function providerPicker(region) {
 async function api(req, res, url) {
   const p = url.pathname;
   try {
-    const user = currentUser(req);
+    // No login required: an anonymous account (and session cookie) is minted on
+    // demand, so `user` is always present — anon or signed-in alike.
+    const user = getOrCreateUser(req, res);
+    const uid = user.id;
 
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
       return json(req, res, 200, {
-        user: user && { id: user.id, email: user.email, name: user.name, picture: user.picture },
-        onboarded: user ? !!getUserSetting(user.id, 'onboarded', false) : false,
+        user: { id: user.id, email: user.email, name: user.name, picture: user.picture },
+        anonymous: user.provider === 'anon',
+        onboarded: !!getUserSetting(uid, 'onboarded', false),
         providers: enabledProviders(),
       });
     }
 
     // ---- delete my account + all my data (right to erasure) -----------
+    // For an anonymous user this is "clear everything and start fresh".
     if (p === '/api/me' && req.method === 'DELETE') {
-      if (!user) return json(req, res, 401, { error: 'login required' });
-      deleteAccount(user.id);
+      deleteAccount(uid);
       res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': sessionClearingCookie(req) });
       return res.end(JSON.stringify({ ok: true }));
     }
-
-    // Everything below requires a signed-in user.
-    if (!user) return json(req, res, 401, { error: 'login required' });
-    const uid = user.id;
 
     // ---- settings -----------------------------------------------------
     if (p === '/api/settings' && req.method === 'GET') {

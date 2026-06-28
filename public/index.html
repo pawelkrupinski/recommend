@@ -12,11 +12,13 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <!-- Login gate, shown when no session -->
+  <!-- Optional sign-in overlay. No longer a gate: the app works anonymously, and
+       this is shown only when the user taps "Sign in" to sync across devices. -->
   <div id="login" class="login hidden">
     <div class="login-card">
+      <button id="login-close" class="modal-close" aria-label="Close">✕</button>
       <h1>🎬 recommend</h1>
-      <p class="sub">Sign in to get movie picks tuned to your taste.</p>
+      <p class="sub">Sign in to sync your ratings and picks across devices. Your current picks come with you.</p>
       <div id="login-buttons"></div>
       <p id="login-error" class="login-error"></p>
       <p class="sub"><a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></p>

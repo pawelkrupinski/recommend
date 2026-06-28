@@ -42,8 +42,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 #userbar .logout { font-size: 13px; text-decoration: none; }
 
 /* login gate */
-.login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.login-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+.login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px;
+  /* A dimmed backdrop above the app — the sign-in overlay now floats over the
+     anonymous app rather than replacing a blank page, so it needs to win the
+     stacking order and catch backdrop taps. */
+  background: rgba(0, 0, 0, 0.6); z-index: 60; }
+.login-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
   padding: 36px 32px; max-width: 380px; width: 100%; text-align: center; }
 .login-card h1 { font-size: 26px; margin-bottom: 6px; }
 #login-buttons { display: flex; flex-direction: column; gap: 12px; margin-top: 22px; }

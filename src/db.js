@@ -222,6 +222,32 @@ export function upsertUserFromLogin({ email, name, picture, provider, provider_s
 export function setUserAdmin(userId, isAdmin) {
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
 }
+// Create a fresh anonymous account — no email, no login, identified only by the
+// session cookie. Lets a visitor use the app (rate, save, get picks) without
+// signing in; if they later log in, mergeUserData() folds this account's data
+// into the real one. email is UNIQUE but NULLs don't collide in SQLite, so any
+// number of anon users coexist.
+export function createAnonUser() {
+  const info = db.prepare("INSERT INTO users (provider) VALUES ('anon')").run();
+  return getUserById(info.lastInsertRowid);
+}
+// Fold every per-user row of `fromId` into `toId` without overwriting anything
+// `toId` already holds (INSERT OR IGNORE) — so signing in on a device that
+// already has an account keeps that account's data and merely adds whatever was
+// rated/saved anonymously. Returns the number of rows brought across so the
+// caller can decide whether to rebuild recommendations.
+export function mergeUserData(fromId, toId) {
+  let moved = 0;
+  for (const table of ['ratings', 'dismissed', 'not_seen', 'watchlist', 'user_settings']) {
+    const cols = tableColumns(table);
+    const select = cols.map((c) => (c === 'user_id' ? '?' : c)).join(', ');
+    const info = db.prepare(
+      `INSERT OR IGNORE INTO ${table} (${cols.join(', ')}) SELECT ${select} FROM ${table} WHERE user_id = ?`
+    ).run(toId, fromId);
+    moved += info.changes;
+  }
+  return moved;
+}
 // Permanently delete a user and every per-user row we hold for them. Used by
 // both the in-app "delete account" action and the Facebook data-deletion
 // callback. Idempotent: a no-op (returns false) if the user no longer exists.

@@ -100,8 +100,8 @@ button.danger:disabled { opacity: .6; cursor: default; }
 }
 .score.hi { color: var(--good); border-color: var(--good); }
 
-/* "+ / ✓" watchlist toggle, mirroring the score badge in the opposite corner.
-   Sits over the poster; the ✓ "on" state goes accent-coloured. */
+/* "+" save-to-watchlist button, mirroring the score badge in the opposite
+   corner. Sits over the poster; saving removes the card so there's no ✓ state. */
 .watch-btn {
   position: absolute; top: 8px; right: 8px; z-index: 1;
   width: 30px; height: 30px; padding: 0; line-height: 1;
@@ -111,7 +111,6 @@ button.danger:disabled { opacity: .6; cursor: default; }
   transition: color .12s ease, border-color .12s ease, background .12s ease;
 }
 @media (hover: hover) { .watch-btn:hover { border-color: var(--accent); } }
-.watch-btn.on { color: var(--accent); border-color: var(--accent); }
 .watch-btn:disabled { opacity: .6; cursor: default; }
 
 .genres { color: var(--muted); font-size: 11px; margin-top: 4px; }

@@ -210,7 +210,10 @@ async function loadRecs(force = false) {
 // seamless onboarding→picks swap.
 function renderRecs(results, profileSize, genre) {
   const info = $('#discover-info'), grid = $('#recs');
-  if (!results.length) {
+  // Titles already on the watchlist have been dealt with — keep them out of the
+  // picks grid rather than showing a card the user has to dismiss again.
+  const picks = results.filter((m) => !watchlistIds.has(m.tmdb_id));
+  if (!picks.length) {
     info.textContent = '';
     grid.innerHTML = genre
       ? '<p class="empty">No picks in this genre on your services. Try “All genres” or another genre.</p>'
@@ -218,9 +221,9 @@ function renderRecs(results, profileSize, genre) {
     return;
   }
   const inGenre = genre ? ` in ${$('#genre-filter').selectedOptions[0].textContent}` : '';
-  info.textContent = `${results.length} picks${inGenre} from a taste profile of ${profileSize} rated films.`;
+  info.textContent = `${picks.length} picks${inGenre} from a taste profile of ${profileSize} rated films.`;
   grid.innerHTML = '';
-  for (const m of results) grid.append(recCard(m));
+  for (const m of picks) grid.append(recCard(m));
 }
 // Shown when the last Discover card leaves the grid — whether it was rated,
 // dismissed, or saved to the watchlist.
@@ -231,7 +234,7 @@ function recCard(m) {
   const hi = m.score >= 75 ? 'hi' : '';
   el.innerHTML = `
     <div class="score ${hi}">${m.score}</div>
-    ${watchBtnMarkup(watchlistIds.has(m.tmdb_id))}
+    ${watchBtnMarkup()}
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta">
       <div class="title">${esc(m.title)}</div>
@@ -331,17 +334,11 @@ async function loadWatchlistIds() {
   try { watchlistIds = new Set((await api('/api/watchlist')).watchlist.map((w) => w.tmdb_id)); }
   catch { /* keep the previous set */ }
 }
-// The corner + / ✓ button for a card, reflecting whether the title is saved.
-function watchBtnMarkup(inList) {
-  const label = inList ? 'Remove from watchlist' : 'Add to watchlist';
-  return `<button class="watch-btn${inList ? ' on' : ''}" title="${label}" aria-label="${label}">${inList ? '✓' : '+'}</button>`;
-}
-function setWatchBtn(btn, inList) {
-  const label = inList ? 'Remove from watchlist' : 'Add to watchlist';
-  btn.classList.toggle('on', inList);
-  btn.textContent = inList ? '✓' : '+';
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
+// The corner "+" save button for a Discover card. Cards only ever show for
+// unsaved titles (watchlisted ones are filtered out of the grid and saving
+// removes the card), so this never needs a saved/✓ state.
+function watchBtnMarkup() {
+  return '<button class="watch-btn" title="Add to watchlist" aria-label="Add to watchlist">+</button>';
 }
 // Briefly pulse a nav tab (CSS `.flash` animation) to draw the eye to where
 // something just landed — e.g. the Watchlist tab when a pick is saved.
@@ -353,29 +350,21 @@ function flashTab(tab) {
   btn.classList.add('flash');
   btn.addEventListener('animationend', () => btn.classList.remove('flash'), { once: true });
 }
-// Wire the + button inside `el` for movie `m`: saves the title to the watchlist
-// (removing the card from Discover) or, for an already-saved pick, unsaves it.
+// Wire the + button inside `el` for movie `m`: saves the title to the watchlist,
+// then drops the card from Discover and pulses the Watchlist tab so it's clear
+// where the title went.
 function wireWatch(el, m) {
   const btn = el.querySelector('.watch-btn');
   if (!btn) return;
   btn.onclick = async (ev) => {
     ev.stopPropagation();
     btn.disabled = true;
-    const adding = !watchlistIds.has(m.tmdb_id);
     try {
-      if (adding) {
-        await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
-          tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
-        watchlistIds.add(m.tmdb_id);
-        // Saved — drop the card from Discover and pulse the Watchlist tab so it's
-        // clear where the title went.
-        flashTab('watchlist');
-        removeCard(el, PICKS_EMPTY);
-      } else {
-        await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
-        watchlistIds.delete(m.tmdb_id);
-        setWatchBtn(btn, false);
-      }
+      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
+        tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
+      watchlistIds.add(m.tmdb_id);
+      flashTab('watchlist');
+      removeCard(el, PICKS_EMPTY);
     } finally { btn.disabled = false; }
   };
 }

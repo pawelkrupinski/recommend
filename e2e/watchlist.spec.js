@@ -26,3 +26,18 @@ test('saving a Discover pick removes its card, flashes the tab, and lands in the
   await saved.locator('.watch-remove').click();
   await expect(page.locator('#watchlist-grid')).toContainText('Your watchlist is empty');
 });
+
+test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
+  await login(page, uniqEmail('watch-hide'));
+  await enterPicks(page);
+
+  const title = await page.locator('#recs .card .title').first().textContent();
+  await page.locator('#recs .card').first().locator('.watch-btn').click();
+  await expect(page.locator('#recs .card', { hasText: title })).toHaveCount(0);
+
+  // The recommender still returns the title on a fresh load (the watchlist isn't
+  // a server-side exclusion), so the client must keep it out of the grid itself.
+  await page.reload();
+  await expect(page.locator('#recs .card').first()).toBeVisible();
+  await expect(page.locator('#recs .card', { hasText: title })).toHaveCount(0);
+});

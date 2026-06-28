@@ -16,26 +16,29 @@
        this is shown only when the user taps "Sign in" to sync across devices. -->
   <div id="login" class="login hidden">
     <div class="login-card">
-      <button id="login-close" class="modal-close" aria-label="Close">✕</button>
+      <button id="login-close" class="modal-close" data-i18n-aria-label="aria.close" aria-label="Close">✕</button>
       <h1>🎬 recommend</h1>
-      <p class="sub">Sign in to sync your ratings and picks across devices. Your current picks come with you.</p>
+      <p class="sub" data-i18n="login.intro">Sign in to sync your ratings and picks across devices. Your current picks come with you.</p>
       <div id="login-buttons"></div>
       <p id="login-error" class="login-error"></p>
-      <p class="sub"><a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
+      <p class="sub"><a href="/privacy" target="_blank" rel="noopener" data-i18n="login.privacy">Privacy policy</a></p>
     </div>
   </div>
 
   <!-- First-run onboarding: pick streaming services before entering the app -->
   <div id="onboarding" class="login hidden">
     <div class="login-card onboarding-card">
-      <h1>🎬 Welcome</h1>
-      <p class="sub">Tell us where you watch so every pick is something you can actually stream tonight.</p>
-      <label>Country
+      <h1 data-i18n="ob.welcome">🎬 Welcome</h1>
+      <p class="sub" data-i18n="ob.intro">Tell us where you watch so every pick is something you can actually stream tonight.</p>
+      <label><span data-i18n="label.language">Language</span>
+        <select id="ob-lang"></select>
+      </label>
+      <label><span data-i18n="label.country">Country</span>
         <select id="ob-country"></select>
       </label>
       <div id="ob-provider-list" class="providers"></div>
-      <button id="ob-continue">Continue →</button>
-      <p class="sub">You can change these any time in Settings.</p>
+      <button id="ob-continue" data-i18n="ob.continue">Continue →</button>
+      <p class="sub" data-i18n="ob.changeLater">You can change these any time in Settings.</p>
     </div>
   </div>
 
@@ -44,10 +47,10 @@
     <header>
       <h1>🎬 recommend</h1>
       <nav id="tabs">
-        <button data-tab="discover" class="active">Discover</button>
-        <button data-tab="watchlist">Watchlist</button>
-        <button data-tab="ratings">My ratings</button>
-        <button data-tab="settings">Settings</button>
+        <button data-tab="discover" class="active" data-i18n="tab.discover">Discover</button>
+        <button data-tab="watchlist" data-i18n="tab.watchlist">Watchlist</button>
+        <button data-tab="ratings" data-i18n="tab.ratings">My ratings</button>
+        <button data-tab="settings" data-i18n="tab.settings">Settings</button>
       </nav>
       <div id="userbar"></div>
     </header>
@@ -55,11 +58,11 @@
     <main>
       <section id="discover" class="tab active">
         <div class="bar">
-          <p id="discover-info">Building your picks…</p>
-          <select id="genre-filter" title="Filter picks by genre">
-            <option value="">All genres</option>
+          <p id="discover-info" data-i18n="discover.building">Building your picks…</p>
+          <select id="genre-filter" data-i18n-title="discover.filterTitle" title="Filter picks by genre">
+            <option value="" data-i18n="genre.all">All genres</option>
           </select>
-          <button id="refresh">↻ Refresh picks</button>
+          <button id="refresh" data-i18n="discover.refresh">↻ Refresh picks</button>
         </div>
         <div id="recs" class="grid"></div>
       </section>
@@ -76,20 +79,24 @@
 
       <section id="settings" class="tab">
         <div class="form">
-          <h3>Your streaming services</h3>
-          <p class="hint">Picks are filtered to titles streamable on these in your country.</p>
-          <label>Country
+          <h3 data-i18n="settings.languageHeading">Interface language</h3>
+          <label><span data-i18n="label.language">Language</span>
+            <select id="lang"></select>
+          </label>
+
+          <h3 data-i18n="settings.servicesHeading">Your streaming services</h3>
+          <p class="hint" data-i18n="settings.servicesHint">Picks are filtered to titles streamable on these in your country.</p>
+          <label><span data-i18n="label.country">Country</span>
             <select id="country"></select>
           </label>
           <div id="provider-list" class="providers"></div>
-          <button id="save-providers">Save services</button>
+          <button id="save-providers" data-i18n="settings.saveServices">Save services</button>
 
           <!-- Account / privacy -->
           <div class="danger-zone">
-            <h3>Your account</h3>
-            <p class="hint">Read our <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.
-              Deleting your account permanently erases your profile, ratings and preferences. This cannot be undone.</p>
-            <button id="delete-account" class="danger">Delete account</button>
+            <h3 data-i18n="settings.accountHeading">Your account</h3>
+            <p class="hint"><span data-i18n="settings.privacyRead">Read our </span><a href="/privacy" target="_blank" rel="noopener" data-i18n="settings.privacyPolicy">privacy policy</a><span data-i18n="settings.deleteWarn">. Deleting your account permanently erases your profile, ratings and preferences. This cannot be undone.</span></p>
+            <button id="delete-account" class="danger" data-i18n="settings.deleteAccount">Delete account</button>
           </div>
         </div>
       </section>
@@ -98,7 +105,7 @@
 
   <div id="modal" class="modal hidden">
     <div class="modal-card">
-      <button id="modal-close" class="modal-close" aria-label="Close">✕</button>
+      <button id="modal-close" class="modal-close" data-i18n-aria-label="aria.close" aria-label="Close">✕</button>
       <div id="modal-body"></div>
     </div>
   </div>

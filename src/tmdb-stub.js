@@ -37,18 +37,24 @@ const PROVIDERS = [
   { provider_id: 9, provider_name: 'Amazon Prime Test', logo_path: '/prime.png', display_priority: 3 },
 ];
 
-const card = (m) => ({
+// Echo the requested TMDB `language` into the overview when present, so tests
+// can assert the param was forwarded end to end (the real API would return a
+// localized synopsis here). Titles stay untouched — the e2e suite pins them.
+const overviewFor = (title, language) =>
+  `Overview for ${title}.${language ? ` [${language}]` : ''}`;
+
+const card = (m, language) => ({
   id: m.id,
   title: m.title,
   release_date: '2020-01-01',
   poster_path: `/poster${m.id}.jpg`,
-  overview: `Overview for ${m.title}.`,
+  overview: overviewFor(m.title, language),
   vote_average: 7.5,
   genre_ids: m.genreId ? [m.genreId] : [28],
 });
 
 // Full /movie/:id detail with the appended blocks taste.js reads.
-function details(id) {
+function details(id, language) {
   const known = [...POPULAR, ...DISCOVER].find((m) => m.id === id);
   const title = known?.title || `Stub Movie ${id}`;
   const genreId = known?.genreId || 28;
@@ -58,7 +64,7 @@ function details(id) {
     release_date: '2020-01-01',
     runtime: 107,
     poster_path: `/poster${id}.jpg`,
-    overview: `Overview for ${title}.`,
+    overview: overviewFor(title, language),
     vote_average: 7.5,
     genres: [{ id: genreId, name: GENRES.find((g) => g.id === genreId)?.name || 'Action' }],
     keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }] },
@@ -88,7 +94,7 @@ export function stub(path, params = {}) {
     // The recommender filters Discover by streaming provider; the onboarding
     // rate queue (acclaimed seed) does not. Serve the matching pool for each.
     const pool = params.with_watch_providers ? DISCOVER : POPULAR;
-    return { page, total_pages: 1, results: pool.map(card) };
+    return { page, total_pages: 1, results: pool.map((m) => card(m, params.language)) };
   }
   const rec = path.match(/^\/movie\/(\d+)\/recommendations$/);
   if (rec) return { page: 1, total_pages: 1, results: [] };
@@ -99,7 +105,7 @@ export function stub(path, params = {}) {
       flatrate: [{ provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } } };
   }
   const det = path.match(/^\/movie\/(\d+)$/);
-  if (det) return details(Number(det[1]));
+  if (det) return details(Number(det[1]), params.language);
 
   throw new Error(`tmdb-stub: no fixture for ${path}`);
 }

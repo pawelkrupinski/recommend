@@ -6,6 +6,7 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, recommendations, discover, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
 import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers } from './db.js';
+import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { attachRatings } from './ratings.js';
 import { traktConfigured, relatedMovies } from './trakt.js';
 import { log } from './log.js';
@@ -108,7 +109,7 @@ const ENRICH_COUNT = 50;
 
 // Build the scored candidate pool for one genre (or all genres when genreId is
 // undefined). Heavy part — many TMDB calls — so its output gets cached.
-async function computePool({ userId, region, providerIds, genreId, profile, ratings }) {
+async function computePool({ userId, region, providerIds, genreId, profile, ratings, language }) {
   const seen = new Set(ratings.map((r) => `${r.media_type}:${r.tmdb_id}`));
   for (const d of getDismissed(userId)) seen.add(`${d.media_type}:${d.tmdb_id}`);
 
@@ -116,7 +117,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   const candidates = new Map();
   if (providerIds?.length) {
     for (let page = 1; page <= 3; page++) {
-      const res = await discover({ region, providerIds, genreId, mediaType: 'movie', page });
+      const res = await discover({ region, providerIds, genreId, mediaType: 'movie', page, language });
       for (const m of res.results || []) candidates.set(m.id, m);
       if (page >= (res.total_pages || 1)) break;
     }
@@ -130,7 +131,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     .slice(0, 10);
   for (const r of top) {
     try {
-      const rec = await recommendations(r.tmdb_id, 'movie');
+      const rec = await recommendations(r.tmdb_id, 'movie', language);
       for (const m of rec.results || []) if (!candidates.has(m.id)) candidates.set(m.id, m);
     } catch { /* ignore */ }
   }
@@ -141,7 +142,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   if (traktConfigured()) {
     for (const r of top) {
       let imdbId;
-      try { imdbId = (await details(r.tmdb_id, 'movie')).external_ids?.imdb_id; } catch { continue; }
+      try { imdbId = (await details(r.tmdb_id, 'movie', language)).external_ids?.imdb_id; } catch { continue; }
       for (const m of await relatedMovies(imdbId)) {
         collab.set(m.tmdb_id, (collab.get(m.tmdb_id) || 0) + 1);
         if (!candidates.has(m.tmdb_id)) candidates.set(m.tmdb_id, { id: m.tmdb_id, title: m.title });
@@ -155,7 +156,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   for (const m of candidates.values()) {
     if (seen.has(`movie:${m.id}`)) continue;
     let full;
-    try { full = await details(m.id, 'movie'); } catch { continue; }
+    try { full = await details(m.id, 'movie', language); } catch { continue; }
     // When a genre is selected, keep only titles tagged with it (pools 2 & 3
     // aren't genre-constrained at the source, so filter here too).
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
@@ -190,22 +191,24 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
 // recGen; bumping it (on any of their rating/dismiss/settings changes) marks
 // their pools stale without touching anyone else's.
 
-function poolKey(userId, region, providerIds, genreId) {
+function poolKey(userId, region, providerIds, genreId, language) {
   const provs = [...(providerIds || [])].map(Number).sort((a, b) => a - b).join('-');
-  return `recpool:${userId}:${region}:${provs}:${genreId || 'all'}`;
+  // Language is part of the key so each language caches its own (localized)
+  // pool — switching language lazily builds the other rather than clobbering it.
+  return `recpool:${userId}:${region}:${provs}:${genreId || 'all'}:${language || 'en-US'}`;
 }
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 
 // Compute one pool and store it under the user's current generation.
-async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings }) {
+async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
-  const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings });
+  const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language });
   // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
   // serving is a pure cache read — these lookups hit the web on a cold cache.
   await attachRatings(pool.slice(0, ENRICH_COUNT));
   const value = { gen: currentGen(userId), profileSize: profile.count, pool };
-  cacheSet(poolKey(userId, region, providerIds, genreId), value);
+  cacheSet(poolKey(userId, region, providerIds, genreId, language), value);
   return value;
 }
 
@@ -214,10 +217,10 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 // Stale-while-revalidate: an out-of-date pool is served immediately with a
 // background rebuild scheduled; we only block when there's no cached pool at all
 // (a genre the warm hasn't reached) or when force=true (Refresh).
-export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false }) {
-  let cached = cacheGet(poolKey(userId, region, providerIds, genreId));
+export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language }) {
+  let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language));
   if (!cached || force) {
-    cached = await buildAndCache({ userId, region, providerIds, genreId });
+    cached = await buildAndCache({ userId, region, providerIds, genreId, language });
   } else if (cached.gen !== currentGen(userId)) {
     ensurePrebuild(userId); // refresh in the background; serve the stale pool now
   }
@@ -238,14 +241,15 @@ export async function prebuildRecommendations(userId) {
   if (!tmdbConfigured()) return;
   const region = getUserSetting(userId, 'country', 'PL');
   const providerIds = (getUserSetting(userId, 'providers', []) || []).map(Number);
+  const language = tmdbLang(getUserSetting(userId, 'language', DEFAULT_LANGUAGE));
   const profile = await buildProfile(userId);
   const ratings = getRatings(userId);
-  await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings });
+  await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings, language });
   let list = [];
   try { list = (await tmdbGenres('movie')).genres || []; }
   catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
   for (const g of list) {
-    try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings }); }
+    try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings, language }); }
     catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
   }
 }

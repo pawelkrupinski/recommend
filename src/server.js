@@ -15,6 +15,7 @@ import { motnConfigured, streamingOptions, countryServices } from './motn.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
+import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
 import { log } from './log.js';
 
 const PORT = process.env.PORT || 9002;
@@ -30,6 +31,12 @@ const json = (req, res, code, body, cacheControl = 'private, no-cache') =>
     type: 'application/json; charset=utf-8',
     cacheControl: code === 200 ? cacheControl : undefined,
   });
+
+// The effective interface language for this user as an app code ('en'/'pl'):
+// their saved choice, or — for someone who hasn't chosen yet — the language
+// detected from the request (Cloudflare country header / Accept-Language).
+const langFor = (uid, req) =>
+  getUserSetting(uid, 'language', detectLanguage(req, detectCountry(req)));
 
 // Normalize a service name for cross-source matching: lowercase, drop "+"/"plus"
 // and any non-alphanumerics. "Disney+" / "Disney Plus" -> "disney".
@@ -134,11 +141,17 @@ async function api(req, res, url) {
 
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
+      const detectedCountry = detectCountry(req);
       return json(req, res, 200, {
         user: { id: user.id, email: user.email, name: user.name, picture: user.picture },
         anonymous: user.provider === 'anon',
         onboarded: !!getUserSetting(uid, 'onboarded', false),
         providers: enabledProviders(),
+        // Effective UI language (saved choice, else detected) plus the raw
+        // detection so onboarding can preselect country/language for newcomers.
+        language: langFor(uid, req),
+        detectedCountry,
+        detectedLanguage: detectLanguage(req, detectedCountry),
       });
     }
 
@@ -155,6 +168,7 @@ async function api(req, res, url) {
       return json(req, res, 200, {
         country: getUserSetting(uid, 'country', 'PL'),
         providers: getUserSetting(uid, 'providers', []),
+        language: langFor(uid, req),
       });
     }
     if (p === '/api/settings' && req.method === 'POST') {
@@ -163,6 +177,9 @@ async function api(req, res, url) {
       let userScopeChanged = false;
       for (const [k, v] of Object.entries(body)) {
         if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
+        // Language has its own per-language recommendation pool (see taste.js
+        // poolKey), so switching it needs no rec invalidation — just save it.
+        else if (k === 'language') { if (isSupportedLanguage(v)) setUserSetting(uid, 'language', v); }
         else if (k === 'onboarded') setUserSetting(uid, k, !!v);
       }
       if (userScopeChanged) invalidateRecommendations(uid);
@@ -221,7 +238,7 @@ async function api(req, res, url) {
     // ---- in-app rating queue: acclaimed titles to rate ----------------
     if (p === '/api/rate-queue' && req.method === 'GET') {
       const page = Number(url.searchParams.get('page') || 1);
-      const data = await tmdb.acclaimed(page);
+      const data = await tmdb.acclaimed(page, tmdbLang(langFor(uid, req)));
       const hidden = new Set([
         ...getRatings(uid).map((r) => r.tmdb_id),
         ...getNotSeen(uid).map((r) => r.tmdb_id),
@@ -240,7 +257,7 @@ async function api(req, res, url) {
     // ---- genre list (for the Discover filter) ------------------------
     // Effectively immutable reference data — let the browser hold it for a day.
     if (p === '/api/genres' && req.method === 'GET') {
-      const { genres = [] } = await tmdb.genres('movie');
+      const { genres = [] } = await tmdb.genres('movie', tmdbLang(langFor(uid, req)));
       return json(req, res, 200, { genres }, 'private, max-age=86400');
     }
 
@@ -250,7 +267,8 @@ async function api(req, res, url) {
       const providerIds = (getUserSetting(uid, 'providers', []) || []).map(Number);
       const genreId = Number(url.searchParams.get('genre')) || undefined;
       const force = url.searchParams.get('refresh') === '1';
-      const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force });
+      const language = tmdbLang(langFor(uid, req));
+      const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language });
       return json(req, res, 200, out);
     }
 

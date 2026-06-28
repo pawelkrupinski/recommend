@@ -617,19 +617,23 @@ async function loadWatchlist() {
   const { watchlist } = await api('/api/watchlist');
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
   setWatchlistCount(watchlist.length);
-  // The sort lives in the URL (?sort=rating) so it survives refresh/back-forward,
-  // mirroring the Discover filters. Reflect it into the dropdown, then render in
-  // that order; an unknown/absent value falls back to the server's added order.
-  const sort = parseRoute().sort === 'rating' ? 'rating' : 'added';
+  // An explicit ?sort=rating in the URL (refresh/back-forward/shared link) wins;
+  // otherwise fall back to the order the user last chose, remembered server-side
+  // on ME so a bare /watchlist (e.g. the nav tab) restores it.
+  const sort = parseRoute().sort === 'rating' || ME?.watchlistSort === 'rating' ? 'rating' : 'added';
   $('#watchlist-sort').value = sort;
   const ordered = sortWatchlist(watchlist, sort);
   const grid = $('#watchlist-grid');
   grid.innerHTML = ordered.length ? '' : `<p class="empty">${t('watchlist.empty')}</p>`;
   for (const w of ordered) grid.append(watchCard(w));
 }
-// Changing the sort rewrites the path's query; navigate() then reloads the tab.
+// Changing the sort rewrites the path's query (navigate() reloads the tab) and
+// persists the choice so it's remembered on the next visit.
 $('#watchlist-sort').onchange = () => {
-  navigate($('#watchlist-sort').value === 'rating' ? '/watchlist?sort=rating' : '/watchlist');
+  const v = $('#watchlist-sort').value === 'rating' ? 'rating' : 'added';
+  ME.watchlistSort = v;
+  saveSetting('watchlistSort', v);
+  navigate(v === 'rating' ? '/watchlist?sort=rating' : '/watchlist');
 };
 function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });

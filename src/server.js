@@ -137,6 +137,8 @@ async function api(req, res, url) {
         // Effective UI language (saved choice, else detected) plus the raw
         // detection so onboarding can preselect country/language for newcomers.
         language: langFor(uid, req),
+        // The watchlist sort the user last chose, so it's restored on load.
+        watchlistSort: getUserSetting(uid, 'watchlist_sort', 'added'),
         detectedCountry,
         detectedLanguage: detectLanguage(req, detectedCountry),
       });
@@ -168,6 +170,8 @@ async function api(req, res, url) {
         // poolKey), so switching it needs no rec invalidation — just save it.
         else if (k === 'language') { if (isSupportedLanguage(v)) setUserSetting(uid, 'language', v); }
         else if (k === 'onboarded') setUserSetting(uid, k, !!v);
+        // Watchlist ordering is a pure display choice — no rec invalidation.
+        else if (k === 'watchlistSort') setUserSetting(uid, 'watchlist_sort', v === 'rating' ? 'rating' : 'added');
       }
       if (userScopeChanged) invalidateRecommendations(uid);
       return json(req, res, 200, { ok: true });

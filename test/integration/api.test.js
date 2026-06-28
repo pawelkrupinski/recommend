@@ -225,6 +225,19 @@ test('settings: per-user country defaults to PL and persists', async () => {
   assert.equal(r.data.country, 'US');
 });
 
+test('settings: watchlist sort defaults to "added" and persists onto /api/me', async () => {
+  const c = await client().login({ email: 'wsort@example.com' });
+  let me = await c.json('/api/me');
+  assert.equal(me.data.watchlistSort, 'added', 'a fresh account defaults to added order');
+  await c.json('/api/settings', { method: 'POST', body: { watchlistSort: 'rating' } });
+  me = await c.json('/api/me');
+  assert.equal(me.data.watchlistSort, 'rating', 'the chosen order is remembered');
+  // Anything other than a known sort normalises back to the default.
+  await c.json('/api/settings', { method: 'POST', body: { watchlistSort: 'bogus' } });
+  me = await c.json('/api/me');
+  assert.equal(me.data.watchlistSort, 'added');
+});
+
 test('recommendations carry runtime from TMDB details', async () => {
   const c = await client().login({ email: 'runtime@example.com' });
   // Pick the stub provider (id 8) so the discover candidate pool is non-empty.

@@ -111,9 +111,11 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       if (page >= (res.total_pages || 1)) break;
     }
   }
-  // Candidate pool 2: TMDB recommendations seeded from your top-rated films.
+  // Candidate pool 2: TMDB recommendations seeded from your rated films. We seed
+  // from all of them (highest-rated first), not just those above your average, so
+  // every pick contributes — costs more TMDB/Trakt calls up front but is broader.
   const top = ratings
-    .filter((r) => r.media_type === 'movie' && r.rating >= profile.mean)
+    .filter((r) => r.media_type === 'movie')
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 10);
   for (const r of top) {

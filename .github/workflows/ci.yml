@@ -73,5 +73,6 @@ jobs:
             -H "Content-Type: application/json" \
             -d '{"clearCache":"do_not_clear"}')
           echo "Render API responded $code"
-          test "$code" = "201"
+          # Render returns 202 (Accepted) on a successful deploy create; accept any 2xx.
+          case "$code" in 2??) ;; *) echo "::error::Render deploy request failed ($code)"; exit 1;; esac
           echo "Render deploy triggered."

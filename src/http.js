@@ -28,6 +28,13 @@ const MIME = {
 // revalidating after a deploy that didn't touch the file still gets a 304.
 const etagOf = (buf) => `"${createHash('sha1').update(buf).digest('base64url').slice(0, 27)}"`;
 
+// Does the client's If-None-Match cover our tag? Weak comparison per RFC 7232
+// §2.3.2: ignore a `W/` prefix on either side. Render's proxy rewrites our strong
+// ETag to a weak one for uncompressed responses, so a strict string match would
+// miss the revalidation and re-send the whole body — weak compare keeps the 304.
+const weak = (t) => (t || '').replace(/^W\//, '');
+const matches = (inm, tag) => !!inm && weak(inm) === weak(tag);
+
 // Best encoding the client accepts. Brotli beats gzip ~15-20% on text but costs
 // more CPU — fine for static (compressed once) and acceptable for JSON at low q.
 function pickEncoding(req) {
@@ -65,7 +72,7 @@ export function send(req, res, body, { status = 200, type = 'application/octet-s
     const tag = etag || etagOf(raw);
     headers.etag = tag;
     // Client's cached copy is current — skip the body entirely.
-    if (req.headers['if-none-match'] === tag) {
+    if (matches(req.headers['if-none-match'], tag)) {
       res.writeHead(304, headers);
       return res.end();
     }
@@ -120,7 +127,7 @@ export async function serveStatic(req, res, dir, pathname) {
       vary: 'Accept-Encoding',
       'cache-control': cacheControlFor(ext),
     };
-    if (req.headers['if-none-match'] === entry.etag) {
+    if (matches(req.headers['if-none-match'], entry.etag)) {
       res.writeHead(304, headers);
       res.end();
       return true;

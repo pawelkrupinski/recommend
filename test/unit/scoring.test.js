@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildIdf, buildProfileVector, affinityMatch, overlapMass, confidence,
-  bayesianQuality, scoreCandidate, genreDistribution, klDivergence,
+  bayesianQuality, scoreCandidate, discoveryBonus, genreDistribution, klDivergence,
   itemSimilarity, rerank, SCORING,
 } from '../../src/scoring.js';
 
@@ -131,6 +131,50 @@ test('scoreCandidate lets a strong personal match lift a mediocre-but-liked film
     voteAverage: 5.0, voteCount: 100000, globalMean: 6.5,
   });
   assert.ok(score > 60, `strong taste match lifts a low-rated film, got ${score}`);
+});
+
+// ---- discovery bonus: don't bury acclaimed-but-obscure indie films ----------
+
+test('discoveryBonus lifts acclaimed-but-obscure films and fades as votes grow', () => {
+  const obscure = discoveryBonus(7.8, 90);       // a hidden gem
+  const lessObscure = discoveryBonus(7.8, 600);  // same rating, more seen
+  assert.ok(obscure > 0, 'a well-rated, thinly-voted film gets a lift');
+  assert.ok(obscure > lessObscure, 'the more obscure of two equally-rated films gets the bigger lift');
+  assert.ok(obscure <= SCORING.DISCOVERY_MAX, 'bounded by DISCOVERY_MAX');
+});
+
+test('discoveryBonus stays out of the way for popular or weak films', () => {
+  assert.equal(discoveryBonus(8.5, 400000), 0, 'a widely-seen film needs no discovery help');
+  assert.equal(discoveryBonus(5.5, 80), 0, 'a thinly-voted LOW-rated film is junk, not a gem — no lift');
+  assert.equal(discoveryBonus(null, 80), 0, 'no rating, no lift');
+  assert.equal(discoveryBonus(8.0, 1000), 0, 'at the vote cap the lift has decayed to 0');
+});
+
+test('scoreCandidate lifts an obscure acclaimed film above its bare prior', () => {
+  // No feature overlap → the score tracks the prior; the discovery bonus should
+  // push a thinly-voted gem above where the shrunk prior alone would leave it.
+  const idf = new Map([['x', 3]]);
+  const profileVec = buildProfileVector(
+    { pos: new Map([['x', 3]]), neg: new Map(), counts: new Map([['x', 5]]) }, idf);
+  const gem = scoreCandidate({ profileVec, itemFeatures: ['unknown'], idf, voteAverage: 7.8, voteCount: 90, globalMean: 6.5 });
+  const bare = bayesianQuality(7.8, 90, 6.5); // the same film scored on prior alone
+  assert.ok(gem > bare, `discovery bonus lifts the obscure gem above its bare prior (${gem} > ${bare})`);
+  assert.ok(gem - bare <= SCORING.DISCOVERY_MAX, 'but only by a bounded amount');
+});
+
+test('scoreCandidate withholds the discovery bonus from a predicted-disliked film', () => {
+  // An obscure, well-rated film the profile predicts the user will dislike
+  // (match < 50) gets NO lift — discovery never pushes against the user's taste.
+  const idf = new Map([['d', 5]]);
+  const profileVec = buildProfileVector(
+    { pos: new Map(), neg: new Map([['d', -6]]), counts: new Map([['d', 10]]) }, idf);
+  const feats = ['d'];
+  assert.ok(affinityMatch(profileVec, feats, idf) < 50, 'premise: the profile predicts a dislike');
+  const c = confidence(overlapMass(profileVec, feats, idf));
+  const prior = bayesianQuality(7.8, 90, 6.5);
+  const score = scoreCandidate({ profileVec, itemFeatures: feats, idf, voteAverage: 7.8, voteCount: 90, globalMean: 6.5 });
+  assert.equal(score, c * affinityMatch(profileVec, feats, idf) + (1 - c) * prior,
+    'score equals the bonus-free blend — no discovery lift for a below-neutral film');
 });
 
 test('confidence rises with overlap mass, is capped, and overlapMass sums shared idf', () => {

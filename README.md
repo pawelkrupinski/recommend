@@ -91,9 +91,12 @@ TMDB calls (429/5xx/network). MotN is deliberately *not* retried — it's rate-c
 `src/taste.js` builds a content-based profile: every rated film contributes its
 features (genres, keywords, director, top cast, decade) weighted by how far the
 rating sits above/below your personal average. Features seen only once are shrunk
-toward zero (low confidence). Candidate titles — pulled from TMDB *discover* filtered
-to your services + region, plus TMDB recommendations seeded from your top-rated films —
-are scored on those features, blended 75/25 with the TMDB community score, and ranked.
+toward zero (low confidence). Candidate titles — pulled from TMDB *discover* filtered to your services + region
+(including art-house-distributor, curated-service and hidden-gems sweeps for indie
+depth), plus TMDB recommendations seeded from your top-rated films — are scored by
+a confidence-weighted blend of how well they match your taste and a Bayesian
+quality prior, with a small discovery lift so acclaimed-but-obscure films aren't
+buried under mass-market ones, then ranked.
 
 If a **Trakt** key is set, a third candidate pool is added — Trakt's community
 *related* titles, seeded from the same top-rated films — and each candidate gets a

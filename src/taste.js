@@ -258,8 +258,9 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
 
   const scored = survivors.map((s) => {
     const crew = s.full.credits?.crew || [];
-    // Confidence-weighted blend of personalised match and quality prior; the
-    // Trakt co-watch bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
+    // Confidence-weighted blend of personalised match and quality prior, with the
+    // discovery lift for acclaimed-but-obscure films folded in; the Trakt co-watch
+    // bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
     const base = scoreCandidate({
       profileVec, itemFeatures: s.features, idf,
       voteAverage: s.full.vote_average, voteCount: s.full.vote_count, globalMean,

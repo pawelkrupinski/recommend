@@ -25,6 +25,10 @@
 //  - Bayesian quality prior (bayesianQuality): IMDb's weighted-rating shrinks a
 //    thinly-voted film toward the global mean, so 8.5-from-40-votes ranks below
 //    8.5-from-400k.
+//  - Discovery bonus (discoveryBonus): a small, bounded exploration lift that
+//    counteracts that shrinkage for acclaimed-but-obscure films, so indie/festival
+//    titles aren't buried under mass-market ones of equal merit (gated by a rating
+//    floor and to non-disliked films).
 //  - Calibrated + diversified re-rank (rerank): the served head is reordered to
 //    keep the genre mix close to the user's history (Steck, RecSys'18) and to
 //    avoid near-duplicate neighbours (MMR, Carbonell & Goldstein '98).
@@ -43,6 +47,9 @@ export const SCORING = {
   RERANK_LAMBDA: 0.75, // re-rank: relevance vs. MMR diversity (1 = pure relevance)
   CALIB_WEIGHT: 0.15,  // re-rank: pull toward the user's genre mix (0 = off)
   CALIB_ALPHA: 0.01,   // KL smoothing so an unseen genre doesn't blow up the divergence
+  DISCOVERY_MAX: 8,          // max exploration lift (score points) for an acclaimed-but-obscure film
+  DISCOVERY_MIN_RATING: 6.8, // rating floor below which no lift (don't surface thinly-voted junk)
+  DISCOVERY_VOTE_CAP: 1000,  // vote count at/above which a film needs no discovery help
 };
 
 // Smoothed inverse document frequency over a corpus of feature sets (each set =
@@ -140,15 +147,37 @@ export function bayesianQuality(voteAverage, voteCount, globalMean, over = {}) {
   return wr * 10;
 }
 
+// Exploration lift for acclaimed-but-obscure films. The Bayesian prior NECESSARILY
+// shrinks a thinly-voted film toward the global mean, so an indie/festival title
+// with a few hundred votes scores below a mass-market one of equal merit and gets
+// buried under it — the very titles the indie candidate sources work to surface.
+// This adds a small, bounded bonus, largest for the most obscure well-rated films,
+// decaying to 0 by DISCOVERY_VOTE_CAP (a widely-seen film needs no help being
+// found). Gated by a rating floor so it lifts hidden gems, not thinly-voted junk.
+// Returns [0, DISCOVERY_MAX].
+export function discoveryBonus(voteAverage, voteCount, over = {}) {
+  const { DISCOVERY_MAX, DISCOVERY_MIN_RATING, DISCOVERY_VOTE_CAP } = { ...SCORING, ...over };
+  if (voteAverage == null || voteAverage < DISCOVERY_MIN_RATING) return 0;
+  const v = voteCount || 0;
+  if (v >= DISCOVERY_VOTE_CAP) return 0;
+  const obscurity = 1 - v / DISCOVERY_VOTE_CAP;                            // 1 → 0 across [0, CAP)
+  const quality = Math.min(1, (voteAverage - DISCOVERY_MIN_RATING) / 1.5); // saturates +1.5 above the floor
+  return DISCOVERY_MAX * obscurity * quality;
+}
+
 // Blend the personalised match with the quality prior by per-film confidence.
 // No feature overlap → c≈0 → score ≈ prior (acclaim shows through); strong
-// overlap → c≈1 → personal taste dominates. Returns an unrounded [0,100] score.
+// overlap → c≈1 → personal taste dominates. An exploration bonus then lifts
+// acclaimed-but-obscure films so the prior's shrinkage doesn't bury them — but
+// only when the profile doesn't predict a dislike (match ≥ neutral 50), so we
+// never push a film the user's taste rejects. Returns an unrounded score.
 export function scoreCandidate({ profileVec, itemFeatures, idf, voteAverage, voteCount, globalMean }, over = {}) {
   const mass = overlapMass(profileVec, itemFeatures, idf);
   const c = confidence(mass, over);
   const match = affinityMatch(profileVec, itemFeatures, idf, over);
   const prior = bayesianQuality(voteAverage, voteCount, globalMean, over);
-  return c * match + (1 - c) * prior;
+  const bonus = match >= 50 ? discoveryBonus(voteAverage, voteCount, over) : 0;
+  return c * match + (1 - c) * prior + bonus;
 }
 
 // Genre distribution p(g) from a list of per-film genre-id arrays. Each film

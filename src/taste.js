@@ -4,7 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers } from './tmdb.js';
+import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -457,6 +457,25 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
   };
   await attachRatings([item]); // adds imdbRating + metascore (or leaves them null)
   return item;
+}
+
+// Map each displayed credit name (director(s) + top cast) to its IMDb person id,
+// so the detail popup can link names straight to imdb.com/name/nm…. Resolved on
+// demand when a popup opens (see /api/where): the movie details are already
+// cached from the card build, and per-person external_ids are long-cached in the
+// DB (see personImdbId), so a title's links resolve once and are then served
+// from cache. Names without a resolvable id are simply omitted — the frontend
+// falls back to an IMDb name search for those.
+export async function creditImdbIds(tmdbId, mediaType = 'movie') {
+  let full;
+  try { full = await details(tmdbId, mediaType); } catch { return {}; }
+  const directors = (full.credits?.crew || []).filter((c) => c.job === 'Director');
+  const cast = (full.credits?.cast || []).slice(0, CAST_DEPTH);
+  const people = [...directors, ...cast];
+  const ids = await Promise.all(people.map((p) => personImdbId(p.id).catch(() => null)));
+  const map = {};
+  people.forEach((p, i) => { if (ids[i]) map[p.name] = ids[i]; });
+  return map;
 }
 
 // Background one-off at startup: enrich every saved title that predates save-time

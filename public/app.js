@@ -591,10 +591,16 @@ function wireWatch(el, m) {
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
-  // We only persist names (no IMDb person ids), so each name links to an IMDb
-  // name search, which lands on the person when the match is unambiguous.
-  const imdbName = (name) =>
-    `<a class="imdb-name" href="https://www.imdb.com/find/?s=nm&q=${encodeURIComponent(name)}" target="_blank" rel="noopener">${esc(name)}</a>`;
+  // Each credit name links to IMDb. The card carries only names, so we open with
+  // an IMDb name search; once /api/where resolves the title's person ids (see
+  // openWhere) `m.credits` maps name → nm-id and we link straight to the person.
+  const imdbName = (name) => {
+    const id = m.credits?.[name];
+    const href = id
+      ? `https://www.imdb.com/name/${id}/`
+      : `https://www.imdb.com/find/?s=nm&q=${encodeURIComponent(name)}`;
+    return `<a class="imdb-name" href="${href}" target="_blank" rel="noopener">${esc(name)}</a>`;
+  };
   const names = (list) => list.map(imdbName).join(', ');
   const director = m.director ? `<p class="credit"><span class="lbl">${t('modal.director')}</span> ${names(m.director.split(', '))}</p>` : '';
   const cast = (m.cast && m.cast.length)
@@ -631,6 +637,9 @@ async function openWhere(m, { dismissable = true } = {}) {
   body.innerHTML = `${movieHeader(m)}<p>${t('modal.loadingAvailability')}</p>`;
   try {
     const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
+    // Now that the title's IMDb person ids are known, the re-render below links
+    // each director/cast name straight to imdb.com/name/… (see movieHeader).
+    m.credits = w.credits || {};
     // On touch devices, navigate in the SAME tab: streaming-service URLs are
     // registered as iOS Universal Links / Android App Links and open the native
     // app — but only on a direct same-tab tap. target="_blank"/window.open

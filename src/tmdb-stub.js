@@ -184,5 +184,11 @@ export function stub(path, params = {}) {
   const det = path.match(/^\/movie\/(\d+)$/);
   if (det) return details(Number(det[1]), params.language);
 
+  // Person IMDb id for the detail popup's exact name links (see personImdbId).
+  // Derived from the person id so it's stable; covers the stub's director (500)
+  // and actor (600).
+  const ext = path.match(/^\/person\/(\d+)\/external_ids$/);
+  if (ext) return { id: Number(ext[1]), imdb_id: `nm${1000000 + Number(ext[1])}` };
+
   throw new Error(`tmdb-stub: no fixture for ${path}`);
 }

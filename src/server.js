@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
@@ -283,7 +283,9 @@ async function api(req, res, url) {
       const id = Number(url.searchParams.get('id'));
       const mt = url.searchParams.get('media_type') || 'movie';
       const region = getUserSetting(uid, 'country', 'PL');
-      const wp = await tmdb.watchProviders(id, mt);
+      // Resolve the title's IMDb person ids (director + top cast) alongside the
+      // provider lookup so the popup can link each name straight to IMDb.
+      const [wp, credits] = await Promise.all([tmdb.watchProviders(id, mt), creditImdbIds(id, mt)]);
       const r = wp.results?.[region] || {};
       const flatrate = (r.flatrate || []).map((x) => ({ name: x.provider_name, logo: x.logo_path }));
       // Tag each availability deep link with the matching TMDB provider id
@@ -293,7 +295,7 @@ async function api(req, res, url) {
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
-      return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks });
+      return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks, credits });
     }
 
     return json(req, res, 404, { error: 'not found' });

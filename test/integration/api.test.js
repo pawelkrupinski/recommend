@@ -213,6 +213,15 @@ test('where-to-watch reports the user region so search links can target the righ
   assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty without a MotN key)');
 });
 
+test('where-to-watch resolves IMDb person ids so the popup can link director/cast names', async () => {
+  const c = await client().login({ email: 'where-credits@example.com' });
+  const { data } = await c.json('/api/where?id=201&media_type=movie');
+  // The stub's director is person 500, the actor person 600; their external_ids
+  // map to nm-ids. The popup links each displayed name to imdb.com/name/<id>.
+  assert.deepEqual(data.credits, { 'Stub Director': 'nm1000500', 'Stub Actor': 'nm1000600' },
+    'each credit name maps to its IMDb person id');
+});
+
 test('app paths serve the SPA shell so client routing works on refresh / deep link', async () => {
   const c = client();
   for (const path of ['/discover', '/watchlist', '/ratings', '/settings']) {

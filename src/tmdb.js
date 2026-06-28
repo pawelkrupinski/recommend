@@ -81,6 +81,15 @@ export async function searchId(title, year, language) {
 export const findByImdb = (imdbId) =>
   tmdb(`/find/${imdbId}`, { external_source: 'imdb_id' });
 
+// A person's IMDb id (nm…) for an exact name link in the detail popup. TMDB only
+// exposes it per-person (the movie credits carry just the TMDB person id), so
+// this is resolved on demand when a popup opens. A person's IMDb id never
+// changes, so cache it far longer than the default day.
+export async function personImdbId(personId) {
+  const ext = await tmdb(`/person/${personId}/external_ids`, {}, { cacheMs: 30 * DAY });
+  return ext.imdb_id || null;
+}
+
 // Full feature set for the recommender in one call. external_ids carries the
 // IMDb tt-id, used to look up IMDb/Metacritic ratings (see ratings.js).
 // watch/providers lets the recommender drop titles that aren't streamable on the

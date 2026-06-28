@@ -62,6 +62,9 @@ export const MESSAGES = {
     'watchlist.empty': 'Your watchlist is empty. Hit + on a Discover pick to save it for later.',
     'watchlist.count': '{n} saved titles',
     'watchlist.remove': 'Remove from watchlist',
+    'watchlist.sortTitle': 'Sort your watchlist',
+    'watchlist.sortAdded': 'Recently added',
+    'watchlist.sortRating': 'Top rated',
     // ratings
     'ratings.count': '{n} rated titles',
     'ratings.empty': 'No ratings yet.',
@@ -136,6 +139,9 @@ export const MESSAGES = {
     'watchlist.empty': 'Twoja lista do obejrzenia jest pusta. Kliknij + na propozycji, aby zapisać ją na później.',
     'watchlist.count': 'Zapisane tytuły: {n}',
     'watchlist.remove': 'Usuń z listy',
+    'watchlist.sortTitle': 'Sortuj listę',
+    'watchlist.sortAdded': 'Ostatnio dodane',
+    'watchlist.sortRating': 'Najwyżej oceniane',
     // ratings
     'ratings.count': 'Ocenione tytuły: {n}',
     'ratings.empty': 'Brak ocen.',

@@ -1,5 +1,6 @@
 import { matchServiceLink, serviceSearchLink } from '/service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
+import { sortWatchlist } from './watchlist-sort.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
@@ -86,8 +87,9 @@ const TAB_NAMES = ['discover', 'watchlist', 'ratings', 'settings'];
 
 // The path is the tab (/discover, /watchlist…) and the query carries the Discover
 // filters, e.g. "/discover?genre=28&origin=c:EU&excludeUs=1". Parse it into
-// { tab, genre, origin, excludeUs, indie } so a refresh, shared link or
-// back/forward restores the tab and the full filter set.
+// { tab, genre, origin, excludeUs, indie, sort } so a refresh, shared link or
+// back/forward restores the tab plus the Discover filter set and the Watchlist
+// sort order.
 function parseRoute() {
   const tab = location.pathname.replace(/^\/+/, '').split('/')[0];
   const params = new URLSearchParams(location.search);
@@ -97,6 +99,7 @@ function parseRoute() {
     origin: params.get('origin') || '',
     excludeUs: params.get('excludeUs') === '1',
     indie: params.get('indie') === '1',
+    sort: params.get('sort') || '',
   };
 }
 
@@ -614,10 +617,20 @@ async function loadWatchlist() {
   const { watchlist } = await api('/api/watchlist');
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
   setWatchlistCount(watchlist.length);
+  // The sort lives in the URL (?sort=rating) so it survives refresh/back-forward,
+  // mirroring the Discover filters. Reflect it into the dropdown, then render in
+  // that order; an unknown/absent value falls back to the server's added order.
+  const sort = parseRoute().sort === 'rating' ? 'rating' : 'added';
+  $('#watchlist-sort').value = sort;
+  const ordered = sortWatchlist(watchlist, sort);
   const grid = $('#watchlist-grid');
-  grid.innerHTML = watchlist.length ? '' : `<p class="empty">${t('watchlist.empty')}</p>`;
-  for (const w of watchlist) grid.append(watchCard(w));
+  grid.innerHTML = ordered.length ? '' : `<p class="empty">${t('watchlist.empty')}</p>`;
+  for (const w of ordered) grid.append(watchCard(w));
 }
+// Changing the sort rewrites the path's query; navigate() then reloads the tab.
+$('#watchlist-sort').onchange = () => {
+  navigate($('#watchlist-sort').value === 'rating' ? '/watchlist?sort=rating' : '/watchlist');
+};
 function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });
 }

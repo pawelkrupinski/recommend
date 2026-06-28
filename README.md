@@ -4,8 +4,8 @@ A self-hosted mashup of **[Movie of the Night](https://www.movieofthenight.com/)
 (*where can I stream this in my country?*) and **[Criticker](https://www.criticker.com/)**
 (*learn my taste, predict what I'll like*).
 
-Each user signs in with **Google or Facebook**, rates films (or imports their
-history); it learns the genres, keywords, directors and actors they gravitate to,
+Each user signs in with **Google or Facebook**, rates films; it learns the
+genres, keywords, directors and actors they gravitate to,
 then ranks titles that are **actually streamable on their services in their
 country** — with deep links straight into Netflix/Max/Disney+/etc. Ratings,
 streaming services and recommendations are **per account**.
@@ -118,7 +118,6 @@ hard in the DB — no extra API key, no extra setup.
 | `src/motn.js`     | Movie of the Night client (deep links) |
 | `src/trakt.js`    | Trakt client (collaborative "related" signal, optional) |
 | `src/ratings.js`  | IMDb + Metacritic ratings (key-free, cached) |
-| `src/importers.js`| Letterboxd / IMDb / Criticker CSV → TMDB matching |
 | `src/taste.js`    | taste profile + candidate scoring |
 | `public/`         | single-page frontend |
 

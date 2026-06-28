@@ -39,7 +39,6 @@
       <nav id="tabs">
         <button data-tab="discover" class="active">Discover</button>
         <button data-tab="rate">Rate</button>
-        <button data-tab="import">Import</button>
         <button data-tab="ratings">My ratings</button>
         <button data-tab="settings">Settings</button>
       </nav>
@@ -62,14 +61,6 @@
         <p class="hint">Rate films you've seen so the engine learns your taste. Skip ones you haven't.</p>
         <div id="rate-grid" class="grid"></div>
         <button id="more-rate">Load more →</button>
-      </section>
-
-      <section id="import" class="tab">
-        <p class="hint">Bootstrap your taste from an existing export — <b>Letterboxd</b> (ratings.csv),
-          <b>IMDb</b> (ratings.csv) or <b>Criticker</b>. We match each title to TMDB.</p>
-        <input type="file" id="csv-file" accept=".csv,text/csv" />
-        <button id="do-import">Import ratings</button>
-        <pre id="import-log"></pre>
       </section>
 
       <section id="ratings" class="tab">

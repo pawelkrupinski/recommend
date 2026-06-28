@@ -22,7 +22,7 @@ function ratingBadges(m) {
 // Each tab is a URL hash (#rate, #ratings…) so a refresh stays on the same tab
 // instead of dropping back to Discover, and back/forward navigate between tabs.
 const tabs = $('#tabs');
-const TAB_NAMES = ['discover', 'rate', 'import', 'ratings', 'settings'];
+const TAB_NAMES = ['discover', 'rate', 'ratings', 'settings'];
 
 // The hash carries the tab plus any tab-specific state as a query string,
 // e.g. "#discover?genre=28". Parse it into { tab, genre } so a refresh or
@@ -92,7 +92,7 @@ async function loadRecs(force = false) {
       info.textContent = '';
       grid.innerHTML = genre
         ? '<p class="empty">No picks in this genre on your services. Try “All genres” or another genre.</p>'
-        : '<p class="empty">No picks yet. Add your TMDB key + streaming services in Settings, then rate or import some films.</p>';
+        : '<p class="empty">No picks yet. Add your TMDB key + streaming services in Settings, then rate some films.</p>';
       return;
     }
     const inGenre = genre ? ` in ${$('#genre-filter').selectedOptions[0].textContent}` : '';
@@ -261,21 +261,6 @@ function rateCard(m) {
   return el;
 }
 $('#more-rate').onclick = () => loadRateQueue(false);
-
-// ---- import ---------------------------------------------------------------
-$('#do-import').onclick = async () => {
-  const file = $('#csv-file').files[0];
-  const log = $('#import-log');
-  if (!file) { log.textContent = 'Choose a CSV file first.'; return; }
-  log.textContent = 'Importing… (matching each title to TMDB, this can take a minute)';
-  try {
-    const text = await file.text();
-    const r = await api('/api/import', { method: 'POST', body: text });
-    const misses = r.results.filter((x) => !x.ok).map((x) => x.name).slice(0, 20);
-    log.textContent = `Imported ${r.imported}/${r.total} (skipped ${r.skipped}).`
-      + (misses.length ? `\n\nUnmatched: ${misses.join(', ')}${r.skipped > 20 ? '…' : ''}` : '');
-  } catch (e) { log.textContent = '⚠ ' + e.message; }
-};
 
 // ---- my ratings -----------------------------------------------------------
 async function loadRatings() {

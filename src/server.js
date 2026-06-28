@@ -13,7 +13,6 @@ import {
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
 import { traktConfigured } from './trakt.js';
-import { importCsv } from './importers.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
 import { handleAuth, currentUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
@@ -243,14 +242,6 @@ async function api(req, res, url) {
           poster_path: m.poster_path, overview: m.overview, vote_average: m.vote_average,
         }));
       return json(res, 200, { items });
-    }
-
-    // ---- import CSV ---------------------------------------------------
-    if (p === '/api/import' && req.method === 'POST') {
-      const text = await readBody(req);
-      const result = await importCsv(text, uid);
-      invalidateRecommendations(uid);
-      return json(res, 200, result);
     }
 
     // ---- genre list (for the Discover filter) ------------------------

@@ -26,6 +26,25 @@ test('changing country persists across a reload', async ({ page }) => {
   await expect(page.locator('#country')).toHaveValue('US');
 });
 
+test('settings survives a cold-start 503 on /api/settings', async ({ page }) => {
+  // Render's free tier returns gateway 5xx for the first requests after a
+  // spin-down wake. A blip on the Settings GET must not leave the country
+  // dropdown empty ("not chosen") with no services — api() retries idempotent
+  // GETs, so the page recovers without a manual reload.
+  await login(page, uniqEmail('cold'));
+  let hits = 0;
+  await page.route('**/api/settings', (route) => {
+    if (route.request().method() === 'GET' && hits++ === 0) {
+      return route.fulfill({ status: 503, contentType: 'application/json', body: '{}' });
+    }
+    return route.continue();
+  });
+  await page.goto('/#settings');
+  await expect(page.locator('#settings')).toHaveClass(/active/);
+  await expect(page.locator('#country')).not.toHaveValue('');
+  await expect(page.locator('#provider-list .prov').first()).toBeVisible({ timeout: 10_000 });
+});
+
 test('deleting the account drops to a fresh anonymous session', async ({ page }) => {
   await login(page, uniqEmail('doomed'));
   await openSettings(page);

@@ -1,9 +1,34 @@
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
+// Render's free tier spins the service down when idle; the first requests after
+// a wake hit a cold origin and come back as gateway 502/503/504 (or a dropped
+// connection) for up to ~a minute while it boots. Without a retry, a single
+// cold-start blip during init() throws straight through loadSettings(), leaving
+// e.g. the Settings country dropdown empty (no options) and no services until a
+// manual reload. Retry idempotent GETs across the wake-up window with capped
+// backoff; mutations (POST/DELETE) still surface the error so a save is never
+// silently double-submitted.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const TRANSIENT_STATUS = new Set([502, 503, 504]);
 const api = async (path, opts) => {
-  const res = await fetch(path, opts);
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
-  return res.json();
+  const idempotent = !opts?.method || opts.method.toUpperCase() === 'GET';
+  for (let attempt = 0; ; attempt++) {
+    const canRetry = idempotent && attempt < 8;
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch (e) {
+      if (!canRetry) throw e; // origin unreachable (cold start / dropped) — wait and retry
+      await sleep(Math.min(500 * 2 ** attempt, 8000));
+      continue;
+    }
+    if (canRetry && TRANSIENT_STATUS.has(res.status)) {
+      await sleep(Math.min(500 * 2 ** attempt, 8000));
+      continue;
+    }
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res.json();
+  }
 };
 const poster = (p) => (p ? `${IMG}/w342${p}` : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E');
 

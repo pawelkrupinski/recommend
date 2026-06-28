@@ -68,6 +68,16 @@ export const tmdbConfigured = () =>
 export const search = (query, year, language) =>
   tmdb('/search/movie', { query, ...(year ? { year } : {}), ...(language ? { language } : {}) });
 
+// Resolve a free-text title (+ optional year) to its best-match TMDB movie id, or
+// null. Scraped sources that only yield titles (Filmweb) lean on this; TMDB
+// indexes localized titles, so a Polish ranking title resolves to the same id as
+// its English original. Cached through tmdb().
+export async function searchId(title, year, language) {
+  if (!title) return null;
+  const res = await search(title, year, language);
+  return res.results?.[0]?.id ?? null;
+}
+
 export const findByImdb = (imdbId) =>
   tmdb(`/find/${imdbId}`, { external_source: 'imdb_id' });
 
@@ -83,6 +93,17 @@ export const details = (id, mediaType = 'movie', language) =>
 
 export const recommendations = (id, mediaType = 'movie', language) =>
   tmdb(`/${mediaType}/${id}/recommendations`, language ? { language } : {});
+
+// TMDB's content-overlap "similar" list (shared genres/keywords). A second
+// seed-expansion angle distinct from /recommendations, which is behaviour-based
+// ("people who watched X also watched Y") — together they reach more candidates.
+export const similar = (id, mediaType = 'movie', language) =>
+  tmdb(`/${mediaType}/${id}/similar`, language ? { language } : {});
+
+// Site-wide "hot this week" chart — fresh, taste-independent candidates that the
+// per-seed recommendation lists can't reach (they only orbit films you've rated).
+export const trending = (mediaType = 'movie', language) =>
+  tmdb(`/trending/${mediaType}/week`, language ? { language } : {});
 
 export const watchProviders = (id, mediaType = 'movie') =>
   tmdb(`/${mediaType}/${id}/watch/providers`);
@@ -111,7 +132,10 @@ export const providersForRegion = (region, mediaType = 'movie') =>
   tmdb(`/watch/providers/${mediaType}`, { watch_region: region });
 
 // Discover titles actually streamable on the user's services in their country.
-export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', language }) {
+// `sortBy`/`voteCountGte` are overridable so the same endpoint backs several
+// candidate sources: popularity.desc for the mainstream pool, vote_average.desc
+// (with a higher vote floor) for the acclaimed-but-less-watched pool.
+export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, language }) {
   return tmdb(`/discover/${mediaType}`, {
     watch_region: region,
     with_watch_providers: providerIds.join('|'),
@@ -119,7 +143,7 @@ export function discover({ region, providerIds, genreId, mediaType = 'movie', pa
     ...(genreId ? { with_genres: String(genreId) } : {}),
     sort_by: sortBy,
     page,
-    'vote_count.gte': 50,
+    'vote_count.gte': voteCountGte,
     ...(language ? { language } : {}),
   });
 }

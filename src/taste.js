@@ -4,13 +4,13 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, recommendations, discover, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
+import { details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
 import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingCard, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
-import { traktConfigured, relatedMovies } from './trakt.js';
+import { gatherCandidates } from './sources.js';
 import { log } from './log.js';
 
 // Relative trust in each feature family. Keywords are specific (strong signal);
@@ -121,8 +121,8 @@ function scoreMovie(movie, profile, collabHits = 0) {
 }
 
 // ---- origin / indie candidate filters -------------------------------------
-// Hard filters applied to every candidate (across all three pools) the same way
-// the genre filter is — a non-matching title is dropped, not just down-ranked.
+// Hard filters applied to every candidate (whatever source surfaced it) the
+// same way the genre filter is — a non-matching title is dropped, not down-ranked.
 // All operate on TMDB's /movie detail shape (production_countries, companies).
 
 // True when the title's origin satisfies the user's geography filter:
@@ -164,9 +164,9 @@ export function filterSig({ allowed, excludeUs, indie } = {}) {
 // the same icon the Settings picker shows. Both flatrate (subscription) and
 // free/ads tiers of a chosen service count — what matters is that the user
 // selected that service. An empty array also means "not streamable for this
-// user": pool 1 (discover) already satisfies that, but pools 2 & 3 don't, so we
-// re-check here. `full` carries TMDB's appended watch/providers block (see
-// tmdb.js details()).
+// user": the Discover sources are already provider-scoped, but the seed/chart
+// sources aren't, so this re-check is what gates them. `full` carries TMDB's
+// appended watch/providers block (see tmdb.js details()).
 export function userServices(full, region, userSet) {
   const wp = full['watch/providers']?.results?.[region];
   if (!wp) return [];
@@ -184,6 +184,11 @@ export function userServices(full, region, userSet) {
 // cache a surplus over what the UI shows (server asks for 36) so titles rated or
 // dismissed mid-session can be filtered out at serve time without depleting it.
 const POOL_SIZE = 80;
+// Upper bound on candidates we fetch full details for per pool. With many
+// sources the merged set can run large; this caps the per-build TMDB detail
+// fetches (and latency) while still leaving ample headroom over POOL_SIZE after
+// the streamability gate drops most candidates.
+const CANDIDATE_CAP = 250;
 // How many of each pool's top titles get IMDb/Metacritic ratings attached during
 // the (background) build. Enough to cover the ~36 shown plus dismissal headroom,
 // so serving never has to make those slow web lookups itself.
@@ -195,57 +200,31 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   const seen = new Set(ratings.map((r) => `${r.media_type}:${r.tmdb_id}`));
   for (const d of getDismissed(userId)) seen.add(`${d.media_type}:${d.tmdb_id}`);
 
-  // Candidate pool 1: what's streamable in-country on the user's services.
-  const candidates = new Map();
-  if (providerIds?.length) {
-    for (let page = 1; page <= 3; page++) {
-      const res = await discover({ region, providerIds, genreId, mediaType: 'movie', page, language });
-      for (const m of res.results || []) candidates.set(m.id, m);
-      if (page >= (res.total_pages || 1)) break;
-    }
-  }
-  // Candidate pool 2: TMDB recommendations seeded from your rated films. We seed
-  // from all of them (highest-rated first), not just those above your average, so
-  // every pick contributes — costs more TMDB/Trakt calls up front but is broader.
-  const top = ratings
-    .filter((r) => r.media_type === 'movie')
-    .sort((a, b) => b.rating - a.rating)
-    .slice(0, 10);
-  for (const r of top) {
-    try {
-      const rec = await recommendations(r.tmdb_id, 'movie', language);
-      for (const m of rec.results || []) if (!candidates.has(m.id)) candidates.set(m.id, m);
-    } catch { /* ignore */ }
-  }
-  // Candidate pool 3 (optional): Trakt's community "related" titles, seeded from
-  // the same top-rated films. collab[tmdbId] counts how many loved films each
-  // candidate is related to — a crowd signal scoreMovie() folds in as a bonus.
-  const collab = new Map();
-  if (traktConfigured()) {
-    for (const r of top) {
-      let imdbId;
-      try { imdbId = (await details(r.tmdb_id, 'movie', language)).external_ids?.imdb_id; } catch { continue; }
-      for (const m of await relatedMovies(imdbId)) {
-        collab.set(m.tmdb_id, (collab.get(m.tmdb_id) || 0) + 1);
-        if (!candidates.has(m.tmdb_id)) candidates.set(m.tmdb_id, { id: m.tmdb_id, title: m.title });
-      }
-    }
-  }
+  // Assemble candidates from every configured source (TMDB discover variants,
+  // recommendations, similar, trending; Trakt related + charts). Each yields ids
+  // only; scoring, the genre filter and the streamability gate below are the one
+  // shared place those rules live. collab[id] = crowd co-watch hits for scoreMovie.
+  const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language });
+
+  // Cap the merged set before the expensive per-title detail fetch. The registry
+  // is priority-ordered and the Map preserves it, so the strongest sources fill
+  // the budget first; the broad charts only top it up.
+  const pool = [...candidates.values()].slice(0, CANDIDATE_CAP);
 
   // Score each candidate on its full feature set.
   const userSet = new Set(providerIds || []);
   const scored = [];
   let processed = 0;
-  for (const m of candidates.values()) {
+  for (const m of pool) {
     if (++processed % YIELD_EVERY === 0) await breathe();
     if (seen.has(`movie:${m.id}`)) continue;
     let full;
     try { full = await details(m.id, 'movie', language); } catch { continue; }
-    // When a genre is selected, keep only titles tagged with it (pools 2 & 3
-    // aren't genre-constrained at the source, so filter here too).
+    // When a genre is selected, keep only titles tagged with it (the seed/chart
+    // sources aren't genre-constrained at source, so filter here too).
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
     // Origin (continent/country/non-US) and indie filters — same hard-drop
-    // model as the genre filter, applied uniformly to all three pools.
+    // model as the genre filter, applied uniformly to every candidate source.
     if (!matchesOrigin(full, filters)) continue;
     if (filters.indie && !isIndie(full)) continue;
     // Drop titles not on a chosen service in the user's region; otherwise keep

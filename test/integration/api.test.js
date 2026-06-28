@@ -221,6 +221,18 @@ test('recommendations carry runtime from TMDB details', async () => {
   assert.ok(data.results.every((m) => m.runtime === 107), 'every pick carries runtime');
 });
 
+test('recommendations include titles only a non-Discover source surfaces', async () => {
+  const c = await client().login({ email: 'trending@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  const { status, data } = await c.json('/api/recommend');
+  assert.equal(status, 200);
+  // 301 ("Stub Trending One") exists only on the /trending endpoint — no Discover
+  // page or recommendation list returns it. Its presence proves the multi-source
+  // pipeline blends sources beyond Discover into the served pool.
+  assert.ok(data.results.some((m) => m.tmdb_id === 301),
+    'a trending-only candidate made it into the recommendations');
+});
+
 test('recommendations carry the chosen services that stream each pick', async () => {
   const c = await client().login({ email: 'services@example.com' });
   // Choose Netflix (id 8 — the stub's streamable provider). Disney (337) is also
@@ -244,10 +256,11 @@ const idsOf = (data) => new Set(data.results.map((m) => m.tmdb_id));
 test('excludeUs query param drops US-origin picks from recommendations', async () => {
   const c = await client().login({ email: 'nous@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
-  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([201, 202, 203]), 'all three by default');
+  // 301 is the trending-only pick (US/major, like 201); it rides along by default.
+  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([201, 202, 203, 301]), 'all four by default');
 
   const ids = idsOf((await c.json('/api/recommend?excludeUs=1')).data);
-  assert.ok(!ids.has(201), 'US title (201) excluded');
+  assert.ok(!ids.has(201) && !ids.has(301), 'US titles (201, 301) excluded');
   assert.deepEqual(ids, new Set([202, 203]), 'non-US picks remain');
 });
 

@@ -20,7 +20,11 @@ const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 // fetch sends none). Same trick ratings.js uses for IMDb/Metacritic.
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
-export const traktConfigured = () => !!getSetting('traktKey', process.env.TRAKT_KEY || '');
+// Off in stub mode so the test suite stays offline/deterministic — Trakt has no
+// canned-fixture layer like TMDB's, and the chart sources fetch unconditionally
+// (no rating seed to gate them), which would otherwise hit the live API in tests.
+export const traktConfigured = () =>
+  process.env.TMDB_STUB !== '1' && !!getSetting('traktKey', process.env.TRAKT_KEY || '');
 
 function headers() {
   const key = getSetting('traktKey', process.env.TRAKT_KEY || '');
@@ -79,4 +83,22 @@ export async function relatedMovies(imdbId, limit = 20) {
   return parseRelated(
     await traktGet(`/movies/${slug}/related?limit=${limit}`, `trakt:related:${slug}:${limit}`)
   );
+}
+
+// Trakt's community charts: site-wide signals independent of any one user's
+// ratings, so they keep feeding fresh candidates once a user's own seeds run
+// dry. `trending` and `anticipated` wrap each movie under `.movie` (alongside a
+// watcher/list count); `popular` returns the movie object directly. Normalised
+// here to the same { tmdb_id, title, year } shape relatedMovies() returns.
+export function parseChart(data) {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((e) => e.movie || e)
+    .map((m) => ({ tmdb_id: m.ids?.tmdb ?? null, title: m.title, year: m.year ?? null }))
+    .filter((m) => m.tmdb_id);
+}
+
+// `kind` is 'trending' | 'popular' | 'anticipated'. Cached like /related.
+export async function traktChart(kind, limit = 30) {
+  return parseChart(await traktGet(`/movies/${kind}?limit=${limit}`, `trakt:chart:${kind}:${limit}`));
 }

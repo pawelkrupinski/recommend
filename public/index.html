@@ -43,6 +43,7 @@
       <h1>🎬 recommend</h1>
       <nav id="tabs">
         <button data-tab="discover" class="active">Discover</button>
+        <button data-tab="watchlist">Watchlist</button>
         <button data-tab="ratings">My ratings</button>
         <button data-tab="settings">Settings</button>
       </nav>
@@ -59,6 +60,11 @@
           <button id="refresh">↻ Refresh picks</button>
         </div>
         <div id="recs" class="grid"></div>
+      </section>
+
+      <section id="watchlist" class="tab">
+        <p id="watchlist-count" class="hint"></p>
+        <div id="watchlist-grid" class="grid"></div>
       </section>
 
       <section id="ratings" class="tab">

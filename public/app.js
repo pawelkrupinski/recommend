@@ -25,7 +25,7 @@ function ratingBadges(m) {
 // Each tab is a URL hash (#ratings, #settings…) so a refresh stays on the same
 // tab instead of dropping back to Discover, and back/forward navigate between tabs.
 const tabs = $('#tabs');
-const TAB_NAMES = ['discover', 'ratings', 'settings'];
+const TAB_NAMES = ['discover', 'watchlist', 'ratings', 'settings'];
 
 // The hash carries the tab plus any tab-specific state as a query string,
 // e.g. "#discover?genre=28". Parse it into { tab, genre } so a refresh or
@@ -41,6 +41,7 @@ function activateTab(t) {
   for (const b of tabs.children) b.classList.toggle('active', b.dataset.tab === t);
   for (const s of document.querySelectorAll('.tab')) s.classList.toggle('active', s.id === t);
   if (t === 'discover') loadDiscover();
+  if (t === 'watchlist') loadWatchlist();
   if (t === 'ratings') loadRatings();
   if (t === 'settings') loadSettings();
 }
@@ -84,6 +85,10 @@ $('#genre-filter').onchange = () => {
 // "rate some films first" screen.
 const RATE_GOAL = 10;
 const QUEUE_MIN = 15;        // keep at least this many cards in either rate grid
+// tmdb_ids already on the user's watchlist, so a Discover card's + button can
+// render in the right state. Kept in sync as the user toggles, refreshed
+// whenever Discover or the Watchlist tab loads.
+let watchlistIds = new Set();
 let discoverMode = null;     // 'rate' (onboarding) | 'recs' (personalized picks)
 let obRated = 0;             // how many films the user has rated (drives the countdown)
 let obPage = 0;              // onboarding rate-queue paging
@@ -171,6 +176,7 @@ async function maybeSwap() {
     const { results, profileSize } = await api('/api/recommend');
     if (discoverMode !== 'rate') return;                 // user navigated away mid-build
     if (!results.length) { swapping = false; return; }   // pool not ready — keep rating
+    await loadWatchlistIds();
     discoverMode = 'recs';
     showRecsControls(true);
     renderRecs(results, profileSize, '');
@@ -189,7 +195,10 @@ async function loadRecs(force = false) {
     if (genre) params.set('genre', genre);
     if (force) params.set('refresh', '1');
     const qs = params.toString();
-    const { results, profileSize } = await api('/api/recommend' + (qs ? `?${qs}` : ''));
+    const [{ results, profileSize }] = await Promise.all([
+      api('/api/recommend' + (qs ? `?${qs}` : '')),
+      loadWatchlistIds(),
+    ]);
     renderRecs(results, profileSize, genre);
   } catch (e) {
     info.textContent = '';
@@ -219,6 +228,7 @@ function recCard(m) {
   const hi = m.score >= 75 ? 'hi' : '';
   el.innerHTML = `
     <div class="score ${hi}">${m.score}</div>
+    ${watchBtnMarkup(watchlistIds.has(m.tmdb_id))}
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta">
       <div class="title">${esc(m.title)}</div>
@@ -228,6 +238,7 @@ function recCard(m) {
     </div>
     ${ratingRow()}`;
   el.querySelector('img').onclick = () => openWhere(m);
+  wireWatch(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
   wireRating(el, m, () => removeCard(el, 'No more picks here — hit “Refresh picks” for more.'));
   return el;
@@ -310,6 +321,48 @@ function removeCard(el, emptyMsg) {
   if (grid && !grid.children.length) grid.innerHTML = `<p class="empty">${esc(emptyMsg)}</p>`;
 }
 
+// ---- watchlist toggle (the + button on Discover cards) --------------------
+// Refresh the cached set of watchlisted ids; tolerate failure (cards just keep
+// their last-known + / ✓ state).
+async function loadWatchlistIds() {
+  try { watchlistIds = new Set((await api('/api/watchlist')).watchlist.map((w) => w.tmdb_id)); }
+  catch { /* keep the previous set */ }
+}
+// The corner + / ✓ button for a card, reflecting whether the title is saved.
+function watchBtnMarkup(inList) {
+  const label = inList ? 'Remove from watchlist' : 'Add to watchlist';
+  return `<button class="watch-btn${inList ? ' on' : ''}" title="${label}" aria-label="${label}">${inList ? '✓' : '+'}</button>`;
+}
+function setWatchBtn(btn, inList) {
+  const label = inList ? 'Remove from watchlist' : 'Add to watchlist';
+  btn.classList.toggle('on', inList);
+  btn.textContent = inList ? '✓' : '+';
+  btn.title = label;
+  btn.setAttribute('aria-label', label);
+}
+// Wire the + button inside `el` for movie `m`: toggles the title on/off the
+// watchlist and keeps the cached id set and the button in sync.
+function wireWatch(el, m) {
+  const btn = el.querySelector('.watch-btn');
+  if (!btn) return;
+  btn.onclick = async (ev) => {
+    ev.stopPropagation();
+    btn.disabled = true;
+    const adding = !watchlistIds.has(m.tmdb_id);
+    try {
+      if (adding) {
+        await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
+          tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
+        watchlistIds.add(m.tmdb_id);
+      } else {
+        await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
+        watchlistIds.delete(m.tmdb_id);
+      }
+      setWatchBtn(btn, adding);
+    } finally { btn.disabled = false; }
+  };
+}
+
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
@@ -378,6 +431,43 @@ function queueCard(m, onResolve) {
   el.querySelector('.skip').onclick = async () => {
     await api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
     onResolve(el, 'skipped');
+  };
+  return el;
+}
+
+// ---- watchlist tab --------------------------------------------------------
+// Saved titles as poster cards: tap the poster for where-to-watch, "Remove" to
+// take it off the list. Doubles as the refresh of the cached id set so the
+// Discover + buttons stay accurate after edits here.
+async function loadWatchlist() {
+  const { watchlist } = await api('/api/watchlist');
+  watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
+  setWatchlistCount(watchlist.length);
+  const grid = $('#watchlist-grid');
+  grid.innerHTML = watchlist.length ? '' : `<p class="empty">${WATCHLIST_EMPTY}</p>`;
+  for (const w of watchlist) grid.append(watchCard(w));
+}
+const WATCHLIST_EMPTY = 'Your watchlist is empty. Hit + on a Discover pick to save it for later.';
+function setWatchlistCount(n) {
+  $('#watchlist-count').textContent = `${n} saved ${n === 1 ? 'title' : 'titles'}`;
+}
+function watchCard(w) {
+  const m = { tmdb_id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path };
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `
+    <img src="${poster(m.poster_path)}" loading="lazy" />
+    <div class="meta">
+      <div class="title">${esc(m.title || m.tmdb_id)}</div>
+      <div class="year">${m.year || ''}</div>
+    </div>
+    <button class="skip watch-remove">Remove from watchlist</button>`;
+  el.querySelector('img').onclick = () => openWhere(m);
+  el.querySelector('.watch-remove').onclick = async () => {
+    await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: w.media_type || 'movie' }) });
+    watchlistIds.delete(m.tmdb_id);
+    setWatchlistCount(watchlistIds.size);
+    removeCard(el, WATCHLIST_EMPTY);
   };
   return el;
 }

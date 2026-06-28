@@ -200,16 +200,22 @@ test('a sparse re-save keeps the existing rich card (COALESCE)', () => {
 test('setWatchlistCard fills card fields without touching title/year/poster', () => {
   const u = newUser();
   db.addToWatchlist({ user_id: u.id, tmdb_id: 12, title: 'Old Save', year: 1980, poster_path: '/o.jpg' });
-  const pending = db.watchlistNeedingCard(u.id);
-  assert.equal(pending.length, 1, 'an un-enriched row is on the backfill work list');
+  const pending = db.watchlistNeedingEnrichment(u.id);
+  assert.equal(pending.length, 1, 'an un-enriched (card IS NULL) row is on the backfill work list');
   assert.equal(pending[0].tmdb_id, 12);
 
+  // A card enriched before trailers existed (no trailers key) still needs a top-up.
   db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90 });
   const [w] = db.getWatchlist(u.id);
   assert.equal(w.title, 'Old Save', 'title preserved');
   assert.equal(w.poster_path, '/o.jpg', 'poster preserved');
   assert.deepEqual(w.genres, ['Horror'], 'card fields filled');
-  assert.equal(db.watchlistNeedingCard(u.id).length, 0, 'no longer needs backfill');
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1,
+    'a card lacking a trailers key is still on the backfill work list');
+
+  // Once trailers are captured (even an empty array for a film with none), it's done.
+  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [] });
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 0, 'no longer needs backfill once trailers are set');
 });
 
 test('cache honours maxAge expiry', () => {

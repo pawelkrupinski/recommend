@@ -181,6 +181,30 @@ test('watchlist: backfill enriches titles saved without card fields', async () =
     'the English trailer is selected from TMDB videos and persisted');
 });
 
+test('watchlist: backfill tops up trailers on a title enriched before trailers existed', async () => {
+  const { backfillWatchlistCards } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'trailer-backfill@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // A row enriched the OLD way: full card fields captured at save time, but no
+  // trailers key (the shape every saved title had before the trailers feature).
+  await c.json('/api/watchlist', { method: 'POST', body: {
+    tmdb_id: 201, title: 'Stub Streamable One', year: 2020, poster_path: '/p201.jpg',
+    vote_average: 7.5, runtime: 107, genres: ['Action'],
+    services: [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
+    overview: 'A pick.', director: 'Stub Director', cast: ['Stub Actor'],
+  } });
+  let { data } = await c.json('/api/watchlist');
+  assert.equal(data.watchlist[0].trailers, undefined, 'an already-enriched legacy row has no trailers');
+
+  await backfillWatchlistCards(); // must re-visit the row despite its non-null card
+
+  ({ data } = await c.json('/api/watchlist'));
+  const [w] = data.watchlist;
+  assert.deepEqual(w.trailers, [{ key: 'yt-en-201', name: 'Official Trailer' }],
+    'the backfill fills trailers on a legacy enriched row');
+  assert.deepEqual(w.genres, ['Action'], 'the other card fields survive the top-up');
+});
+
 test('where-to-watch reports the user region so search links can target the right storefront', async () => {
   const c = await client().login({ email: 'where@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { country: 'GB' } });

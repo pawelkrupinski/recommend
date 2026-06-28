@@ -6,7 +6,7 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
-  watchlistNeedingCard, setWatchlistCard } from './db.js';
+  watchlistNeedingEnrichment, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
@@ -460,14 +460,15 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
 }
 
 // Background one-off at startup: enrich every saved title that predates save-time
-// capture so the Watchlist tab matches Discover. Naturally idempotent — it only
-// touches rows whose `card` is still null, so a re-run after everything's filled
-// is a cheap empty query. Gentle on TMDB: one user at a time, yielding between
-// items so /health and live traffic aren't starved (see the breathe() rationale).
+// capture (or that predates trailer capture) so the Watchlist tab matches
+// Discover. Naturally idempotent — it only touches rows that still lack a card
+// or a trailers key, so once everything's filled a re-run is a cheap empty
+// query. Gentle on TMDB: one user at a time, yielding between items so /health
+// and live traffic aren't starved (see the breathe() rationale).
 export async function backfillWatchlistCards() {
   if (!tmdbConfigured()) return;
   for (const u of listUsers()) {
-    const rows = watchlistNeedingCard(u.id);
+    const rows = watchlistNeedingEnrichment(u.id);
     if (!rows.length) continue;
     const region = getUserSetting(u.id, 'country', 'PL');
     const providerIds = (getUserSetting(u.id, 'providers', []) || []).map(Number);

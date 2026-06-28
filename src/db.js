@@ -403,10 +403,17 @@ const _setWatchlistCard = db.prepare(
 export function setWatchlistCard(userId, tmdb_id, media_type, card) {
   _setWatchlistCard.run(pickCard(card), userId, tmdb_id, media_type);
 }
-// Saved titles still missing their rich card fields (saved before save-time
-// capture, or whose enrichment failed) — the backfill's work list for one user.
-export function watchlistNeedingCard(userId) {
-  return db.prepare('SELECT tmdb_id, media_type FROM watchlist WHERE user_id = ? AND card IS NULL').all(userId);
+// Saved titles still needing server-side enrichment — the backfill's work list
+// for one user. Two cases: a row never enriched (card IS NULL — saved before
+// save-time capture, or whose enrichment failed), and a row enriched before
+// trailers were captured (card present but with no "trailers" key). Once a row
+// has a trailers key — even an empty array for a film with no trailer — it's
+// done and this query skips it, so the boot-time backfill settles to a no-op.
+export function watchlistNeedingEnrichment(userId) {
+  return db.prepare(
+    `SELECT tmdb_id, media_type FROM watchlist
+     WHERE user_id = ? AND (card IS NULL OR card NOT LIKE '%"trailers"%')`,
+  ).all(userId);
 }
 export function removeFromWatchlist(userId, tmdb_id, media_type = 'movie') {
   db.prepare('DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?')

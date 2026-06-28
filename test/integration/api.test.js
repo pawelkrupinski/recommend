@@ -102,11 +102,11 @@ test('settings: per-user country defaults to PL and persists', async () => {
   assert.equal(r.data.country, 'US');
 });
 
-test('non-admins cannot set global API keys', async () => {
+test('API key fields are ignored — keys come from the environment only', async () => {
   const c = await client().login({ email: 'plain@example.com' });
-  const { status, data } = await c.json('/api/settings', { method: 'POST', body: { tmdbKey: 'sneaky' } });
-  assert.equal(status, 403);
-  assert.match(data.error, /admin/i);
+  // The settings endpoint no longer manages API keys; key fields are no-ops.
+  const { status } = await c.json('/api/settings', { method: 'POST', body: { tmdbKey: 'sneaky' } });
+  assert.equal(status, 200);
 });
 
 test('provider picker returns services for a region', async () => {
@@ -114,16 +114,6 @@ test('provider picker returns services for a region', async () => {
   const { status, data } = await c.json('/api/providers?region=PL');
   assert.equal(status, 200);
   assert.ok(data.providers.some((p) => /netflix/i.test(p.name)), 'Netflix Test present from stub');
-});
-
-test('admin-only user list: 403 for plain users, 200 for admins', async () => {
-  const plain = await client().login({ email: 'notadmin@example.com' });
-  assert.equal((await plain.json('/api/admin/users')).status, 403);
-
-  const admin = await client().login({ email: 'boss@example.com', admin: true });
-  const r = await admin.json('/api/admin/users');
-  assert.equal(r.status, 200);
-  assert.ok(Array.isArray(r.data.users));
 });
 
 test('delete account erases the user and ends the session', async () => {

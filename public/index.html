@@ -78,28 +78,6 @@
           <div id="provider-list" class="providers"></div>
           <button id="save-providers">Save services</button>
 
-          <!-- Admin-only: global API keys -->
-          <div id="admin-keys" class="admin-only hidden">
-            <h3>API keys <span class="sub">(admin · shared by everyone)</span></h3>
-            <label>TMDB API key <span class="sub">(<a href="https://www.themoviedb.org/settings/api" target="_blank">get one free</a>)</span>
-              <input id="tmdbKey" type="password" placeholder="v3 key or v4 token" />
-            </label>
-            <label>Movie of the Night / RapidAPI key <span class="sub">(optional — adds deep links)</span>
-              <input id="rapidApiKey" type="password" placeholder="RapidAPI key" />
-            </label>
-            <label>Trakt API key <span class="sub">(optional — adds <a href="https://trakt.tv/oauth/applications" target="_blank">community picks</a>)</span>
-              <input id="traktKey" type="password" placeholder="Trakt Client ID" />
-            </label>
-            <button id="save-keys">Save keys</button>
-            <p id="key-status" class="sub"></p>
-          </div>
-
-          <!-- Admin-only: user management -->
-          <div id="admin-users" class="admin-only hidden">
-            <h3>Users <span class="sub">(admin)</span></h3>
-            <div id="users-list"></div>
-          </div>
-
           <!-- Account / privacy -->
           <div class="danger-zone">
             <h3>Your account</h3>

@@ -386,16 +386,10 @@ const COUNTRIES = [['PL','Poland'],['US','United States'],['GB','United Kingdom'
   ['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],['SE','Sweden'],['CA','Canada'],['AU','Australia']];
 async function loadSettings() {
   const s = await api('/api/settings');
-  // Admin-only blocks (API keys, user management) appear only for admins.
-  document.querySelectorAll('.admin-only').forEach((el) => el.classList.toggle('hidden', !s.isAdmin));
   const sel = $('#country');
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === s.country ? 'selected' : ''}>${n}</option>`).join('');
-  $('#key-status').textContent =
-    `TMDB: ${s.tmdbConfigured ? '✓ set' : '✗ not set'} · Movie of the Night: ${s.motnConfigured ? '✓ set' : '— optional'}`
-    + ` · Trakt: ${s.traktConfigured ? '✓ set' : '— optional'}`;
   sel.onchange = async () => { await saveSetting('country', sel.value); loadProviders(sel.value, s.providers); };
   await loadProviders(s.country, s.providers);
-  if (s.isAdmin) loadUsers();
 }
 async function loadProviders(region, selected = [], box = $('#provider-list')) {
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
@@ -420,15 +414,6 @@ async function loadProviders(region, selected = [], box = $('#provider-list')) {
     box.insertAdjacentHTML('beforebegin', `<p class="sub src-note">${note}</p>`);
   } catch (e) { box.innerHTML = `<p class="sub">⚠ ${e.message} — set your TMDB key first.</p>`; }
 }
-$('#save-keys').onclick = async () => {
-  const body = {};
-  if ($('#tmdbKey').value) body.tmdbKey = $('#tmdbKey').value.trim();
-  if ($('#rapidApiKey').value) body.rapidApiKey = $('#rapidApiKey').value.trim();
-  if ($('#traktKey').value) body.traktKey = $('#traktKey').value.trim();
-  await api('/api/settings', { method: 'POST', body: JSON.stringify(body) });
-  $('#tmdbKey').value = ''; $('#rapidApiKey').value = ''; $('#traktKey').value = '';
-  loadSettings();
-};
 $('#save-providers').onclick = async () => {
   const ids = [...$('#provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
   await saveSetting('providers', ids);
@@ -451,24 +436,6 @@ $('#delete-account').onclick = async () => {
     alert('Could not delete account: ' + e.message);
   }
 };
-
-// ---- admin: user management -----------------------------------------------
-async function loadUsers() {
-  try {
-    const { users } = await api('/api/admin/users');
-    const box = $('#users-list');
-    box.innerHTML = '';
-    for (const u of users) {
-      const row = document.createElement('div');
-      row.className = 'urow';
-      row.innerHTML = `<span>${esc(u.name || u.email)} <span class="sub">${esc(u.email || '')}${u.provider ? ' · ' + esc(u.provider) : ''}</span></span>
-        <label class="adm"><input type="checkbox" ${u.is_admin ? 'checked' : ''}/> admin</label>`;
-      row.querySelector('input').onchange = (e) =>
-        api('/api/admin/users', { method: 'POST', body: JSON.stringify({ userId: u.id, is_admin: e.target.checked }) });
-      box.append(row);
-    }
-  } catch (e) { $('#users-list').innerHTML = `<p class="sub">⚠ ${e.message}</p>`; }
-}
 
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 

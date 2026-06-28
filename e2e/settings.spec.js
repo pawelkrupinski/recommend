@@ -6,20 +6,13 @@ async function openSettings(page) {
   await expect(page.locator('#settings')).toHaveClass(/active/);
 }
 
-test('admin-only blocks are hidden for regular users', async ({ page }) => {
+test('settings shows streaming services, no admin or API-key blocks', async ({ page }) => {
   await login(page, uniqEmail('plain'));
   await openSettings(page);
   await expect(page.locator('#country')).toBeVisible();
-  await expect(page.locator('#admin-keys')).toBeHidden();
-  await expect(page.locator('#admin-users')).toBeHidden();
-});
-
-test('admins see the API-keys and user-management blocks', async ({ page }) => {
-  await login(page, uniqEmail('admin'), { admin: true });
-  await openSettings(page);
-  await expect(page.locator('#admin-keys')).toBeVisible();
-  await expect(page.locator('#admin-users')).toBeVisible();
-  await expect(page.locator('#users-list')).not.toBeEmpty();
+  // API keys and user management were removed from the app entirely.
+  await expect(page.locator('#admin-keys')).toHaveCount(0);
+  await expect(page.locator('#admin-users')).toHaveCount(0);
 });
 
 test('changing country persists across a reload', async ({ page }) => {

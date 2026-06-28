@@ -48,11 +48,6 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .onboarding-card select { margin-top: 6px; }
 .onboarding-card #ob-continue { width: 100%; margin-top: 8px; }
 
-/* admin: user rows */
-.urow { display: flex; justify-content: space-between; align-items: center; gap: 12px;
-  padding: 8px 0; border-bottom: 1px solid var(--line); }
-.urow .adm { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-.admin-only { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 8px; }
 .tab { display: none; }
 .tab.active { display: block; }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }

@@ -5,15 +5,13 @@ import { pathToFileURL } from 'node:url';
 import './env.js';
 import {
   db,
-  setSetting,
   getUserSetting, setUserSetting,
   getRatings, upsertRating, deleteRating, dismiss, getDismissed,
   markNotSeen, getNotSeen,
-  listUsers, setUserAdmin, getUserById, deleteAccount,
+  deleteAccount,
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
-import { traktConfigured } from './trakt.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
 import { handleAuth, currentUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
@@ -134,7 +132,7 @@ async function api(req, res, url) {
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
       return json(res, 200, {
-        user: user && { id: user.id, email: user.email, name: user.name, picture: user.picture, isAdmin: !!user.is_admin },
+        user: user && { id: user.id, email: user.email, name: user.name, picture: user.picture },
         onboarded: user ? !!getUserSetting(user.id, 'onboarded', false) : false,
         providers: enabledProviders(),
       });
@@ -157,39 +155,18 @@ async function api(req, res, url) {
       return json(res, 200, {
         country: getUserSetting(uid, 'country', 'PL'),
         providers: getUserSetting(uid, 'providers', []),
-        isAdmin: !!user.is_admin,
-        tmdbConfigured: tmdb.tmdbConfigured(),
-        motnConfigured: motnConfigured(),
-        traktConfigured: traktConfigured(),
       });
     }
     if (p === '/api/settings' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)) || '{}');
-      const keyFields = ['tmdbKey', 'rapidApiKey', 'traktKey'];
-      // API keys are global and admin-only; streaming/country are per user.
-      if (keyFields.some((k) => k in body) && !user.is_admin) {
-        return json(res, 403, { error: 'API keys can only be changed by an admin' });
-      }
+      // Only per-user streaming/country preferences are settable here.
       let userScopeChanged = false;
       for (const [k, v] of Object.entries(body)) {
-        if (keyFields.includes(k)) setSetting(k, v);
-        else if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
+        if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
         else if (k === 'onboarded') setUserSetting(uid, k, !!v);
       }
       if (userScopeChanged) invalidateRecommendations(uid);
       return json(res, 200, { ok: true });
-    }
-
-    // ---- admin: manage users (admin only) ----------------------------
-    if (p === '/api/admin/users') {
-      if (!user.is_admin) return json(res, 403, { error: 'admin only' });
-      if (req.method === 'GET') return json(res, 200, { users: listUsers() });
-      if (req.method === 'POST') {
-        const b = JSON.parse((await readBody(req)) || '{}');
-        if (!getUserById(b.userId)) return json(res, 404, { error: 'no such user' });
-        setUserAdmin(b.userId, !!b.is_admin);
-        return json(res, 200, { ok: true });
-      }
     }
 
     // ---- provider picker for the chosen region ------------------------
@@ -339,7 +316,7 @@ if (isMain) {
 
   server.listen(PORT, () => {
     console.log(`\n  🎬  recommend running →  http://localhost:${PORT}\n`);
-    if (!tmdb.tmdbConfigured()) console.log('  ⚠  No TMDB key yet — set TMDB_API_KEY or add it on the Settings tab (admin).\n');
+    if (!tmdb.tmdbConfigured()) console.log('  ⚠  No TMDB key yet — set TMDB_API_KEY in the environment.\n');
     if (!enabledProviders().length) console.log('  ⚠  No OAuth providers configured — set GOOGLE_CLIENT_ID/SECRET and/or FACEBOOK_APP_ID/SECRET.\n');
     // Warm each user's per-genre recommendation caches in the background so the
     // first Discover load and genre switches are instant.

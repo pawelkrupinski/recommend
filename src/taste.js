@@ -31,6 +31,17 @@ function featuresOf(movie) {
   return f;
 }
 
+// node:sqlite is fully synchronous and warm TMDB cache hits resolve without real
+// I/O, so a recommendation build otherwise runs as one unbroken microtask chain:
+// the event loop never reaches its poll phase, starving /health and live
+// requests until the whole build finishes. On a shared-CPU host that overruns
+// the platform's 5s health-check timeout and the instance is killed mid-build (a
+// boot/​use crash loop). Yielding to the macrotask queue every YIELD_EVERY units
+// of work lets the loop service /health and real traffic between chunks. Output
+// is unchanged — only the interleaving differs.
+const YIELD_EVERY = 16;
+const breathe = () => new Promise((resolve) => setImmediate(resolve));
+
 // Build { weights: Map<feature, score>, mean } from a user's rated movies.
 export async function buildProfile(userId) {
   const ratings = getRatings(userId).filter((r) => r.media_type === 'movie');
@@ -40,7 +51,9 @@ export async function buildProfile(userId) {
   const weights = new Map();
   const counts = new Map();
 
+  let processed = 0;
   for (const r of ratings) {
+    if (++processed % YIELD_EVERY === 0) await breathe();
     let movie;
     try { movie = await details(r.tmdb_id, 'movie'); } catch { continue; }
     const delta = r.rating - mean; // liked-vs-typical signal
@@ -153,7 +166,9 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   // Score each candidate on its full feature set.
   const userSet = new Set(providerIds || []);
   const scored = [];
+  let processed = 0;
   for (const m of candidates.values()) {
+    if (++processed % YIELD_EVERY === 0) await breathe();
     if (seen.has(`movie:${m.id}`)) continue;
     let full;
     try { full = await details(m.id, 'movie', language); } catch { continue; }
@@ -249,6 +264,7 @@ export async function prebuildRecommendations(userId) {
   try { list = (await tmdbGenres('movie')).genres || []; }
   catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
   for (const g of list) {
+    await breathe(); // let /health + live requests through between genres
     try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings, language }); }
     catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
   }

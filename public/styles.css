@@ -1,6 +1,9 @@
 :root {
   --bg: #0e1116; --panel: #171b22; --panel2: #1f242d; --line: #2a3038;
   --fg: #e6e9ef; --muted: #8b94a3; --accent: #f5c518; --good: #4ade80; --bad: #f87171;
+  /* Render native widgets (select popups, checkboxes, scrollbars) in dark mode so
+     they match the app instead of falling back to the browser's light defaults. */
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 .hidden { display: none !important; }
@@ -74,8 +77,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }
 .bar #discover-info { margin-right: auto; }
 .bar .toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; cursor: pointer; }
-.bar .toggle input { cursor: pointer; }
-#genre-filter { background: var(--panel2); color: inherit; border: 1px solid var(--line);
+.bar .toggle input { cursor: pointer; accent-color: var(--accent); }
+/* Both Discover dropdowns share one dark style so they read as a single control set. */
+#genre-filter, #origin-filter { background: var(--panel2); color: inherit; border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 10px; font: inherit; }
 .hint { color: var(--muted); }
 .sub { color: var(--muted); font-size: 12px; }
@@ -282,11 +286,11 @@ button.danger:disabled { opacity: .6; cursor: default; }
   /* Discover toolbar: info on its own line, filter + refresh share the next. */
   .bar { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .bar #discover-info { flex-basis: 100%; margin-right: 0; }
-  #genre-filter { flex: 1; }
+  #genre-filter, #origin-filter { flex: 1; }
   #refresh { white-space: nowrap; }
 
   /* 16px keeps iOS from zooming when these are focused. */
-  .form input, .form select, #genre-filter { font-size: 16px; }
+  .form input, .form select, #genre-filter, #origin-filter { font-size: 16px; }
   .form { max-width: none; }
 
   /* Let Discover/onboarding cards size to their content. The desktop fixed

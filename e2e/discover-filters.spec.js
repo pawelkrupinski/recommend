@@ -29,8 +29,23 @@ test('origin dropdown and toggles filter the Discover picks live', async ({ page
   await expect(page).toHaveURL(/excludeUs=1/);
   await expect(page.locator('#recs .card')).toHaveCount(2, { timeout: 20_000 });
 
-  // The filter state persists across a reload (driven by the URL hash).
+  // The filter state persists across a reload (driven by the URL path's query).
   await page.reload();
   await expect(page.locator('#exclude-us')).toBeChecked();
   await expect(page.locator('#recs .card')).toHaveCount(2, { timeout: 20_000 });
+});
+
+test('the Discover filter controls share one dark, consistent style', async ({ page }) => {
+  await login(page, uniqEmail('discstyle'));
+
+  const bgOf = (sel) => page.locator(sel).evaluate((el) => getComputedStyle(el).backgroundColor);
+  const genreBg = await bgOf('#genre-filter');
+  const originBg = await bgOf('#origin-filter');
+  // Both dropdowns share the dark panel colour rather than the browser default.
+  expect(originBg).toBe(genreBg);
+  expect(originBg).toBe('rgb(31, 36, 45)'); // var(--panel2)
+
+  // The Non-US / Indie checkboxes are tinted to the app accent, not native blue.
+  const accent = await page.locator('#exclude-us').evaluate((el) => getComputedStyle(el).accentColor);
+  expect(accent).toBe('rgb(245, 197, 24)'); // var(--accent)
 });

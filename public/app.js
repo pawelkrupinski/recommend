@@ -241,13 +241,57 @@ function recCard(m) {
       <div class="year">${m.year || ''} · ⭐ ${(m.vote_average || 0).toFixed(1)}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</div>
       ${ratingBadges(m)}
       <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
+      ${serviceIcons(m)}
     </div>
     ${ratingRow()}`;
   el.querySelector('img').onclick = () => openWhere(m);
   wireWatch(el, m);
+  wireServiceLinks(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
   wireRating(el, m, () => removeCard(el, PICKS_EMPTY));
   return el;
+}
+
+// Only the user's own chosen services that carry this title (the server filters
+// to them) are shown, each as a small logo — the same TMDB icon the Settings
+// picker uses. Each is a deep link into the title on that service (see
+// wireServiceLinks); a service with no TMDB logo falls back to a film glyph.
+function serviceIcons(m) {
+  if (!m.services || !m.services.length) return '';
+  const icons = m.services.map((s) => {
+    const inner = s.logo ? `<img src="${IMG}/w45${s.logo}" alt="${esc(s.name)}" />` : '<span class="nologo">🎞️</span>';
+    return `<a class="svc-ico" href="#" data-sid="${s.id}" data-sname="${esc(s.name)}"
+      title="Watch on ${esc(s.name)}" aria-label="Watch on ${esc(s.name)}">${inner}</a>`;
+  }).join('');
+  return `<div class="svc">${icons}</div>`;
+}
+// Normalize a service name for cross-source matching (mirrors server `norm`):
+// lowercase, drop "+"/"plus" and non-alphanumerics. "Disney+" / "Disney Plus" → "disney".
+const normName = (s) => String(s ?? '').toLowerCase().replace(/\+/g, '').replace(/\bplus\b/g, '').replace(/[^a-z0-9]/g, '');
+// Wire each service icon to deep-link into the title on that service. We resolve
+// the per-service link lazily on click — one cached /api/where call (the same
+// MotN lookup the poster's modal makes), so the picks grid spends no streaming
+// quota up front. Match the icon's TMDB id to the link MotN returned (falling
+// back to a normalized name match), navigating in-tab so the streaming app's
+// Universal Link can take over on mobile; if nothing matches, open the
+// where-to-watch modal so the tap is never a dead end.
+function wireServiceLinks(el, m) {
+  el.querySelectorAll('.svc-ico').forEach((a) => {
+    a.onclick = async (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const sid = Number(a.dataset.sid);
+      const want = normName(a.dataset.sname);
+      try {
+        const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
+        const links = w.deepLinks || [];
+        const hit = links.find((o) => o.providerId === sid) || links.find((o) => normName(o.service) === want);
+        const url = hit?.link || w.tmdbLink;
+        if (url) { location.href = url; return; }
+      } catch { /* fall through to the modal */ }
+      openWhere(m);
+    };
+  });
 }
 
 $('#refresh').onclick = () => loadRecs(true);

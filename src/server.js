@@ -261,7 +261,12 @@ async function api(req, res, url) {
       const wp = await tmdb.watchProviders(id, mt);
       const r = wp.results?.[region] || {};
       const flatrate = (r.flatrate || []).map((x) => ({ name: x.provider_name, logo: x.logo_path }));
-      const deepLinks = await streamingOptions(id, mt, region.toLowerCase());
+      // Tag each MotN deep link with the matching TMDB provider id (matched by
+      // name against this title's own region providers) so a Discover card's
+      // service icon — keyed by TMDB id — can find its link without name-matching.
+      const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
+      const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
+        .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
       return json(req, res, 200, { tmdbLink: r.link || null, flatrate, deepLinks });
     }
 

@@ -160,6 +160,20 @@ test('recommendations carry runtime from TMDB details', async () => {
   assert.ok(data.results.every((m) => m.runtime === 107), 'every pick carries runtime');
 });
 
+test('recommendations carry the chosen services that stream each pick', async () => {
+  const c = await client().login({ email: 'services@example.com' });
+  // Choose Netflix (id 8 — the stub's streamable provider). Disney (337) is also
+  // chosen but no stub title streams on it, so it must never appear on a card.
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8, 337] } });
+  const { status, data } = await c.json('/api/recommend');
+  assert.equal(status, 200);
+  assert.ok(data.results.length, 'pool is non-empty with a provider selected');
+  for (const m of data.results) {
+    assert.deepEqual(m.services, [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
+      'each pick lists only the chosen services it streams on, with TMDB id/name/logo');
+  }
+});
+
 test('API key fields are ignored — keys come from the environment only', async () => {
   const c = await client().login({ email: 'plain@example.com' });
   // The settings endpoint no longer manages API keys; key fields are no-ops.

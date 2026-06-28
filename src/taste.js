@@ -75,16 +75,25 @@ function scoreMovie(movie, profile, collabHits = 0) {
   return Math.min(100, Math.round(base + collab));
 }
 
-// Keep a candidate only if, in the user's region, it streams on a service they
-// picked in Settings. Pool 1 (discover) already satisfies this, but pools 2 & 3
-// don't, so we re-check here. Both flatrate (subscription) and free/ads tiers of
-// a chosen service count — what matters is that the user selected that service.
-// `full` carries TMDB's appended watch/providers block (see tmdb.js details()).
-function streamableForUser(full, region, userSet) {
+// The user's chosen services that, in their region, stream this title — each as
+// { id, name, logo } using TMDB ids/logos so the Discover card can badge it with
+// the same icon the Settings picker shows. Both flatrate (subscription) and
+// free/ads tiers of a chosen service count — what matters is that the user
+// selected that service. An empty array also means "not streamable for this
+// user": pool 1 (discover) already satisfies that, but pools 2 & 3 don't, so we
+// re-check here. `full` carries TMDB's appended watch/providers block (see
+// tmdb.js details()).
+export function userServices(full, region, userSet) {
   const wp = full['watch/providers']?.results?.[region];
-  if (!wp) return false;
+  if (!wp) return [];
   const offered = [...(wp.flatrate || []), ...(wp.free || []), ...(wp.ads || [])];
-  return offered.some((p) => userSet.has(p.provider_id));
+  const byId = new Map();
+  for (const p of offered) {
+    if (userSet.has(p.provider_id) && !byId.has(p.provider_id)) {
+      byId.set(p.provider_id, { id: p.provider_id, name: p.provider_name, logo: p.logo_path || null });
+    }
+  }
+  return [...byId.values()];
 }
 
 // How many scored titles we keep per (user, region, services, genre) pool. We
@@ -149,8 +158,10 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // When a genre is selected, keep only titles tagged with it (pools 2 & 3
     // aren't genre-constrained at the source, so filter here too).
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
-    // Drop titles not on a chosen service in the user's region.
-    if (!streamableForUser(full, region, userSet)) continue;
+    // Drop titles not on a chosen service in the user's region; otherwise keep
+    // the matched services so the card can show (and deep-link) each one.
+    const services = userServices(full, region, userSet);
+    if (!services.length) continue;
     const crew = full.credits?.crew || [];
     scored.push({
       tmdb_id: m.id,
@@ -164,6 +175,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       genres: (full.genres || []).map((g) => g.name),
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
+      services,
       score: scoreMovie(full, profile, collab.get(m.id) || 0),
     });
   }

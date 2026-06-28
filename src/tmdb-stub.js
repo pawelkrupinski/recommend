@@ -68,7 +68,7 @@ function details(id) {
     },
     external_ids: { imdb_id: `tt${1000000 + id}` },
     'watch/providers': {
-      results: { [REGION]: { flatrate: [{ provider_id: PROVIDER_ID, provider_name: 'Netflix Test' }] } },
+      results: { [REGION]: { flatrate: [{ provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } },
     },
   };
 }

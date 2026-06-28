@@ -5,7 +5,7 @@ test('a rated title appears in "My ratings" and can be deleted', async ({ page }
   await login(page, uniqEmail('myratings'));
 
   // Rate a title from the Discover onboarding queue (a fresh account starts
-  // here, with popular titles to rate before personalized picks kick in).
+  // here, with acclaimed titles to rate before personalized picks kick in).
   const target = '#recs .card:has(.title:text-is("Stub Popular Five"))';
   await expect(page.locator(target)).toBeVisible();
   await page.locator(`${target} .stars span[data-n="9"]`).click();

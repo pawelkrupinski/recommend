@@ -208,10 +208,10 @@ async function api(req, res, url) {
       return json(req, res, 200, { ok: true });
     }
 
-    // ---- in-app rating queue: popular titles to rate ------------------
+    // ---- in-app rating queue: acclaimed titles to rate ----------------
     if (p === '/api/rate-queue' && req.method === 'GET') {
       const page = Number(url.searchParams.get('page') || 1);
-      const data = await tmdb.popular('movie', page);
+      const data = await tmdb.acclaimed(page);
       const hidden = new Set([
         ...getRatings(uid).map((r) => r.tmdb_id),
         ...getNotSeen(uid).map((r) => r.tmdb_id),

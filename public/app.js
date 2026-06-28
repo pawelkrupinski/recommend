@@ -77,7 +77,7 @@ $('#genre-filter').onchange = () => {
 };
 
 // Discover is adaptive. A new account (fewer than RATE_GOAL rated films) gets an
-// onboarding rate queue of popular titles right here, so there's something to do
+// onboarding rate queue of acclaimed titles right here, so there's something to do
 // before the engine knows enough to suggest anything good. Once enough ratings
 // land, the personalized picks — which the engine has been prebuilding in the
 // background as ratings arrived — are swapped in seamlessly: no spinner, no empty
@@ -126,7 +126,7 @@ function updateOnboardInfo() {
     : 'Building your personalized picks…';
 }
 
-// Pull popular titles to rate into the Discover grid, skipping pages already
+// Pull acclaimed titles to rate into the Discover grid, skipping pages already
 // fully covered by rated/skipped titles, until the grid holds at least QUEUE_MIN
 // cards (capped so we never spin forever). Stop once the last page is reached so
 // we never re-fetch it and duplicate cards. The guard stops overlapping refills
@@ -147,7 +147,7 @@ async function fillOnboardQueue(reset) {
     }
   } finally { obFilling = false; }
   if (!added && reset) $('#discover-info').textContent =
-    "You've rated all the popular titles — check back later for new releases.";
+    "You've rated everything we had to show — switching to your personalized picks.";
 }
 
 // A card in the onboarding queue resolved (rated or "haven't seen"): track the

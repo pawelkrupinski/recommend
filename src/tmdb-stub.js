@@ -10,8 +10,9 @@
 const PROVIDER_ID = 8;
 const REGION = 'PL';
 
-// Two pools of titles: "popular" (drives the Rate queue) and "discover"
-// (streamable on the test provider; drives Discover recommendations).
+// Two pools of titles: "popular" (the acclaimed seed that drives the Rate
+// queue, served via provider-less Discover) and "discover" (streamable on the
+// test provider; drives Discover recommendations).
 const POPULAR = [
   { id: 101, title: 'Stub Popular One' },
   { id: 102, title: 'Stub Popular Two' },
@@ -77,9 +78,6 @@ function details(id) {
 export function stub(path, params = {}) {
   const page = Number(params.page) || 1;
 
-  if (path === '/movie/popular') {
-    return { page, total_pages: 1, results: POPULAR.map(card) };
-  }
   if (path === '/genre/movie/list') {
     return { genres: GENRES };
   }
@@ -87,7 +85,10 @@ export function stub(path, params = {}) {
     return { results: PROVIDERS };
   }
   if (path === '/discover/movie') {
-    return { page, total_pages: 1, results: DISCOVER.map(card) };
+    // The recommender filters Discover by streaming provider; the onboarding
+    // rate queue (acclaimed seed) does not. Serve the matching pool for each.
+    const pool = params.with_watch_providers ? DISCOVER : POPULAR;
+    return { page, total_pages: 1, results: pool.map(card) };
   }
   const rec = path.match(/^\/movie\/(\d+)\/recommendations$/);
   if (rec) return { page: 1, total_pages: 1, results: [] };

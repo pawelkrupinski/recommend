@@ -83,8 +83,20 @@ export const recommendations = (id, mediaType = 'movie') =>
 export const watchProviders = (id, mediaType = 'movie') =>
   tmdb(`/${mediaType}/${id}/watch/providers`);
 
-export const popular = (mediaType = 'movie', page = 1) =>
-  tmdb(`/${mediaType}/popular`, { page });
+// A canonical set of widely-seen, highly-rated films to seed a new user's rate
+// queue. TMDB's /movie/popular is recency-biased — it surfaces whatever is
+// trending this week — so a newcomer mostly sees films they haven't watched yet
+// and can't rate. Discover sorted by vote count instead returns the movies the
+// most people have ever rated (the canonical "everyone's seen it" set), spanning
+// decades and genres; the rating/count floors keep them acclaimed, not just
+// heavily watched.
+export const acclaimed = (page = 1) =>
+  tmdb('/discover/movie', {
+    sort_by: 'vote_count.desc',
+    'vote_average.gte': 7,
+    'vote_count.gte': 1000,
+    page,
+  });
 
 export const genres = (mediaType = 'movie') => tmdb(`/genre/${mediaType}/list`);
 

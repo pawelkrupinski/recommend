@@ -80,7 +80,7 @@ test('ratings: create, list, delete', async () => {
 
 test('rate-queue hides rated, dismissed and not-seen titles (dismissed regression)', async () => {
   const c = await client().login({ email: 'queue@example.com' });
-  // Stub /movie/popular returns ids 101..105.
+  // The acclaimed seed (provider-less Discover) returns ids 101..105.
   await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 102, rating: 7, title: 'P2' } });
   await c.json('/api/dismiss', { method: 'POST', body: { tmdb_id: 101 } });
   await c.json('/api/not-seen', { method: 'POST', body: { tmdb_id: 103 } });

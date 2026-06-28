@@ -257,15 +257,23 @@ async function runPrebuild(userId) {
   finally { running.delete(userId); if (pendingDirty.has(userId)) schedulePrebuild(userId, 1000); }
 }
 
+// Don't build any picks until a user has rated enough films for them to be
+// meaningful — mirrors RATE_GOAL in the frontend, which onboards until the same
+// count before swapping the rate queue for picks. Below this, every pick should
+// still feed the first build, so we don't waste work (or serve a half-onboarded
+// pool) on the way there; the build happens once, on demand, when the goal lands.
+const RATE_GOAL = 10;
+const readyForRecs = (userId) => getRatings(userId).length >= RATE_GOAL;
+
 // Call when a user's ratings/dismissals/settings change: marks their pools stale
-// and schedules a fresh prebuild for them in the background.
+// and (once they're past onboarding) schedules a fresh prebuild in the background.
 export function invalidateRecommendations(userId) {
   setUserSetting(userId, 'recGen', currentGen(userId) + 1);
-  schedulePrebuild(userId);
+  if (readyForRecs(userId)) schedulePrebuild(userId);
 }
 
-// Call once at startup to warm every user's caches if a TMDB key is configured.
+// Call once at startup to warm every onboarded user's caches if a TMDB key is set.
 export function warmRecommendations() {
   if (!tmdbConfigured()) return;
-  for (const u of listUsers()) schedulePrebuild(u.id, 1500);
+  for (const u of listUsers()) if (readyForRecs(u.id)) schedulePrebuild(u.id, 1500);
 }

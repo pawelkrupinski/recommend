@@ -295,9 +295,8 @@ async function loadSettings() {
   await loadProviders(s.country, s.providers);
   if (s.isAdmin) loadUsers();
 }
-async function loadProviders(region, selected = []) {
-  const box = $('#provider-list');
-  document.querySelectorAll('.src-note').forEach((n) => n.remove());
+async function loadProviders(region, selected = [], box = $('#provider-list')) {
+  box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
   box.innerHTML = '<p class="sub">Loading services…</p>';
   try {
     const { providers, source } = await api(`/api/providers?region=${region}`);
@@ -329,12 +328,27 @@ $('#save-keys').onclick = async () => {
   loadSettings();
 };
 $('#save-providers').onclick = async () => {
-  const ids = [...document.querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
+  const ids = [...$('#provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
   await saveSetting('providers', ids);
   $('#save-providers').textContent = '✓ Saved';
   setTimeout(() => ($('#save-providers').textContent = 'Save services'), 1500);
 };
 const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.stringify({ [k]: v }) });
+
+// Permanently delete the signed-in account and all its data, then reload to the
+// login gate (the server clears the session cookie in its response).
+$('#delete-account').onclick = async () => {
+  if (!confirm('Delete your account and all your ratings and preferences? This cannot be undone.')) return;
+  const btn = $('#delete-account');
+  btn.disabled = true; btn.textContent = 'Deleting…';
+  try {
+    await api('/api/me', { method: 'DELETE' });
+    location.href = '/';
+  } catch (e) {
+    btn.disabled = false; btn.textContent = 'Delete account';
+    alert('Could not delete account: ' + e.message);
+  }
+};
 
 // ---- admin: user management -----------------------------------------------
 async function loadUsers() {
@@ -372,6 +386,36 @@ function renderUserbar(user) {
     `${avatar}<span class="uname">${esc(user.name || user.email)}</span>`
     + `<a class="logout" href="/auth/logout">Sign out</a>`;
 }
+// ---- first-run onboarding -------------------------------------------------
+// Brand-new accounts (onboarded=false) must pick their streaming services before
+// reaching the app. Reuses the Settings provider picker against its own list.
+async function startOnboarding() {
+  const ob = $('#onboarding');
+  ob.classList.remove('hidden');
+  const sel = $('#ob-country');
+  sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === 'PL' ? 'selected' : ''}>${n}</option>`).join('');
+  // Services differ per country, so a country switch reloads with a clean slate.
+  sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'));
+  await loadProviders(sel.value, [], $('#ob-provider-list'));
+  $('#ob-continue').onclick = async () => {
+    const btn = $('#ob-continue');
+    const ids = [...$('#ob-provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
+    btn.disabled = true;
+    try {
+      await api('/api/settings', { method: 'POST', body: JSON.stringify({
+        country: sel.value, providers: ids, onboarded: true }) });
+    } catch (e) { btn.disabled = false; alert('⚠ ' + e.message); return; }
+    ob.classList.add('hidden');
+    enterApp();
+  };
+}
+
+function enterApp() {
+  $('#app').classList.remove('hidden');
+  renderUserbar(ME.user);
+  activateTab(parseHash().tab); // open whatever tab the URL points at (default Discover)
+}
+
 async function init() {
   try { ME = await api('/api/me'); } catch { ME = { user: null, providers: [] }; }
   if (!ME.user) {
@@ -381,8 +425,7 @@ async function init() {
   }
   // Drop any ?error= left over from a failed prior attempt, keep the tab hash.
   if (location.search) history.replaceState(null, '', location.pathname + location.hash);
-  $('#app').classList.remove('hidden');
-  renderUserbar(ME.user);
-  activateTab(parseHash().tab); // open whatever tab the URL points at (default Discover)
+  if (!ME.onboarded) return startOnboarding();
+  enterApp();
 }
 init();

@@ -8,14 +8,15 @@ import {
   getUserSetting, setUserSetting,
   getRatings, upsertRating, deleteRating, dismiss,
   markNotSeen, getNotSeen,
-  listUsers, setUserAdmin, getUserById,
+  listUsers, setUserAdmin, getUserById, deleteAccount,
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
 import { traktConfigured } from './trakt.js';
 import { importCsv } from './importers.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
-import { handleAuth, currentUser, enabledProviders } from './auth.js';
+import { handleAuth, currentUser, enabledProviders, sessionClearingCookie } from './auth.js';
+import { handleFacebook } from './facebook.js';
 
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
@@ -93,8 +94,17 @@ async function api(req, res, url) {
     if (p === '/api/me' && req.method === 'GET') {
       return json(res, 200, {
         user: user && { id: user.id, email: user.email, name: user.name, picture: user.picture, isAdmin: !!user.is_admin },
+        onboarded: user ? !!getUserSetting(user.id, 'onboarded', false) : false,
         providers: enabledProviders(),
       });
+    }
+
+    // ---- delete my account + all my data (right to erasure) -----------
+    if (p === '/api/me' && req.method === 'DELETE') {
+      if (!user) return json(res, 401, { error: 'login required' });
+      deleteAccount(user.id);
+      res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': sessionClearingCookie(req) });
+      return res.end(JSON.stringify({ ok: true }));
     }
 
     // Everything below requires a signed-in user.
@@ -123,6 +133,7 @@ async function api(req, res, url) {
       for (const [k, v] of Object.entries(body)) {
         if (keyFields.includes(k)) setSetting(k, v);
         else if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
+        else if (k === 'onboarded') setUserSetting(uid, k, !!v);
       }
       if (userScopeChanged) invalidateRecommendations(uid);
       return json(res, 200, { ok: true });
@@ -250,7 +261,10 @@ const server = createServer(async (req, res) => {
     const url = new URL(req.url, `http://localhost:${PORT}`);
     if (url.pathname === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
     if (url.pathname.startsWith('/auth/') && (await handleAuth(req, res, url))) return;
+    if (url.pathname.startsWith('/facebook/') && (await handleFacebook(req, res, url))) return;
     if (url.pathname.startsWith('/api/')) return api(req, res, url);
+    // Clean URL for the privacy policy (linked from the app and the Meta dashboard).
+    if (url.pathname === '/privacy') url.pathname = '/privacy.html';
     return serveStatic(req, res, url);
   } catch (e) {
     console.error('request error:', e.message);

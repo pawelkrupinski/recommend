@@ -53,15 +53,15 @@ function cookie(name, value, { maxAge, secure } = {}) {
 // ---- request origin -------------------------------------------------------
 // Prefer an explicit BASE_URL; otherwise derive from forwarded headers so OAuth
 // callback URLs match whatever host the user actually reached us on.
-function originOf(req) {
+export function requestOrigin(req) {
   if (config.baseUrl) return config.baseUrl;
   const proto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
     || (req.socket.encrypted ? 'https' : 'http');
   const host = (req.headers['x-forwarded-host'] || req.headers.host || `localhost:${config.port}`).split(',')[0].trim();
   return `${proto}://${host}`;
 }
-const isSecure = (req) => originOf(req).startsWith('https');
-const redirectUri = (req, provider) => `${originOf(req)}/auth/${provider}/callback`;
+const isSecure = (req) => requestOrigin(req).startsWith('https');
+const redirectUri = (req, provider) => `${requestOrigin(req)}/auth/${provider}/callback`;
 
 // ---- session API ----------------------------------------------------------
 export function currentUser(req) {
@@ -113,7 +113,7 @@ const PROVIDERS = {
         headers: { Authorization: `Bearer ${tok.access_token}` },
       }).then((r) => r.json());
       if (!u.email) throw new Error('Google did not return an email');
-      return { email: u.email, name: u.name, picture: u.picture, provider: 'google' };
+      return { email: u.email, name: u.name, picture: u.picture, provider: 'google', provider_sub: u.sub };
     },
   },
   facebook: {
@@ -141,13 +141,18 @@ const PROVIDERS = {
         access_token: tok.access_token,
       })).then((r) => r.json());
       if (!u.email) throw new Error('Facebook did not return an email (is it granted?)');
-      return { email: u.email, name: u.name, picture: u.picture?.data?.url, provider: 'facebook' };
+      return { email: u.email, name: u.name, picture: u.picture?.data?.url, provider: 'facebook', provider_sub: u.id };
     },
   },
 };
 
 export const enabledProviders = () =>
   Object.entries(PROVIDERS).filter(([, p]) => p.enabled()).map(([name]) => name);
+
+// A Set-Cookie value that clears the session cookie — used to log the user out
+// after they delete their own account from the app.
+export const sessionClearingCookie = (req) =>
+  cookie(SESSION_COOKIE, '', { maxAge: 0, secure: isSecure(req) });
 
 // ---- route handler --------------------------------------------------------
 // Handles /auth/*; returns true if it took the request, false otherwise.

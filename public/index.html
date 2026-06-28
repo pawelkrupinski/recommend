@@ -14,6 +14,21 @@
       <p class="sub">Sign in to get movie picks tuned to your taste.</p>
       <div id="login-buttons"></div>
       <p id="login-error" class="login-error"></p>
+      <p class="sub"><a href="/privacy" target="_blank" rel="noopener">Privacy policy</a></p>
+    </div>
+  </div>
+
+  <!-- First-run onboarding: pick streaming services before entering the app -->
+  <div id="onboarding" class="login hidden">
+    <div class="login-card onboarding-card">
+      <h1>🎬 Welcome</h1>
+      <p class="sub">Tell us where you watch so every pick is something you can actually stream tonight.</p>
+      <label>Country
+        <select id="ob-country"></select>
+      </label>
+      <div id="ob-provider-list" class="providers"></div>
+      <button id="ob-continue">Continue →</button>
+      <p class="sub">You can change these any time in Settings.</p>
     </div>
   </div>
 
@@ -92,6 +107,14 @@
           <div id="admin-users" class="admin-only hidden">
             <h3>Users <span class="sub">(admin)</span></h3>
             <div id="users-list"></div>
+          </div>
+
+          <!-- Account / privacy -->
+          <div class="danger-zone">
+            <h3>Your account</h3>
+            <p class="hint">Read our <a href="/privacy" target="_blank" rel="noopener">privacy policy</a>.
+              Deleting your account permanently erases your profile, ratings and preferences. This cannot be undone.</p>
+            <button id="delete-account" class="danger">Delete account</button>
           </div>
         </div>
       </section>

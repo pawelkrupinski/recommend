@@ -23,13 +23,17 @@ db.exec('PRAGMA busy_timeout = 5000');
 // straight away; existing single-user DBs are upgraded by migrate() below.
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    email      TEXT UNIQUE,
-    name       TEXT,
-    picture    TEXT,
-    provider   TEXT,
-    is_admin   INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    email        TEXT UNIQUE,
+    name         TEXT,
+    picture      TEXT,
+    provider     TEXT,
+    -- The login provider's stable user id (Google "sub" / Facebook user_id).
+    -- Needed to honour Facebook's data-deletion callback, which identifies the
+    -- user only by this id (never by email).
+    provider_sub TEXT,
+    is_admin     INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT DEFAULT (datetime('now'))
   );
 
   -- Global, admin-managed settings (API keys live here).
@@ -140,6 +144,15 @@ function migrate() {
 }
 migrate();
 
+// ---- migration: add users.provider_sub to pre-existing DBs ------------------
+// Older databases created the users table without this column. Add it once so
+// the Facebook data-deletion callback can match accounts by provider user id.
+function addProviderSubColumn() {
+  if (tableColumns('users').includes('provider_sub')) return;
+  db.exec('ALTER TABLE users ADD COLUMN provider_sub TEXT');
+}
+addProviderSubColumn();
+
 // ---- backfill: grandfather existing users past first-run onboarding --------
 // The streaming-services picker only gates genuinely new accounts. Mark every
 // user that exists at upgrade time as onboarded so they aren't sent back through
@@ -163,6 +176,13 @@ export function getUserByEmail(email) {
 export function getUserById(id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
 }
+// Look up a user by their login provider's stable id. Used by the Facebook
+// data-deletion callback, which only ever sends us the provider user id.
+export function getUserByProviderSub(provider, sub) {
+  if (!sub) return undefined;
+  return db.prepare('SELECT * FROM users WHERE provider = ? AND provider_sub = ?')
+    .get(provider, String(sub));
+}
 export function listUsers() {
   return db.prepare('SELECT id, email, name, picture, provider, is_admin, created_at FROM users ORDER BY created_at').all();
 }
@@ -172,21 +192,33 @@ export function countUsers() {
 // Create or update a user from an OAuth login. Allowlisted emails are always
 // admins; otherwise a new user defaults to non-admin and existing admin toggles
 // are preserved.
-export function upsertUserFromLogin({ email, name, picture, provider }) {
+export function upsertUserFromLogin({ email, name, picture, provider, provider_sub }) {
   email = String(email).toLowerCase();
+  const sub = provider_sub != null ? String(provider_sub) : null;
   const existing = getUserByEmail(email);
   if (existing) {
-    db.prepare('UPDATE users SET name = ?, picture = ?, provider = ?, is_admin = ? WHERE id = ?')
+    db.prepare('UPDATE users SET name = ?, picture = ?, provider = ?, provider_sub = ?, is_admin = ? WHERE id = ?')
       .run(name ?? existing.name, picture ?? existing.picture, provider ?? existing.provider,
-        isAdminEmail(email) ? 1 : existing.is_admin, existing.id);
+        sub ?? existing.provider_sub, isAdminEmail(email) ? 1 : existing.is_admin, existing.id);
     return getUserById(existing.id);
   }
-  db.prepare('INSERT INTO users (email, name, picture, provider, is_admin) VALUES (?, ?, ?, ?, ?)')
-    .run(email, name ?? null, picture ?? null, provider ?? null, isAdminEmail(email) ? 1 : 0);
+  db.prepare('INSERT INTO users (email, name, picture, provider, provider_sub, is_admin) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(email, name ?? null, picture ?? null, provider ?? null, sub, isAdminEmail(email) ? 1 : 0);
   return getUserByEmail(email);
 }
 export function setUserAdmin(userId, isAdmin) {
   db.prepare('UPDATE users SET is_admin = ? WHERE id = ?').run(isAdmin ? 1 : 0, userId);
+}
+// Permanently delete a user and every per-user row we hold for them. Used by
+// both the in-app "delete account" action and the Facebook data-deletion
+// callback. Idempotent: a no-op (returns false) if the user no longer exists.
+export function deleteAccount(userId) {
+  if (!getUserById(userId)) return false;
+  for (const table of ['ratings', 'dismissed', 'not_seen', 'user_settings']) {
+    db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+  }
+  db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  return true;
 }
 
 // ---- global settings ------------------------------------------------------

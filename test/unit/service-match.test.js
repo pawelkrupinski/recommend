@@ -4,7 +4,7 @@
 // name match misses and the click used to fall back to a generic TMDB page.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { brandKey, matchServiceLink } from '../../public/service-match.js';
+import { brandKey, matchServiceLink, serviceSearchLink } from '../../public/service-match.js';
 
 test('brandKey collapses TMDB tier/reseller variants onto one brand', () => {
   assert.equal(brandKey('Paramount Plus Premium'), 'paramount');
@@ -40,6 +40,31 @@ test('matchServiceLink falls back to a brand match when the id differs', () => {
 test('matchServiceLink bridges a Showtime icon to the Paramount+ link', () => {
   const links = [{ service: 'Paramount+', providerId: 531, link: 'https://paramount/x' }];
   assert.equal(matchServiceLink(links, { sid: 37, sname: 'Showtime' }), 'https://paramount/x');
+});
+
+test('serviceSearchLink builds a per-service search URL for the title', () => {
+  assert.equal(serviceSearchLink('HBO Max', 'Ex Machina'), 'https://play.hbomax.com/search?q=Ex%20Machina');
+  assert.equal(serviceSearchLink('Max', 'Dune'), 'https://play.hbomax.com/search?q=Dune');
+  assert.equal(serviceSearchLink('Netflix', 'Heat'), 'https://www.netflix.com/search?q=Heat');
+  assert.equal(serviceSearchLink('Amazon Prime Video', 'Heat'), 'https://www.primevideo.com/search?q=Heat');
+  assert.equal(serviceSearchLink('Apple TV Plus', 'Heat'), 'https://tv.apple.com/search?q=Heat');
+  assert.equal(serviceSearchLink('Disney Plus', 'Heat'), 'https://www.disneyplus.com/search?q=Heat');
+  assert.equal(serviceSearchLink('Hulu', 'Heat'), 'https://www.hulu.com/search?q=Heat');
+});
+
+test('serviceSearchLink keeps SkyShowtime off Paramount+ (the brandKey collision)', () => {
+  // brandKey('SkyShowtime') folds to 'paramount' because it contains "showtime";
+  // the search fallback must NOT — it should hit SkyShowtime's own search.
+  assert.equal(serviceSearchLink('SkyShowtime', 'Heat'), 'https://www.skyshowtime.com/search?q=Heat');
+  // Real Showtime still folds into Paramount+ (it ships inside it).
+  assert.equal(serviceSearchLink('Showtime', 'Heat'), 'https://www.paramountplus.com/search?q=Heat');
+});
+
+test('serviceSearchLink returns null for unknown services, Cinemax, or no title', () => {
+  assert.equal(serviceSearchLink('Cinemax', 'Heat'), null); // not HBO Max
+  assert.equal(serviceSearchLink('Some Obscure Channel', 'Heat'), null);
+  assert.equal(serviceSearchLink('Netflix', ''), null);
+  assert.equal(serviceSearchLink('Netflix', undefined), null);
 });
 
 test('matchServiceLink returns null when nothing is a confident match', () => {

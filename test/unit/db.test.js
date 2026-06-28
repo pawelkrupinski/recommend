@@ -120,6 +120,37 @@ test('deleteAccount cascades all per-user rows and is idempotent', () => {
   assert.equal(db.deleteAccount(u.id), false, 'second delete is a no-op');
 });
 
+test('createAnonUser makes a fresh, email-less account each call', () => {
+  const a = db.createAnonUser();
+  const b = db.createAnonUser();
+  assert.ok(a.id && b.id && a.id !== b.id, 'distinct rows');
+  assert.equal(a.email, null, 'anonymous users carry no email');
+  assert.equal(a.provider, 'anon');
+});
+
+test('mergeUserData folds rows in without clobbering the target', () => {
+  const anon = db.createAnonUser(), acct = newUser();
+  // Target already has its own take on tmdb 1 and a country; anon adds tmdb 2.
+  db.upsertRating({ user_id: acct.id, tmdb_id: 1, rating: 4, title: 'Keep mine' });
+  db.setUserSetting(acct.id, 'country', 'US');
+  db.upsertRating({ user_id: anon.id, tmdb_id: 1, rating: 9, title: 'Anon dupe' });
+  db.upsertRating({ user_id: anon.id, tmdb_id: 2, rating: 8, title: 'Anon new' });
+  db.addToWatchlist({ user_id: anon.id, tmdb_id: 3, title: 'Anon saved' });
+  db.setUserSetting(anon.id, 'country', 'PL');
+  db.setUserSetting(anon.id, 'providers', [8]);
+
+  const moved = db.mergeUserData(anon.id, acct.id);
+  assert.ok(moved > 0, 'reports how many rows came across');
+
+  const ratings = db.getRatings(acct.id).sort((x, y) => x.tmdb_id - y.tmdb_id);
+  assert.equal(ratings.length, 2, 'anon-only rating added, conflicting one not duplicated');
+  assert.equal(ratings[0].title, 'Keep mine', "target's own rating is preserved on conflict");
+  assert.equal(ratings[1].title, 'Anon new');
+  assert.equal(db.getWatchlist(acct.id).length, 1, 'anon watchlist folded in');
+  assert.equal(db.getUserSetting(acct.id, 'country'), 'US', 'existing setting not overwritten');
+  assert.deepEqual(db.getUserSetting(acct.id, 'providers'), [8], 'new setting carried over');
+});
+
 test('cache honours maxAge expiry', () => {
   db.cacheSet('k', { v: 1 });
   assert.deepEqual(db.cacheGet('k'), { v: 1 }, 'no maxAge → always fresh');

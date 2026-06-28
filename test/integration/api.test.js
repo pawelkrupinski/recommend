@@ -67,21 +67,35 @@ test('data endpoints work anonymously — no login required', async () => {
   assert.equal(r.data.ratings.length, 1, 'the anonymous rating persisted via the session cookie');
 });
 
-test('signing in folds the anonymous session into the account', async () => {
+test('signing in to a new (empty) account adopts the anonymous session', async () => {
   const c = client();
   // Build up an anonymous session first…
   await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 77, rating: 9, title: 'Pre-login Fave' } });
   await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 88, title: 'Saved Anon' } });
-  // …then sign in (the client keeps the anon cookie across the dev-login call).
+  // …then sign in to a brand-new account (the client keeps the anon cookie).
   await c.login({ email: 'merger@example.com' });
   const me = await c.json('/api/me');
   assert.equal(me.data.anonymous, false, 'now a real account');
   assert.equal(me.data.user.email, 'merger@example.com');
   const ratings = await c.json('/api/ratings');
-  assert.equal(ratings.data.ratings.length, 1, 'anonymous rating carried into the account');
+  assert.equal(ratings.data.ratings.length, 1, 'anonymous rating carried into the empty account');
   assert.equal(ratings.data.ratings[0].title, 'Pre-login Fave');
   const wl = await c.json('/api/watchlist');
   assert.equal(wl.data.watchlist.length, 1, 'anonymous watchlist carried over');
+});
+
+test('signing in to an account with content discards the anonymous session', async () => {
+  // Establish an account that already has a rating of its own.
+  const established = await client().login({ email: 'established@example.com' });
+  await established.json('/api/ratings', { method: 'POST', body: { tmdb_id: 111, rating: 7, title: 'Account Film' } });
+  // A different browser builds an anonymous session, then signs in to that account.
+  const fresh = client();
+  await fresh.json('/api/ratings', { method: 'POST', body: { tmdb_id: 222, rating: 10, title: 'Anon Film' } });
+  await fresh.login({ email: 'established@example.com' });
+  // The account's own data wins; the anonymous rating is thrown away, not merged.
+  const ratings = await fresh.json('/api/ratings');
+  assert.deepEqual(ratings.data.ratings.map((r) => r.tmdb_id), [111],
+    'only the account rating remains — the anonymous one was discarded');
 });
 
 test('dev-login establishes a session usable by /api/me', async () => {

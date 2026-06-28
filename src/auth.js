@@ -7,7 +7,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from './env.js';
 import { upsertUserFromLogin, getUserById, setUserAdmin, setUserSetting,
-  createAnonUser, mergeUserData, deleteAccount } from './db.js';
+  createAnonUser, mergeUserData, deleteAccount, hasUserContent } from './db.js';
 import { invalidateRecommendations } from './taste.js';
 import { fetchWithTimeout } from './fetch.js';
 
@@ -83,15 +83,20 @@ export function getOrCreateUser(req, res) {
   setSession(res, req, user.id);
   return user;
 }
-// Complete a sign-in: upsert the real account, fold in any anonymous session the
-// visitor built before logging in (so pre-login ratings/saves aren't lost), then
-// start a session for the real user. Shared by the dev-login bypass and the real
-// OAuth callback. Returns the real user.
+// Complete a sign-in: upsert the real account, reconcile it with any anonymous
+// session the visitor built before logging in, then start a session for the real
+// user. Shared by the dev-login bypass and the real OAuth callback.
+//
+// The account's own data wins: an account that already has content (ratings or a
+// watchlist) keeps it and the anonymous session is discarded outright. Only an
+// account with no content of its own adopts the anonymous data — so a brand-new
+// sign-up keeps what it just rated, without ever clobbering an established
+// account. Either way the anonymous user (and its cookie identity) is deleted.
 function signInAs(req, res, profile, extraCookies = []) {
   const anon = currentUser(req);
   const user = upsertUserFromLogin(profile);
   if (anon?.provider === 'anon' && anon.id !== user.id) {
-    if (mergeUserData(anon.id, user.id)) invalidateRecommendations(user.id);
+    if (!hasUserContent(user.id) && mergeUserData(anon.id, user.id)) invalidateRecommendations(user.id);
     deleteAccount(anon.id);
   }
   setSession(res, req, user.id, extraCookies);

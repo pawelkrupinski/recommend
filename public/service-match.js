@@ -32,25 +32,32 @@ export function brandKey(name) {
 // dumping the user on a generic TMDB watch page (the old fallback) — and most of
 // these hosts are iOS Universal Link / Android App Link enabled, so on mobile
 // the search opens in the native app (same handoff as the title deep links).
-// All services standardised on `?q=`. Matched on the normalised service name,
-// not brandKey: brandKey folds "Showtime" into Paramount+, which would wrongly
-// catch "SkyShowtime" too, so SkyShowtime is tested before Paramount/Showtime.
-// "Max" is exact (so Cinemax never matches HBO Max).
-export function serviceSearchLink(sname, title) {
+// Most services standardised on `/search?q=`. Matched on the normalised service
+// name, not brandKey: brandKey folds "Showtime" into Paramount+, which would
+// wrongly catch "SkyShowtime" too, so SkyShowtime is tested before
+// Paramount/Showtime. "Max" is exact (so Cinemax never matches HBO Max).
+// `region` is the user's country (e.g. "PL"); only Apple needs it.
+export function serviceSearchLink(sname, title, region) {
   if (!title) return null;
   const n = norm(sname);
+  const q = encodeURIComponent(title);
+  // Apple TV's web catalog search is shaped unlike the rest: a country-storefront
+  // path segment plus a `term` query param, e.g. tv.apple.com/us/search?term=Heat.
+  // Default the storefront to "us" when we don't know the user's country.
+  if (n.includes('appletv') || n.includes('apple')) {
+    return `https://tv.apple.com/${(region || 'us').toLowerCase()}/search?term=${q}`;
+  }
   const host =
     n.includes('hbo') || n === 'max'                  ? 'play.hbomax.com' :
     n.includes('netflix')                             ? 'www.netflix.com' :
     n.includes('primevideo') || n.includes('amazon')  ? 'www.primevideo.com' :
-    n.includes('appletv') || n.includes('apple')      ? 'tv.apple.com' :
     n.includes('disney')                              ? 'www.disneyplus.com' :
     n.includes('skyshowtime')                         ? 'www.skyshowtime.com' :
     n.includes('paramount') || n.includes('showtime') ? 'www.paramountplus.com' :
     n.includes('hulu')                                ? 'www.hulu.com' :
     n.includes('roku')                                ? 'www.roku.com' :
     null;
-  return host ? `https://${host}/search?q=${encodeURIComponent(title)}` : null;
+  return host ? `https://${host}/search?q=${q}` : null;
 }
 
 // Given MotN's deep links (each `{ service, providerId, link, ... }`) and the

@@ -329,7 +329,7 @@ function wireServiceLinks(el, m) {
       try {
         const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
         const url = matchServiceLink(w.deepLinks, { sid: Number(a.dataset.sid), sname: a.dataset.sname })
-          || serviceSearchLink(a.dataset.sname, m.title);
+          || serviceSearchLink(a.dataset.sname, m.title, w.region);
         if (url) { location.href = url; return; }
       } catch { /* fall through to the modal */ }
       openWhere(m);
@@ -493,7 +493,7 @@ async function openWhere(m) {
     const links = (w.deepLinks && w.deepLinks.length)
       ? w.deepLinks.map((o) => `<a href="${o.link}"${appTab}>▶ ${esc(o.service)} <span class="sub">${o.type}</span></a>`).join('')
       : (w.flatrate || []).map((f) => {
-          const search = serviceSearchLink(f.name, m.title);
+          const search = serviceSearchLink(f.name, m.title, w.region);
           const tab = search ? appTab : ' target="_blank"';
           return `<a href="${search || w.tmdbLink || '#'}"${tab}><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`;
         }).join('');

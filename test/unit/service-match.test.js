@@ -47,9 +47,16 @@ test('serviceSearchLink builds a per-service search URL for the title', () => {
   assert.equal(serviceSearchLink('Max', 'Dune'), 'https://play.hbomax.com/search?q=Dune');
   assert.equal(serviceSearchLink('Netflix', 'Heat'), 'https://www.netflix.com/search?q=Heat');
   assert.equal(serviceSearchLink('Amazon Prime Video', 'Heat'), 'https://www.primevideo.com/search?q=Heat');
-  assert.equal(serviceSearchLink('Apple TV Plus', 'Heat'), 'https://tv.apple.com/search?q=Heat');
   assert.equal(serviceSearchLink('Disney Plus', 'Heat'), 'https://www.disneyplus.com/search?q=Heat');
   assert.equal(serviceSearchLink('Hulu', 'Heat'), 'https://www.hulu.com/search?q=Heat');
+});
+
+test('serviceSearchLink: Apple TV uses a country storefront path + term=', () => {
+  // Apple's web search is shaped unlike the rest: /<cc>/search?term=. The region
+  // is the user's country, lower-cased; absent, it defaults to the US storefront.
+  assert.equal(serviceSearchLink('Apple TV Plus', 'Heat'), 'https://tv.apple.com/us/search?term=Heat');
+  assert.equal(serviceSearchLink('Apple TV', 'Dune', 'PL'), 'https://tv.apple.com/pl/search?term=Dune');
+  assert.equal(serviceSearchLink('Apple TV Plus', 'Ex Machina', 'GB'), 'https://tv.apple.com/gb/search?term=Ex%20Machina');
 });
 
 test('serviceSearchLink keeps SkyShowtime off Paramount+ (the brandKey collision)', () => {

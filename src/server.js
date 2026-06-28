@@ -303,7 +303,7 @@ async function api(req, res, url) {
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
-      return json(req, res, 200, { tmdbLink: r.link || null, flatrate, deepLinks });
+      return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks });
     }
 
     return json(req, res, 404, { error: 'not found' });

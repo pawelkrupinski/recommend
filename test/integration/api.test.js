@@ -174,6 +174,14 @@ test('watchlist: backfill enriches titles saved without card fields', async () =
   assert.equal(w.title, 'Stub Streamable One', 'title untouched by the backfill');
 });
 
+test('where-to-watch reports the user region so search links can target the right storefront', async () => {
+  const c = await client().login({ email: 'where@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { country: 'GB' } });
+  const { data } = await c.json('/api/where?id=201&media_type=movie');
+  assert.equal(data.region, 'GB', "the user's country drives the where lookup and Apple storefront");
+  assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty without a MotN key)');
+});
+
 test('rate-queue hides rated, dismissed and not-seen titles (dismissed regression)', async () => {
   const c = await client().login({ email: 'queue@example.com' });
   // The acclaimed seed (provider-less Discover) returns ids 101..105.

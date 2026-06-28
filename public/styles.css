@@ -108,14 +108,23 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rating-num { min-width: 2.8em; font-size: 14px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .card .skip { margin: 0 10px 10px; font-size: 12px; padding: 4px 8px; }
 
-/* Rate page: keep every card identical height so the "Haven't seen" button
-   stays at the same spot as titles cycle — reserve 2 title lines and pin the
-   button to the bottom. */
-#rate-grid .card .title {
+/* Rate + Discover cards: keep every card identical height so the action button
+   ("Haven't seen" / "Not interested") stays at the same spot as titles cycle,
+   letting you dismiss pick after pick without the button sliding out from under
+   the cursor. Clamp the title to 2 lines on both grids. */
+#rate-grid .card .title,
+#recs .card .title {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; height: calc(1.3em * 2);
 }
 #rate-grid .card .skip { margin-top: auto; }
+
+/* Discover cards carry more variable meta than Rate cards — optional IMDb /
+   Metacritic badges and a genre line — so reserve a fixed meta height. That
+   pins the "Not interested / seen it" button to a constant offset regardless of
+   which badges a given pick happens to have (112px fits a 2-line title, year,
+   badges and genres; shorter cards just leave the slack as empty space). */
+#recs .card .meta { height: 112px; overflow: hidden; }
 
 /* settings */
 .form { max-width: 540px; display: flex; flex-direction: column; gap: 14px; }

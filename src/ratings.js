@@ -121,6 +121,9 @@ export async function metacriticScore(title) {
 // fetched concurrently but capped so we don't hammer either source. Mutates and
 // returns `items`. Failures degrade to null — a missing rating just hides its badge.
 export async function attachRatings(items, concurrency = 6) {
+  // In test mode skip the live IMDb/Metacritic lookups entirely — they'd hit the
+  // network and slow the suite; a missing rating just hides its badge anyway.
+  if (process.env.TMDB_STUB === '1') return items;
   let next = 0;
   async function worker() {
     while (next < items.length) {

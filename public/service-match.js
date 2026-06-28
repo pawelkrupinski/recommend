@@ -27,6 +27,32 @@ export function brandKey(name) {
   return n;
 }
 
+// Fallback when MotN has no direct title link for a service the user has: deep
+// link into that service's own catalog SEARCH for the title. Far better than
+// dumping the user on a generic TMDB watch page (the old fallback) — and most of
+// these hosts are iOS Universal Link / Android App Link enabled, so on mobile
+// the search opens in the native app (same handoff as the title deep links).
+// All services standardised on `?q=`. Matched on the normalised service name,
+// not brandKey: brandKey folds "Showtime" into Paramount+, which would wrongly
+// catch "SkyShowtime" too, so SkyShowtime is tested before Paramount/Showtime.
+// "Max" is exact (so Cinemax never matches HBO Max).
+export function serviceSearchLink(sname, title) {
+  if (!title) return null;
+  const n = norm(sname);
+  const host =
+    n.includes('hbo') || n === 'max'                  ? 'play.hbomax.com' :
+    n.includes('netflix')                             ? 'www.netflix.com' :
+    n.includes('primevideo') || n.includes('amazon')  ? 'www.primevideo.com' :
+    n.includes('appletv') || n.includes('apple')      ? 'tv.apple.com' :
+    n.includes('disney')                              ? 'www.disneyplus.com' :
+    n.includes('skyshowtime')                         ? 'www.skyshowtime.com' :
+    n.includes('paramount') || n.includes('showtime') ? 'www.paramountplus.com' :
+    n.includes('hulu')                                ? 'www.hulu.com' :
+    n.includes('roku')                                ? 'www.roku.com' :
+    null;
+  return host ? `https://${host}/search?q=${encodeURIComponent(title)}` : null;
+}
+
 // Given MotN's deep links (each `{ service, providerId, link, ... }`) and the
 // clicked icon's `{ sid, sname }`, return the URL to open — or null when nothing
 // is a confident match, so the caller can show every option instead of a

@@ -72,10 +72,15 @@ export async function streamingOptions(tmdbId, mediaType, country) {
 // needed) — as long as the link is followed in the same tab (see public/app.js).
 // A few services register a *different* host than the one MotN hands back;
 // rewrite those so the app handoff still fires.
-function appLink(link) {
+export function appLink(link) {
   if (!link) return link;
-  // Max: app links live on play.max.com; www.max.com has no AASA/assetlinks.
-  link = link.replace(/^(https:\/\/)(?:www\.)?max\.com\//, '$1play.max.com/');
+  // HBO Max: the app-link host is play.hbomax.com — its AASA registers the
+  // HBO Max app (com.wbd.hbomax) for path *. After the 2025 "Max" → "HBO Max"
+  // rebrand reversion, *.max.com only 301-redirects here (play.max.com →
+  // play.hbomax.com), and a redirect breaks the iOS Universal Link / Android
+  // App Link handoff. MotN already returns play.hbomax.com today, but normalise
+  // any lingering *.max.com link to it so the app still opens.
+  link = link.replace(/^https:\/\/(?:www\.|play\.)?max\.com\//, 'https://play.hbomax.com/');
   // Prime Video: amazon.<tld>/gp/video/detail/{ASIN} is the *shopping* app's
   // domain and won't open the Prime Video app. app.primevideo.com has a
   // wildcard AASA + Android assetlinks for the production app, so /detail/{ASIN}

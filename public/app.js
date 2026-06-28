@@ -1,4 +1,4 @@
-import { matchServiceLink } from '/service-match.js';
+import { matchServiceLink, serviceSearchLink } from '/service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
@@ -299,9 +299,10 @@ function serviceIcons(m) {
 // MotN lookup the poster's modal makes), so the picks grid spends no streaming
 // quota up front. matchServiceLink bridges TMDB's tier/reseller provider names
 // to MotN's plain ones (see service-match.js); we navigate in-tab so the
-// streaming app's Universal Link can take over on mobile. When no service link
-// is a confident match, open the where-to-watch modal with every option rather
-// than dumping the user on a generic TMDB page.
+// streaming app's Universal Link can take over on mobile. When MotN has no
+// direct title link for this service, fall back to that service's own search for
+// the title (serviceSearchLink) rather than dumping the user on a generic TMDB
+// page; only if even the service is unknown do we open the where-to-watch modal.
 function wireServiceLinks(el, m) {
   el.querySelectorAll('.svc-ico').forEach((a) => {
     a.onclick = async (ev) => {
@@ -309,7 +310,8 @@ function wireServiceLinks(el, m) {
       ev.stopPropagation();
       try {
         const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
-        const url = matchServiceLink(w.deepLinks, { sid: Number(a.dataset.sid), sname: a.dataset.sname });
+        const url = matchServiceLink(w.deepLinks, { sid: Number(a.dataset.sid), sname: a.dataset.sname })
+          || serviceSearchLink(a.dataset.sname, m.title);
         if (url) { location.href = url; return; }
       } catch { /* fall through to the modal */ }
       openWhere(m);
@@ -464,9 +466,16 @@ async function openWhere(m) {
     // breaks that handoff and lands the user in the mobile browser instead.
     // On desktop keep _blank so the recommend tab stays open.
     const appTab = matchMedia('(pointer: coarse)').matches ? '' : ' target="_blank" rel="noopener"';
+    // No MotN deep links: link each TMDB-listed service to its own search for
+    // the title (same app-handoff tab rules); only services we don't recognise
+    // fall back to the generic TMDB watch page.
     const links = (w.deepLinks && w.deepLinks.length)
       ? w.deepLinks.map((o) => `<a href="${o.link}"${appTab}>▶ ${esc(o.service)} <span class="sub">${o.type}</span></a>`).join('')
-      : (w.flatrate || []).map((f) => `<a href="${w.tmdbLink || '#'}" target="_blank"><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`).join('');
+      : (w.flatrate || []).map((f) => {
+          const search = serviceSearchLink(f.name, m.title);
+          const tab = search ? appTab : ' target="_blank"';
+          return `<a href="${search || w.tmdbLink || '#'}"${tab}><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`;
+        }).join('');
     body.innerHTML = `${movieHeader(m)}
       <div class="where">${links || `<p class="sub">${t('modal.notAvailable')}</p>`}</div>
       <p style="margin-top:18px"><button id="dismiss">${t('card.notInterested')}</button></p>`;

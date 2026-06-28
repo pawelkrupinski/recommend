@@ -6,10 +6,10 @@
 # Backblaze B2, both free) and restores it on boot. See litestream.yml + DEPLOY.md.
 services:
   - type: web
-    name: recommend
+    name: filmowo
     runtime: docker
     env: docker
-    region: oregon
+    region: frankfurt
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health

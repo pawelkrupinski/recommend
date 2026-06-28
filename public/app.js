@@ -81,9 +81,11 @@ $('#genre-filter').onchange = () => {
 // background as ratings arrived — are swapped in seamlessly: no spinner, no empty
 // "rate some films first" screen.
 const RATE_GOAL = 10;
+const QUEUE_MIN = 15;        // keep at least this many cards in either rate grid
 let discoverMode = null;     // 'rate' (onboarding) | 'recs' (personalized picks)
 let obRated = 0;             // how many films the user has rated (drives the countdown)
-let obPage = 0, obGone = 0;  // onboarding rate-queue paging + churn counter
+let obPage = 0;              // onboarding rate-queue paging
+let obFilling = false;       // guard against overlapping refills
 let swapping = false;        // guard so the background recs build/swap kicks off once
 
 // The genre filter and Refresh button only make sense for the picks grid; hide
@@ -122,28 +124,34 @@ function updateOnboardInfo() {
 }
 
 // Pull popular titles to rate into the Discover grid, skipping pages already
-// fully covered by rated/skipped titles (capped so we never spin forever).
+// fully covered by rated/skipped titles, until the grid holds at least QUEUE_MIN
+// cards (capped so we never spin forever). The guard stops overlapping refills
+// from racing as several cards resolve in quick succession.
 async function fillOnboardQueue(reset) {
+  if (obFilling) return;
+  obFilling = true;
   const grid = $('#recs');
-  if (reset) { obPage = 0; obGone = 0; }
+  if (reset) { obPage = 0; grid.innerHTML = ''; }
   let added = 0;
-  for (let tries = 0; tries < 10 && !added; tries++) {
-    obPage++;
-    const { items } = await api(`/api/rate-queue?page=${obPage}`);
-    for (const m of items) grid.append(queueCard(m, onboardResolve));
-    added = items.length;
-  }
+  try {
+    for (let tries = 0; tries < 10 && grid.children.length < QUEUE_MIN; tries++) {
+      obPage++;
+      const { items } = await api(`/api/rate-queue?page=${obPage}`);
+      for (const m of items) grid.append(queueCard(m, onboardResolve));
+      added += items.length;
+    }
+  } finally { obFilling = false; }
   if (!added && reset) $('#discover-info').textContent =
     "You've rated all the popular titles — open the Rate tab for more, or check back later.";
 }
 
 // A card in the onboarding queue resolved (rated or "haven't seen"): track the
-// count, top the grid back up, and once the goal is hit, swap in the picks.
+// count, top the grid back up if it dipped below QUEUE_MIN, and once the goal is
+// hit, swap in the picks.
 function onboardResolve(el, kind) {
   el.remove();
   if (kind === 'rated') { obRated++; updateOnboardInfo(); maybeSwap(); }
-  const grid = $('#recs');
-  if (++obGone % 5 === 0 || !grid.children.length) fillOnboardQueue(false);
+  if ($('#recs').children.length < QUEUE_MIN) fillOnboardQueue(false);
 }
 
 // Goal reached: fetch the personalized picks in the background (the engine has
@@ -307,27 +315,33 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---- rate -----------------------------------------------------------------
-let ratePage = 0, gone = 0;
-async function loadRateQueue(reset) {
-  if (reset) { ratePage = 0; gone = 0; $('#rate-grid').innerHTML = ''; }
+let ratePage = 0, rateFilling = false;
+async function loadRateQueue(reset, target = QUEUE_MIN) {
+  if (rateFilling) return;
+  rateFilling = true;
+  const grid = $('#rate-grid');
+  if (reset) { ratePage = 0; grid.innerHTML = ''; }
   // Pages fully covered by rated/"haven't seen" titles come back empty, so keep
-  // advancing until we get cards (cap the walk so we never spin forever).
+  // advancing until the grid holds at least `target` cards (cap the walk so we
+  // never spin forever).
   let added = 0;
-  for (let tries = 0; tries < 10 && !added; tries++) {
-    ratePage++;
-    const { items } = await api(`/api/rate-queue?page=${ratePage}`);
-    for (const m of items) $('#rate-grid').append(rateCard(m));
-    added = items.length;
-  }
+  try {
+    for (let tries = 0; tries < 10 && grid.children.length < target; tries++) {
+      ratePage++;
+      const { items } = await api(`/api/rate-queue?page=${ratePage}`);
+      for (const m of items) grid.append(rateCard(m));
+      added += items.length;
+    }
+  } finally { rateFilling = false; }
   if (!added && reset) {
-    $('#rate-grid').innerHTML = '<p class="empty">You’ve rated or skipped all the popular titles. Check back later for new releases.</p>';
+    grid.innerHTML = '<p class="empty">You’ve rated or skipped all the popular titles. Check back later for new releases.</p>';
   }
 }
-// A card leaves the queue when rated or marked unseen. Every 5 that go, pull a
-// fresh batch of new titles so the grid keeps refilling.
+// A card leaves the queue when rated or marked unseen. Top the grid back up
+// whenever it dips below QUEUE_MIN so it stays full.
 function cardGone(el) {
   el.remove();
-  if (++gone % 5 === 0) loadRateQueue(false);
+  if ($('#rate-grid').children.length < QUEUE_MIN) loadRateQueue(false);
 }
 const rateCard = (m) => queueCard(m, (el) => cardGone(el));
 // One rate-and-skip card: 1–10 stars (rating/10) + a "Haven't seen" button.
@@ -365,7 +379,8 @@ function queueCard(m, onResolve) {
   };
   return el;
 }
-$('#more-rate').onclick = () => loadRateQueue(false);
+// "Load more" always pulls at least one extra page, even when the grid is full.
+$('#more-rate').onclick = () => loadRateQueue(false, $('#rate-grid').children.length + 1);
 
 // ---- my ratings -----------------------------------------------------------
 async function loadRatings() {

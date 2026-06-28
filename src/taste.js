@@ -7,6 +7,7 @@
 import { details, recommendations, discover, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
 import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
+import { allowedOriginSet } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { traktConfigured, relatedMovies } from './trakt.js';
 import { log } from './log.js';
@@ -15,6 +16,34 @@ import { log } from './log.js';
 // genres are broad (weak). Tunable.
 const FAMILY_WEIGHT = { keyword: 1.0, director: 1.4, cast: 0.5, genre: 0.6, decade: 0.4 };
 const CAST_DEPTH = 5; // how many top-billed actors to consider
+
+// TMDB company ids of the classic Hollywood majors and their in-house labels.
+// The "indie" filter, when on, drops any title carrying one of these — our
+// proxy for "not a major-studio production", since TMDB has no indie flag.
+// Verified against live TMDB production_companies (see geo/taste tests); extend
+// as new majors/labels appear.
+const MAJOR_STUDIO_IDS = new Set([
+  2,      // Walt Disney Pictures
+  1,      // Lucasfilm
+  3,      // Pixar
+  6125,   // Walt Disney Animation Studios
+  420,    // Marvel Studios
+  7505,   // Marvel Entertainment
+  174,    // Warner Bros. Pictures
+  12,     // New Line Cinema
+  33,     // Universal Pictures
+  4,      // Paramount Pictures
+  5,      // Columbia Pictures
+  34,     // Sony Pictures
+  2251,   // Sony Pictures Animation
+  25,     // 20th Century Fox
+  127928, // 20th Century Studios
+  21,     // Metro-Goldwyn-Mayer
+  1632,   // Lionsgate
+  7,      // DreamWorks Pictures
+  521,    // DreamWorks Animation
+  923,    // Legendary Pictures
+]);
 // How much a Trakt collaborative hit can lift a score. Additive (not a re-weight)
 // so candidates Trakt never mentions aren't penalised; saturates ~COLLAB_WEIGHT.
 const COLLAB_WEIGHT = 15;
@@ -90,6 +119,47 @@ function scoreMovie(movie, profile, collabHits = 0) {
   return Math.min(100, Math.round(base + collab));
 }
 
+// ---- origin / indie candidate filters -------------------------------------
+// Hard filters applied to every candidate (across all three pools) the same way
+// the genre filter is — a non-matching title is dropped, not just down-ranked.
+// All operate on TMDB's /movie detail shape (production_countries, companies).
+
+// True when the title's origin satisfies the user's geography filter:
+//  - excludeUs drops anything with the US among its production countries (the
+//    "non-US / non-Hollywood" toggle), and
+//  - a non-empty `allowed` set requires at least one production country in it
+//    (the continent + country picker; empty set = no country restriction).
+export function matchesOrigin(movie, { allowed, excludeUs } = {}) {
+  const countries = (movie.production_countries || []).map((c) => c.iso_3166_1);
+  if (excludeUs && countries.includes('US')) return false;
+  if (allowed?.size && !countries.some((c) => allowed.has(c))) return false;
+  return true;
+}
+
+// True when no production company is one of the Hollywood majors — our "indie"
+// proxy. A title with no listed companies counts as indie (unknown ≠ major).
+export function isIndie(movie) {
+  return !(movie.production_companies || []).some((c) => MAJOR_STUDIO_IDS.has(c.id));
+}
+
+// Resolve a user's saved origin/indie preferences into the shape the pool
+// builder and cache key consume. `allowed` is the union of the chosen
+// continent's countries and any explicitly chosen ones (see geo.js).
+export function getUserFilters(userId) {
+  const continent = getUserSetting(userId, 'originContinent', '');
+  const countries = getUserSetting(userId, 'originCountries', []) || [];
+  const excludeUs = !!getUserSetting(userId, 'excludeUs', false);
+  const indie = !!getUserSetting(userId, 'indie', false);
+  return { allowed: allowedOriginSet({ continent, countries }), excludeUs, indie };
+}
+
+// Stable signature of a filter set for the pool cache key, so each distinct
+// origin/indie combination caches its own pool (like region and providers do).
+export function filterSig({ allowed, excludeUs, indie } = {}) {
+  const origins = [...(allowed || [])].sort().join(',');
+  return `${excludeUs ? 'nous' : ''}.${indie ? 'indie' : ''}.${origins || 'any'}`;
+}
+
 // The user's chosen services that, in their region, stream this title — each as
 // { id, name, logo } using TMDB ids/logos so the Discover card can badge it with
 // the same icon the Settings picker shows. Both flatrate (subscription) and
@@ -122,7 +192,7 @@ const ENRICH_COUNT = 50;
 
 // Build the scored candidate pool for one genre (or all genres when genreId is
 // undefined). Heavy part — many TMDB calls — so its output gets cached.
-async function computePool({ userId, region, providerIds, genreId, profile, ratings, language }) {
+async function computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters = {} }) {
   const seen = new Set(ratings.map((r) => `${r.media_type}:${r.tmdb_id}`));
   for (const d of getDismissed(userId)) seen.add(`${d.media_type}:${d.tmdb_id}`);
 
@@ -175,6 +245,10 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // When a genre is selected, keep only titles tagged with it (pools 2 & 3
     // aren't genre-constrained at the source, so filter here too).
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
+    // Origin (continent/country/non-US) and indie filters — same hard-drop
+    // model as the genre filter, applied uniformly to all three pools.
+    if (!matchesOrigin(full, filters)) continue;
+    if (filters.indie && !isIndie(full)) continue;
     // Drop titles not on a chosen service in the user's region; otherwise keep
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
@@ -206,24 +280,26 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
 // recGen; bumping it (on any of their rating/dismiss/settings changes) marks
 // their pools stale without touching anyone else's.
 
-function poolKey(userId, region, providerIds, genreId, language) {
+function poolKey(userId, region, providerIds, genreId, language, filters) {
   const provs = [...(providerIds || [])].map(Number).sort((a, b) => a - b).join('-');
   // Language is part of the key so each language caches its own (localized)
   // pool — switching language lazily builds the other rather than clobbering it.
-  return `recpool:${userId}:${region}:${provs}:${genreId || 'all'}:${language || 'en-US'}`;
+  // The filter signature joins it so each origin/indie combination caches apart.
+  return `recpool:${userId}:${region}:${provs}:${genreId || 'all'}:${language || 'en-US'}:${filterSig(filters)}`;
 }
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 
 // Compute one pool and store it under the user's current generation.
-async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language }) {
+async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
-  const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language });
+  filters = filters || getUserFilters(userId);
+  const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters });
   // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
   // serving is a pure cache read — these lookups hit the web on a cold cache.
   await attachRatings(pool.slice(0, ENRICH_COUNT));
   const value = { gen: currentGen(userId), profileSize: profile.count, pool };
-  cacheSet(poolKey(userId, region, providerIds, genreId, language), value);
+  cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), value);
   return value;
 }
 
@@ -232,10 +308,11 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 // Stale-while-revalidate: an out-of-date pool is served immediately with a
 // background rebuild scheduled; we only block when there's no cached pool at all
 // (a genre the warm hasn't reached) or when force=true (Refresh).
-export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language }) {
-  let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language));
+export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language, filters }) {
+  filters = filters || getUserFilters(userId);
+  let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
   if (!cached || force) {
-    cached = await buildAndCache({ userId, region, providerIds, genreId, language });
+    cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
   } else if (cached.gen !== currentGen(userId)) {
     ensurePrebuild(userId); // refresh in the background; serve the stale pool now
   }
@@ -257,15 +334,16 @@ export async function prebuildRecommendations(userId) {
   const region = getUserSetting(userId, 'country', 'PL');
   const providerIds = (getUserSetting(userId, 'providers', []) || []).map(Number);
   const language = tmdbLang(getUserSetting(userId, 'language', DEFAULT_LANGUAGE));
+  const filters = getUserFilters(userId);
   const profile = await buildProfile(userId);
   const ratings = getRatings(userId);
-  await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings, language });
+  await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings, language, filters });
   let list = [];
   try { list = (await tmdbGenres('movie')).genres || []; }
   catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
   for (const g of list) {
     await breathe(); // let /health + live requests through between genres
-    try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings, language }); }
+    try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings, language, filters }); }
     catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
   }
 }

@@ -9,7 +9,48 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { userServices } = await import('../../src/taste.js');
+const { userServices, matchesOrigin, isIndie, filterSig } = await import('../../src/taste.js');
+
+// Build a TMDB-detail-shaped movie with the fields the origin/indie filters read.
+const movieFrom = (countries, companyIds = []) => ({
+  production_countries: countries.map((iso_3166_1) => ({ iso_3166_1 })),
+  production_companies: companyIds.map((id) => ({ id, name: `Co ${id}` })),
+});
+
+test('matchesOrigin: excludeUs drops any title with US among its countries', () => {
+  assert.equal(matchesOrigin(movieFrom(['US']), { excludeUs: true }), false);
+  assert.equal(matchesOrigin(movieFrom(['US', 'FR']), { excludeUs: true }), false, 'US co-production still excluded');
+  assert.equal(matchesOrigin(movieFrom(['FR']), { excludeUs: true }), true);
+});
+
+test('matchesOrigin: a non-empty allowed set requires a matching country', () => {
+  const allowed = new Set(['FR', 'DE']);
+  assert.equal(matchesOrigin(movieFrom(['FR']), { allowed }), true);
+  assert.equal(matchesOrigin(movieFrom(['JP']), { allowed }), false);
+  // Empty allowed set = no country restriction.
+  assert.equal(matchesOrigin(movieFrom(['JP']), { allowed: new Set() }), true);
+});
+
+test('matchesOrigin: no filters and missing country data pass through', () => {
+  assert.equal(matchesOrigin(movieFrom(['JP']), {}), true);
+  assert.equal(matchesOrigin({}, { excludeUs: true }), true, 'unknown origin is not assumed US');
+});
+
+test('isIndie: true unless a production company is a Hollywood major', () => {
+  assert.equal(isIndie(movieFrom(['US'], [174])), false, '174 = Warner Bros (a major)');
+  assert.equal(isIndie(movieFrom(['FR'], [99999])), true, 'unknown company counts as indie');
+  assert.equal(isIndie(movieFrom(['JP'], [])), true, 'no companies counts as indie');
+  assert.equal(isIndie(movieFrom(['US'], [99999, 4])), false, 'any major (4 = Paramount) disqualifies');
+});
+
+test('filterSig is stable regardless of allowed-set order and varies by toggle', () => {
+  const a = filterSig({ allowed: new Set(['FR', 'DE']), excludeUs: false, indie: false });
+  const b = filterSig({ allowed: new Set(['DE', 'FR']), excludeUs: false, indie: false });
+  assert.equal(a, b, 'order-independent');
+  assert.notEqual(a, filterSig({ allowed: new Set(['FR', 'DE']), excludeUs: true, indie: false }));
+  assert.notEqual(a, filterSig({ allowed: new Set(['FR', 'DE']), excludeUs: false, indie: true }));
+  assert.notEqual(a, filterSig({ allowed: new Set(['FR']), excludeUs: false, indie: false }));
+});
 
 const full = (results) => ({ 'watch/providers': { results } });
 

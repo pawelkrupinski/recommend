@@ -92,6 +92,16 @@
           <div id="provider-list" class="providers"></div>
           <button id="save-providers" data-i18n="settings.saveServices">Save services</button>
 
+          <h3 data-i18n="settings.originHeading">Movie origin</h3>
+          <p class="hint" data-i18n="settings.originHint">Steer picks toward films from particular places — or away from Hollywood.</p>
+          <label><span data-i18n="label.continent">Continent</span>
+            <select id="origin-continent"></select>
+          </label>
+          <div id="origin-country-list" class="providers"></div>
+          <label class="toggle"><input type="checkbox" id="exclude-us" /> <span data-i18n="settings.excludeUs">Exclude US productions</span></label>
+          <label class="toggle"><input type="checkbox" id="indie" /> <span data-i18n="settings.indie">Independent only — no major studios</span></label>
+          <button id="save-origin" data-i18n="settings.saveOrigin">Save origin filters</button>
+
           <!-- Account / privacy -->
           <div class="danger-zone">
             <h3 data-i18n="settings.accountHeading">Your account</h3>

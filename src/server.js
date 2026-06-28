@@ -265,7 +265,7 @@ async function api(req, res, url) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://localhost:${PORT}`);
-    if (url.pathname === '/health') { res.writeHead(200, { 'content-type': 'text/plain' }); return res.end('ok'); }
+    if (url.pathname === '/health') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store' }); return res.end('ok'); }
     if (url.pathname.startsWith('/auth/') && (await handleAuth(req, res, url))) return;
     if (url.pathname.startsWith('/facebook/') && (await handleFacebook(req, res, url))) return;
     if (url.pathname.startsWith('/api/')) return api(req, res, url);

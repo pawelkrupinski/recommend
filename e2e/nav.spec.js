@@ -4,7 +4,7 @@ import { login, uniqEmail } from './helpers.js';
 test('tab navigation activates sections and updates the URL hash', async ({ page }) => {
   await login(page, uniqEmail('nav'));
 
-  for (const tab of ['rate', 'ratings', 'settings', 'discover']) {
+  for (const tab of ['ratings', 'settings', 'discover']) {
     await page.locator(`#tabs button[data-tab="${tab}"]`).click();
     await expect(page.locator(`#${tab}`)).toHaveClass(/active/);
     await expect(page.locator(`#tabs button[data-tab="${tab}"]`)).toHaveClass(/active/);

@@ -19,10 +19,10 @@ function ratingBadges(m) {
 }
 
 // ---- tabs -----------------------------------------------------------------
-// Each tab is a URL hash (#rate, #ratings…) so a refresh stays on the same tab
-// instead of dropping back to Discover, and back/forward navigate between tabs.
+// Each tab is a URL hash (#ratings, #settings…) so a refresh stays on the same
+// tab instead of dropping back to Discover, and back/forward navigate between tabs.
 const tabs = $('#tabs');
-const TAB_NAMES = ['discover', 'rate', 'ratings', 'settings'];
+const TAB_NAMES = ['discover', 'ratings', 'settings'];
 
 // The hash carries the tab plus any tab-specific state as a query string,
 // e.g. "#discover?genre=28". Parse it into { tab, genre } so a refresh or
@@ -38,7 +38,6 @@ function activateTab(t) {
   for (const b of tabs.children) b.classList.toggle('active', b.dataset.tab === t);
   for (const s of document.querySelectorAll('.tab')) s.classList.toggle('active', s.id === t);
   if (t === 'discover') loadDiscover();
-  if (t === 'rate') loadRateQueue(true);
   if (t === 'ratings') loadRatings();
   if (t === 'settings') loadSettings();
 }
@@ -142,7 +141,7 @@ async function fillOnboardQueue(reset) {
     }
   } finally { obFilling = false; }
   if (!added && reset) $('#discover-info').textContent =
-    "You've rated all the popular titles — open the Rate tab for more, or check back later.";
+    "You've rated all the popular titles — check back later for new releases.";
 }
 
 // A card in the onboarding queue resolved (rated or "haven't seen"): track the
@@ -320,39 +319,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') $('#modal').classList.add('hidden');
 });
 
-// ---- rate -----------------------------------------------------------------
-let ratePage = 0, rateFilling = false;
-async function loadRateQueue(reset, target = QUEUE_MIN) {
-  if (rateFilling) return;
-  rateFilling = true;
-  const grid = $('#rate-grid');
-  if (reset) { ratePage = 0; grid.innerHTML = ''; }
-  // Pages fully covered by rated/"haven't seen" titles come back empty, so keep
-  // advancing until the grid holds at least `target` cards (cap the walk so we
-  // never spin forever).
-  let added = 0;
-  try {
-    for (let tries = 0; tries < 10 && grid.children.length < target; tries++) {
-      ratePage++;
-      const { items } = await api(`/api/rate-queue?page=${ratePage}`);
-      for (const m of items) grid.append(rateCard(m));
-      added += items.length;
-    }
-  } finally { rateFilling = false; }
-  if (!added && reset) {
-    grid.innerHTML = '<p class="empty">You’ve rated or skipped all the popular titles. Check back later for new releases.</p>';
-  }
-}
-// A card leaves the queue when rated or marked unseen. Top the grid back up
-// whenever it dips below QUEUE_MIN so it stays full.
-function cardGone(el) {
-  el.remove();
-  if ($('#rate-grid').children.length < QUEUE_MIN) loadRateQueue(false);
-}
-const rateCard = (m) => queueCard(m, (el) => cardGone(el));
+// ---- onboarding rate card -------------------------------------------------
 // One rate-and-skip card: 1–10 stars (rating/10) + a "Haven't seen" button.
-// Shared by the Rate tab and the Discover onboarding queue. `onResolve(el, kind)`
-// fires after the POST settles, with kind 'rated' or 'skipped'.
+// Used by the Discover onboarding queue. `onResolve(el, kind)` fires after the
+// POST settles, with kind 'rated' or 'skipped'.
 function queueCard(m, onResolve) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -385,8 +355,6 @@ function queueCard(m, onResolve) {
   };
   return el;
 }
-// "Load more" always pulls at least one extra page, even when the grid is full.
-$('#more-rate').onclick = () => loadRateQueue(false, $('#rate-grid').children.length + 1);
 
 // ---- my ratings -----------------------------------------------------------
 async function loadRatings() {

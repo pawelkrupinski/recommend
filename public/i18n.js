@@ -58,6 +58,7 @@ export const MESSAGES = {
     'modal.notAvailable': 'Not on your subscription services in this country right now.',
     'modal.director': 'Director',
     'modal.cast': 'Cast',
+    'modal.trailer': 'Trailer',
     // watchlist
     'watchlist.empty': 'Your watchlist is empty. Hit + on a Discover pick to save it for later.',
     'watchlist.count': '{n} saved titles',
@@ -135,6 +136,7 @@ export const MESSAGES = {
     'modal.notAvailable': 'Aktualnie niedostępne w Twoich serwisach abonamentowych w tym kraju.',
     'modal.director': 'Reżyser',
     'modal.cast': 'Obsada',
+    'modal.trailer': 'Zwiastun',
     // watchlist
     'watchlist.empty': 'Twoja lista do obejrzenia jest pusta. Kliknij + na propozycji, aby zapisać ją na później.',
     'watchlist.count': 'Zapisane tytuły: {n}',

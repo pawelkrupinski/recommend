@@ -119,6 +119,15 @@ function details(id, language) {
     },
     external_ids: { imdb_id: `tt${1000000 + id}` },
     'watch/providers': { results: { [REGION]: { flatrate: [provider] } } },
+    // A YouTube trailer in English and one in Polish (so pickTrailers' language
+    // resolution is exercised end to end), plus a non-YouTube entry and a
+    // featurette the filter must drop. Keys are id-derived so they're stable.
+    videos: { results: [
+      { key: `yt-en-${id}`, site: 'YouTube', type: 'Trailer', official: true, iso_639_1: 'en', name: 'Official Trailer' },
+      { key: `yt-pl-${id}`, site: 'YouTube', type: 'Trailer', official: true, iso_639_1: 'pl', name: 'Zwiastun PL' },
+      { key: `vimeo-${id}`, site: 'Vimeo', type: 'Trailer', official: true, iso_639_1: 'en', name: 'Vimeo Trailer' },
+      { key: `yt-feat-${id}`, site: 'YouTube', type: 'Featurette', official: true, iso_639_1: 'en', name: 'Behind the Scenes' },
+    ] },
   };
 }
 

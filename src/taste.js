@@ -4,7 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
+import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingCard, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -280,6 +280,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       features: s.features,
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
+      trailers: pickTrailers(s.full.videos, language),
       services: s.services,
       score: Math.min(100, Math.round(base + collabBonus)),
     };
@@ -451,6 +452,7 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
     genres: (full.genres || []).map((g) => g.name),
     director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
     cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
+    trailers: pickTrailers(full.videos, language),
     services: userServices(full, region, new Set((providerIds || []).map(Number))),
   };
   await attachRatings([item]); // adds imdbRating + metascore (or leaves them null)

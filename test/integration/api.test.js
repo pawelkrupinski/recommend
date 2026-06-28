@@ -142,7 +142,8 @@ test('watchlist: save-time capture stores the rich card fields a Discover pick c
     tmdb_id: 201, title: 'Stub Streamable One', year: 2020, poster_path: '/p201.jpg',
     vote_average: 7.5, runtime: 107, genres: ['Action'],
     services: [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
-    overview: 'A pick.', director: 'Stub Director', cast: ['Stub Actor'], score: 88,
+    overview: 'A pick.', director: 'Stub Director', cast: ['Stub Actor'],
+    trailers: [{ key: 'abc123', name: 'Official Trailer' }], score: 88,
   } });
   const { data } = await c.json('/api/watchlist');
   const [w] = data.watchlist;
@@ -151,6 +152,8 @@ test('watchlist: save-time capture stores the rich card fields a Discover pick c
   assert.equal(w.vote_average, 7.5);
   assert.equal(w.runtime, 107);
   assert.equal(w.director, 'Stub Director');
+  assert.deepEqual(w.trailers, [{ key: 'abc123', name: 'Official Trailer' }],
+    'the captured trailers persist so the saved-card popup can play them');
   assert.equal(w.score, undefined, 'the recommendation score is not persisted');
 });
 
@@ -172,6 +175,10 @@ test('watchlist: backfill enriches titles saved without card fields', async () =
     "the user's chosen service that streams it is attached");
   assert.equal(w.runtime, 107, 'runtime filled');
   assert.equal(w.title, 'Stub Streamable One', 'title untouched by the backfill');
+  // Trailers are derived from the stub's videos block and language-resolved to
+  // the user's language (default 'en' → the English YouTube trailer).
+  assert.deepEqual(w.trailers, [{ key: 'yt-en-201', name: 'Official Trailer' }],
+    'the English trailer is selected from TMDB videos and persisted');
 });
 
 test('where-to-watch reports the user region so search links can target the right storefront', async () => {

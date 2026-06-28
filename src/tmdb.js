@@ -85,11 +85,61 @@ export const findByImdb = (imdbId) =>
 // IMDb tt-id, used to look up IMDb/Metacritic ratings (see ratings.js).
 // watch/providers lets the recommender drop titles that aren't streamable on the
 // user's services or for free (see taste.js); appended here to avoid a 2nd call.
+// videos carries the YouTube trailers shown in the detail popup (see
+// pickTrailers); include_video_language widens the videos block beyond the main
+// `language` so the trailer can fall back to English when there's no localized
+// one (TMDB otherwise returns only videos tagged with `language`).
 export const details = (id, mediaType = 'movie', language) =>
   tmdb(`/${mediaType}/${id}`, {
-    append_to_response: 'keywords,credits,external_ids,watch/providers',
+    append_to_response: 'keywords,credits,external_ids,watch/providers,videos',
+    include_video_language: videoLanguages(language),
     ...(language ? { language } : {}),
   });
+
+// `include_video_language` value for a detail fetch: the user's language (the
+// 2-letter ISO-639-1 code TMDB tags videos with), English, and language-neutral
+// (`null`) artwork. English is always present so pickTrailers' fallback has
+// something to find; deduped so an English user doesn't send `en,en,null`.
+function videoLanguages(language) {
+  const lang = langCode(language);
+  return [...new Set([lang, 'en', 'null'].filter(Boolean))].join(',');
+}
+
+// The ISO-639-1 code TMDB tags videos/overviews with, extracted from a full
+// `pl-PL`/`en-US` locale tag. null/undefined → undefined (caller omits it).
+const langCode = (language) => language?.slice(0, 2).toLowerCase();
+
+// From a TMDB `videos` block, pick the YouTube trailers to show in the detail
+// popup, honouring the user's language. Preference order: trailers in the
+// requested language, else English, else any — the language→English fallback is
+// one-directional (an English-language user is never *preferred* a Polish
+// trailer; only the last-resort "any" tier surfaces a foreign trailer, and only
+// when nothing else exists, so every film with a trailer still shows one).
+// Returns ALL distinct trailers in the winning language tier (a film can have
+// several), real Trailers before Teasers and official before fan uploads, each
+// as `{ key, name }`. Empty when the film has no usable YouTube trailer.
+export function pickTrailers(videos, language) {
+  const all = (videos?.results || []).filter(
+    (v) => v?.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser') && v.key,
+  );
+  if (!all.length) return [];
+  const lang = langCode(language) || 'en';
+  const inLang = (code) => all.filter((v) => (v.iso_639_1 || '').toLowerCase() === code);
+  // Requested language first; English fallback (skipped when the user IS English
+  // — the first tier already is English, so we never reach past it to another
+  // language); then any language so coverage wins over an empty trailer slot.
+  let tier = inLang(lang);
+  if (!tier.length && lang !== 'en') tier = inLang('en');
+  if (!tier.length) tier = all;
+  // Trailers before Teasers, official before fan uploads; stable within a rank.
+  const rank = (v) => (v.type === 'Trailer' ? 0 : 2) + (v.official ? 0 : 1);
+  const seen = new Set();
+  return tier
+    .slice()
+    .sort((a, b) => rank(a) - rank(b))
+    .filter((v) => (seen.has(v.key) ? false : seen.add(v.key)))
+    .map((v) => ({ key: v.key, name: v.name || '' }));
+}
 
 export const recommendations = (id, mediaType = 'movie', language) =>
   tmdb(`/${mediaType}/${id}/recommendations`, language ? { language } : {});

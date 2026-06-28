@@ -602,6 +602,27 @@ function movieHeader(m) {
         ${director}${cast}
         <p class="sub">${esc(m.overview || '')}</p>
       </div>
+    </div>${trailerSection(m)}`;
+}
+// YouTube trailers for the title (already language-resolved server-side; see
+// pickTrailers). The first plays inline as a 16:9 embed; any others sit below as
+// links that open on YouTube. Empty string when the film has no trailer, so the
+// modal layout is unchanged for those.
+function trailerSection(m) {
+  const trailers = m.trailers || [];
+  if (!trailers.length) return '';
+  const embedUrl = (key) => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}`;
+  const watchUrl = (key) => `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`;
+  const [first, ...rest] = trailers;
+  const label = (tr) => esc(tr.name || t('modal.trailer'));
+  const more = rest
+    .map((tr) => `<a class="trailer-more" href="${watchUrl(tr.key)}" target="_blank" rel="noopener">▶ ${label(tr)}</a>`)
+    .join('');
+  return `<div class="trailers">
+      <iframe class="trailer-embed" src="${embedUrl(first.key)}" title="${label(first)}"
+        loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen style="width:100%;aspect-ratio:16/9;border:0;border-radius:8px;margin-top:14px"></iframe>
+      ${more ? `<div class="trailer-more-row">${more}</div>` : ''}
     </div>`;
 }
 async function openWhere(m) {

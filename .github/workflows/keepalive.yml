@@ -1,0 +1,44 @@
+name: Keepalive
+
+# Render's free plan spins the service down after ~15 min idle, making the next
+# real request slow while it wakes and Litestream restores the DB. This pings
+# /health on a schedule so the origin stays warm. /health sends Cache-Control:
+# no-store, so the ping reaches origin even through Cloudflare's edge cache.
+#
+# Override the target by setting a repo variable KEEPALIVE_URL
+# (Settings → Secrets and variables → Actions → Variables). Default hits the
+# .onrender.com origin directly, which wakes the service regardless of Cloudflare.
+on:
+  schedule:
+    # Every 10 minutes. GitHub cron is best-effort and can lag a few minutes
+    # under load, which still comfortably beats Render's ~15 min idle timeout.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+# A backed-up run shouldn't stack pings; the latest is all that matters.
+concurrency:
+  group: keepalive
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    name: Ping /health
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping
+        env:
+          URL: ${{ vars.KEEPALIVE_URL || 'https://filmowo.onrender.com/health' }}
+        run: |
+          echo "Pinging $URL"
+          # Retry a few times: a cold start can take longer than the first
+          # request's timeout while the instance boots and restores the DB.
+          for attempt in 1 2 3 4 5; do
+            code=$(curl -fsS -m 30 -o /dev/null -w '%{http_code}' "$URL") && {
+              echo "Attempt $attempt: $URL responded $code"
+              exit 0
+            }
+            echo "Attempt $attempt failed; waiting before retry…"
+            sleep 15
+          done
+          echo "::error::Keepalive ping to $URL failed after 5 attempts"
+          exit 1

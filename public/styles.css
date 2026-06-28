@@ -233,6 +233,19 @@ button.danger:disabled { opacity: .6; cursor: default; }
   .form input, .form select, #genre-filter { font-size: 16px; }
   .form { max-width: none; }
 
+  /* Let Discover/onboarding cards size to their content. The desktop fixed
+     112px meta (which keeps action buttons aligned across a wide row) leaves a
+     tall empty band on narrow phone cards — most visible on the onboarding rate
+     cards that only carry a title + year. A 1-line title no longer reserves a
+     blank second line either, so rows pack tightly. */
+  #recs .card .meta { height: auto; }
+  #recs .card .title,
+  #rate-grid .card .title { height: auto; max-height: calc(1.3em * 2); }
+  /* Tighten the star widget: trim its padding and collapse the hover "n / 10"
+     readout line (which is empty at rest and just adds height on touch). */
+  .rate-stars { padding: 2px 10px 8px; }
+  .rating-num { min-height: 0; margin-top: 0; }
+
   /* Detail modal as a bottom sheet. */
   .modal { align-items: flex-end; padding: 0; }
   .modal-card {
@@ -249,7 +262,7 @@ button.danger:disabled { opacity: .6; cursor: default; }
   .detail-head { gap: 12px; }
   .detail-poster { width: 104px; }
   .stars { gap: 6px; }
-  .stars span { font-size: 24px; padding: 9px 0; }   /* larger thumb targets */
+  .stars span { font-size: 22px; padding: 6px 0; }   /* roomy thumb targets, trimmed height */
   .card .skip { font-size: 13px; padding: 8px; }
   .login-card { padding: 28px 22px; }
   header { padding: 10px 14px; }

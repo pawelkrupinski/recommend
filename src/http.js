@@ -105,12 +105,14 @@ async function load(absPath, ext) {
   };
 }
 
-// HTML is the entry document — revalidate every load so a deploy is picked up at
-// once (the 304 is cheap). Other assets aren't fingerprinted, so cache briefly
-// then revalidate via ETag rather than risk serving a stale app.js for a year.
-const cacheControlFor = (ext) =>
-  ext === '.html' ? 'public, max-age=0, must-revalidate'
-    : 'public, max-age=3600, must-revalidate';
+// Nothing here is fingerprinted (index.html references a bare /app.js, /styles.css),
+// so every asset must revalidate on each load — otherwise a returning user keeps a
+// stale app.js for up to the max-age window while the fresh index.html loads against
+// it, and the two disagree (e.g. a new tab the old JS doesn't know how to render).
+// max-age=0 + the ETag conditional-GET makes the common case a cheap 304, and a
+// changed asset is served fresh immediately. Cloudflare passes these through
+// (cf-cache-status: DYNAMIC), so this is the only cache layer that matters.
+const cacheControlFor = () => 'public, max-age=0, must-revalidate';
 
 // Serve a file from PUBLIC with negotiation + caching. Returns false (404) if the
 // file is missing so the caller can fall through. `dir` must end in a slash.
@@ -125,7 +127,7 @@ export async function serveStatic(req, res, dir, pathname) {
       'content-type': entry.type,
       etag: entry.etag,
       vary: 'Accept-Encoding',
-      'cache-control': cacheControlFor(ext),
+      'cache-control': cacheControlFor(),
     };
     if (matches(req.headers['if-none-match'], entry.etag)) {
       res.writeHead(304, headers);

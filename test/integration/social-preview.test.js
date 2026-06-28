@@ -36,3 +36,15 @@ test('the og:image is served as a PNG', async () => {
   // PNG magic number — proves it's a real image, not an HTML 404 fallback.
   assert.deepEqual([...bytes.slice(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
 });
+
+test('robots.txt is served as text and allows crawlers (Facebook needs it)', async () => {
+  // A missing robots.txt 404s, which Facebook's crawler reports as a robots
+  // block and refuses to scrape. Serve an explicit allow-all instead.
+  const res = await fetch(base + '/robots.txt');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /^text\/plain/);
+  const body = await res.text();
+  assert.match(body, /User-agent:\s*\*/i);
+  assert.match(body, /Allow:\s*\//i);
+  assert.doesNotMatch(body, /Disallow:\s*\/\s*$/im, 'must not blanket-disallow the site');
+});

@@ -1,0 +1,6 @@
+# Allow every crawler, including social link-preview scrapers
+# (Facebook's facebookexternalhit, Slack, Twitter/X, Discord, …). A missing
+# robots.txt 404s, which Facebook's crawler treats as a block, so serve an
+# explicit allow-all to keep the homepage's Open Graph card scrapable.
+User-agent: *
+Allow: /

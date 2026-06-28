@@ -280,6 +280,21 @@ test('recommendations carry the chosen services that stream each pick', async ()
 //   201 — US, Warner Bros (major)   202 — FR, indie   203 — JP, indie
 const idsOf = (data) => new Set(data.results.map((m) => m.tmdb_id));
 
+test('recommendations exclude titles already on the watchlist', async () => {
+  const c = await client().login({ email: 'shelved@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // Sanity: 201 is a normal Discover pick before anything is shelved.
+  assert.ok(idsOf((await c.json('/api/recommend')).data).has(201), '201 is a pick to begin with');
+
+  // Save it to the watchlist — it's now a title the user has decided on and must
+  // not be served back as a fresh recommendation (it was previously left in the
+  // pool and only stripped client-side, which starved Discover for heavy users).
+  await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 201, title: 'Stub Streamable One' } });
+  const ids = idsOf((await c.json('/api/recommend?refresh=1')).data);
+  assert.ok(!ids.has(201), 'a watchlisted title is dropped from recommendations');
+  assert.ok(ids.has(202) && ids.has(203), 'the other streamable picks are unaffected');
+});
+
 // The origin/indie filters are live Discover query params on /api/recommend
 // (like genre), not saved settings — so they're driven from the URL here.
 test('excludeUs query param drops US-origin picks from recommendations', async () => {

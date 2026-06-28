@@ -8,7 +8,52 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { gatherCandidates } = await import('../../src/sources.js');
+const { gatherCandidates, pageUntilFresh } = await import('../../src/sources.js');
+
+// A fake paginated Discover endpoint: `pages` is an array of result arrays (one
+// per page). total_pages is the real length, so the walker knows when it's run
+// dry. Records which pages were fetched so tests can assert how deep it paged.
+const pager = (pages) => {
+  const fetched = [];
+  const fetchPage = async (page) => {
+    fetched.push(page);
+    return { page, total_pages: pages.length, results: pages[page - 1] || [] };
+  };
+  return { fetchPage, fetched };
+};
+const titles = (...ids) => ids.map((id) => ({ id, title: `T${id}` }));
+
+test('pageUntilFresh: stops after one page once enough fresh candidates are found', async () => {
+  const { fetchPage, fetched } = pager([titles(1, 2, 3, 4, 5), titles(6, 7)]);
+  const out = await pageUntilFresh({ fetchPage, want: 3, consumed: new Set() });
+  assert.deepEqual(fetched, [1], 'page 1 alone met the fresh target, so page 2 is never fetched');
+  assert.deepEqual(out.map((m) => m.id), [1, 2, 3, 4, 5]);
+});
+
+test('pageUntilFresh: pages deeper past an already-consumed head until fresh titles appear', async () => {
+  // The user has handled the whole popular head (pages 1–2); fresh titles only
+  // start on page 3. Fixed 1-page paging would have returned nothing usable.
+  const { fetchPage, fetched } = pager([titles(1, 2, 3), titles(4, 5, 6), titles(7, 8, 9)]);
+  const consumed = new Set([1, 2, 3, 4, 5, 6]);
+  const out = await pageUntilFresh({ fetchPage, want: 2, consumed });
+  assert.deepEqual(fetched, [1, 2, 3], 'kept paging through the consumed head to reach fresh titles');
+  assert.deepEqual(out.filter((m) => !consumed.has(m.id)).map((m) => m.id), [7, 8, 9]);
+});
+
+test('pageUntilFresh: stops when the source runs out before the target is met', async () => {
+  const { fetchPage, fetched } = pager([titles(1, 2), titles(3, 4)]);
+  const out = await pageUntilFresh({ fetchPage, want: 80, consumed: new Set() });
+  assert.deepEqual(fetched, [1, 2], 'exhausted total_pages rather than spinning to the ceiling');
+  assert.deepEqual(out.map((m) => m.id), [1, 2, 3, 4]);
+});
+
+test('pageUntilFresh: never pages past the ceiling', async () => {
+  // 10 pages available, every title consumed, target never met — ceil must bound it.
+  const pages = Array.from({ length: 10 }, (_, i) => titles(i + 1));
+  const { fetchPage, fetched } = pager(pages);
+  await pageUntilFresh({ fetchPage, want: 80, consumed: new Set(pages.flat().map((m) => m.id)), ceil: 2 });
+  assert.deepEqual(fetched, [1, 2], 'gave up at the ceiling instead of fetching all 10 pages');
+});
 
 // A minimal source: always configured, returns a fixed list.
 const src = (name, items) => ({ name, configured: () => true, fetch: async () => items });

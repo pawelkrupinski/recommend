@@ -5,7 +5,7 @@
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
-import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
+import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingCard, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
@@ -198,19 +198,29 @@ const ENRICH_COUNT = 50;
 // Build the scored candidate pool for one genre (or all genres when genreId is
 // undefined). Heavy part — many TMDB calls — so its output gets cached.
 async function computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters = {} }) {
-  const seen = new Set(ratings.map((r) => `${r.media_type}:${r.tmdb_id}`));
-  for (const d of getDismissed(userId)) seen.add(`${d.media_type}:${d.tmdb_id}`);
+  // Titles the user has already handled — rated, dismissed, or saved to their
+  // watchlist — must never be recommended. Movies only (the whole catalogue here),
+  // keyed by bare tmdb id since that's the unit candidate sources and the cap work
+  // in. Saved titles were the missing case: without them the pool filled with
+  // films already on the watchlist that the UI then stripped out, starving Discover.
+  const consumed = new Set();
+  for (const r of ratings) if (r.media_type === 'movie') consumed.add(r.tmdb_id);
+  for (const d of getDismissed(userId)) if (d.media_type === 'movie') consumed.add(d.tmdb_id);
+  for (const w of getWatchlistIds(userId)) if (w.media_type === 'movie') consumed.add(w.tmdb_id);
 
   // Assemble candidates from every configured source (TMDB discover variants,
   // recommendations, similar, trending; Trakt related + charts). Each yields ids
   // only; scoring, the genre filter and the streamability gate below are the one
-  // shared place those rules live. collab[id] = crowd co-watch hits for scoreMovie.
-  const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language });
+  // shared place those rules live. `consumed` also tells the provider-scoped
+  // Discover sources how deep to page — past titles already handled until they've
+  // surfaced enough fresh ones. collab[id] = crowd co-watch hits for scoreMovie.
+  const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language, consumed });
 
-  // Cap the merged set before the expensive per-title detail fetch. The registry
-  // is priority-ordered and the Map preserves it, so the strongest sources fill
-  // the budget first; the broad charts only top it up.
-  const pool = [...candidates.values()].slice(0, CANDIDATE_CAP);
+  // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is
+  // spent on candidates that can actually become picks rather than re-fetching
+  // titles we'd only discard. The registry is priority-ordered and the Map
+  // preserves it, so the strongest fresh sources fill the budget first.
+  const pool = [...candidates.values()].filter((m) => !consumed.has(m.id)).slice(0, CANDIDATE_CAP);
 
   // Score each candidate on its full feature set.
   const userSet = new Set(providerIds || []);
@@ -218,7 +228,6 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   let processed = 0;
   for (const m of pool) {
     if (++processed % YIELD_EVERY === 0) await breathe();
-    if (seen.has(`movie:${m.id}`)) continue;
     let full;
     try { full = await details(m.id, 'movie', language); } catch { continue; }
     // When a genre is selected, keep only titles tagged with it (the seed/chart
@@ -298,6 +307,7 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
   const excluded = new Set([
     ...getRatings(userId).map((r) => `${r.media_type}:${r.tmdb_id}`),
     ...getDismissed(userId).map((d) => `${d.media_type}:${d.tmdb_id}`),
+    ...getWatchlistIds(userId).map((w) => `${w.media_type}:${w.tmdb_id}`),
   ]);
   const results = cached.pool
     .filter((m) => !excluded.has(`movie:${m.tmdb_id}`))

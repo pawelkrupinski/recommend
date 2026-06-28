@@ -34,19 +34,42 @@ const seeds = (ratings) =>
     .sort((a, b) => b.rating - a.rating)
     .slice(0, SEED_COUNT);
 
-// One genre-aware Discover sweep, walking pages until TMDB runs out or we've
-// taken `pages` of them. Returns bare { id, title } — computePool re-fetches full
-// details for scoring regardless, so sources need only surface the id.
-async function discoverPages({ region, providerIds, genreId, language, sortBy, voteCountGte, startPage, pages }) {
+// Walk Discover pages via `fetchPage(page)` until `want` candidates the user
+// hasn't already handled have been surfaced — or the source runs out
+// (page >= total_pages) or we hit `ceil`. Pure over its page-fetcher, so the
+// stop logic is unit-testable without TMDB. Returns bare { id, title };
+// computePool re-fetches full details for scoring, so sources need only the id.
+//
+// Why "until enough fresh" instead of a fixed page count: fixed depth starved
+// power users. Once they'd rated/dismissed/shelved the popular head, the first
+// few pages were all already-handled and the pool came up empty. Counting *fresh*
+// titles lets a light user stop after one page while a heavy user pages deeper
+// into the freshly-streamable long tail. `consumed` = ids already handled.
+const DISCOVER_PAGE_CEIL = 20;     // TMDB caps /discover at 500 pages; stay modest.
+export async function pageUntilFresh({ fetchPage, want, consumed, ceil = DISCOVER_PAGE_CEIL }) {
   const out = [];
-  for (let page = startPage; page < startPage + pages; page++) {
-    const res = await discover({ region, providerIds, genreId, mediaType: 'movie', page, sortBy, voteCountGte, language });
-    for (const m of res.results || []) out.push({ id: m.id, title: m.title });
-    if (page >= (res.total_pages || 1)) break;
+  let fresh = 0;
+  for (let page = 1; page <= ceil; page++) {
+    const res = await fetchPage(page);
+    for (const m of res.results || []) {
+      out.push({ id: m.id, title: m.title });
+      if (!consumed?.has(m.id)) fresh++;
+    }
+    if (fresh >= want || page >= (res.total_pages || 1)) break;
   }
   return out;
 }
-const DISCOVER_PAGES = 3;
+const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCountGte, want, consumed }) =>
+  pageUntilFresh({
+    want, consumed,
+    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType: 'movie', page, sortBy, voteCountGte, language }),
+  });
+
+// How many not-yet-handled candidates each provider-scoped sweep aims to surface
+// — enough that the merged pool still fills POOL_SIZE after the streamability gate
+// and de-duplication. Popularity carries the bulk; the acclaimed sweep tops up.
+const DISCOVER_FRESH_TARGET = 80;
+const DISCOVER_TOP_RATED_TARGET = 40;
 
 // Expand each seed film through a TMDB list endpoint (recommendations | similar),
 // collecting every result. A dud seed is skipped, not fatal.
@@ -64,22 +87,14 @@ async function expandSeeds(ratings, language, listFn) {
 // ---- TMDB sources ---------------------------------------------------------
 
 // Mainstream: what's popular and streamable on the user's services, by genre.
+// Pages as deep as needed to surface DISCOVER_FRESH_TARGET titles the user hasn't
+// already rated, dismissed or shelved — so the picks don't run dry as they watch
+// through the head (this replaces the old fixed-depth "deep" backfill source).
 export const tmdbDiscover = {
   name: 'tmdb-discover',
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
-    ? discoverPages({ ...ctx, sortBy: 'popularity.desc', voteCountGte: 50, startPage: 1, pages: DISCOVER_PAGES })
-    : Promise.resolve([]),
-};
-
-// Deeper into the same popularity-ranked catalog — the titles below the head
-// that the original 3-page cap never reached (the main "few recs after a while"
-// fix: this is where backfill comes from as the user's seen-set grows).
-export const tmdbDiscoverDeep = {
-  name: 'tmdb-discover-deep',
-  configured: tmdbConfigured,
-  fetch: (ctx) => ctx.providerIds?.length
-    ? discoverPages({ ...ctx, sortBy: 'popularity.desc', voteCountGte: 50, startPage: DISCOVER_PAGES + 1, pages: DISCOVER_PAGES })
+    ? discoverFresh({ ...ctx, sortBy: 'popularity.desc', voteCountGte: 50, want: DISCOVER_FRESH_TARGET })
     : Promise.resolve([]),
 };
 
@@ -90,7 +105,7 @@ export const tmdbDiscoverTopRated = {
   name: 'tmdb-discover-top-rated',
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
-    ? discoverPages({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 300, startPage: 1, pages: DISCOVER_PAGES })
+    ? discoverFresh({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 300, want: DISCOVER_TOP_RATED_TARGET })
     : Promise.resolve([]),
 };
 
@@ -188,7 +203,6 @@ export const ALL_SOURCES = [
   traktTrending,
   traktPopular,
   traktAnticipated,
-  tmdbDiscoverDeep,
 ];
 
 // Run every configured source concurrently and merge their candidates into a

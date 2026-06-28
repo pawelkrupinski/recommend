@@ -389,6 +389,12 @@ export function addToWatchlist({ user_id, tmdb_id, media_type = 'movie', title, 
 export function getWatchlist(userId) {
   return db.prepare('SELECT * FROM watchlist WHERE user_id = ? ORDER BY added_at DESC').all(userId).map(rowToWatchItem);
 }
+// Just the identifiers — for the recommender, which needs to know which titles a
+// user has already shelved (so it never re-recommends them) without paying to
+// parse every stored card blob.
+export function getWatchlistIds(userId) {
+  return db.prepare('SELECT tmdb_id, media_type FROM watchlist WHERE user_id = ?').all(userId);
+}
 // Fill (or refresh) just the rich card fields of an already-saved title, leaving
 // title/year/poster untouched — used by the background backfill of older rows.
 const _setWatchlistCard = db.prepare(

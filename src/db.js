@@ -12,6 +12,12 @@ mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
 
+// WAL mode is required for Litestream's continuous replication (prod durability
+// on hosts without a persistent disk) and improves read/write concurrency.
+// busy_timeout avoids spurious SQLITE_BUSY errors under light contention.
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA busy_timeout = 5000');
+
 // ---- schema ---------------------------------------------------------------
 // Per-user tables carry user_id in their primary key. Fresh installs get these
 // straight away; existing single-user DBs are upgraded by migrate() below.
@@ -133,6 +139,22 @@ function migrate() {
   }
 }
 migrate();
+
+// ---- backfill: grandfather existing users past first-run onboarding --------
+// The streaming-services picker only gates genuinely new accounts. Mark every
+// user that exists at upgrade time as onboarded so they aren't sent back through
+// it. Guarded by a settings flag so it runs exactly once.
+function backfillOnboarded() {
+  const FLAG = '_onboarded_backfill_v1';
+  if (db.prepare('SELECT 1 FROM settings WHERE key = ?').get(FLAG)) return;
+  const ins = db.prepare(
+    `INSERT INTO user_settings (user_id, key, value) VALUES (?, 'onboarded', 'true')
+     ON CONFLICT(user_id, key) DO NOTHING`
+  );
+  for (const u of db.prepare('SELECT id FROM users').all()) ins.run(u.id);
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(FLAG, 'true');
+}
+backfillOnboarded();
 
 // ---- users ----------------------------------------------------------------
 export function getUserByEmail(email) {

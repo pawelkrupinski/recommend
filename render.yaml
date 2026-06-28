@@ -1,5 +1,9 @@
 # Render Blueprint for the "recommend" web app.
 # Docs: https://render.com/docs/blueprint-spec
+#
+# Runs on the FREE plan: no persistent disk. Durability comes from Litestream,
+# which streams the SQLite DB to S3-compatible object storage (Cloudflare R2 /
+# Backblaze B2, both free) and restores it on boot. See litestream.yml + DEPLOY.md.
 services:
   - type: web
     name: recommend
@@ -9,17 +13,13 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
-    disk:
-      # Persistent disk holding the SQLite database (survives deploys/restarts).
-      name: data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       # Non-secret, value provided here.
       - key: NODE_ENV
         value: production
+      # DB lives on the container's ephemeral disk; Litestream makes it durable.
       - key: DB_PATH
-        value: /var/data/recommend.db
+        value: /data/recommend.db
       # BASE_URL must be the public Render URL (e.g. https://recommend.onrender.com).
       # It is used to build the OAuth callback URLs, so it must match the value
       # registered with the Google/Facebook OAuth apps.
@@ -43,4 +43,17 @@ services:
       - key: RAPIDAPI_KEY
         sync: false
       - key: TRAKT_KEY
+        sync: false
+      # --- Litestream (DB replication to object storage) ---
+      # Non-secret config; values vary per bucket so set them in the dashboard.
+      - key: LITESTREAM_BUCKET
+        sync: false
+      - key: LITESTREAM_ENDPOINT
+        sync: false
+      - key: LITESTREAM_REGION
+        sync: false
+      # Object-storage credentials (secret).
+      - key: LITESTREAM_ACCESS_KEY_ID
+        sync: false
+      - key: LITESTREAM_SECRET_ACCESS_KEY
         sync: false

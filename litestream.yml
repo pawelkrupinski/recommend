@@ -1,0 +1,27 @@
+# Litestream continuously streams the SQLite DB to S3-compatible object storage
+# (Cloudflare R2 or Backblaze B2 — both have a free tier). This gives the app
+# durable, off-box persistence so it can run on a free host with only an
+# ephemeral disk: writes are replicated as they happen and the DB is restored on
+# boot (see docker-entrypoint.sh).
+#
+# All values come from the environment so no secrets live in the image. Set
+# these in the Render dashboard (Environment tab):
+#   DB_PATH                       e.g. /data/recommend.db   (already set)
+#   LITESTREAM_BUCKET             your bucket name
+#   LITESTREAM_ENDPOINT           R2: https://<account>.r2.cloudflarestorage.com
+#                                 B2: https://s3.<region>.backblazeb2.com
+#   LITESTREAM_REGION             R2: auto                  B2: e.g. us-west-004
+#   LITESTREAM_ACCESS_KEY_ID      access key id (secret)
+#   LITESTREAM_SECRET_ACCESS_KEY  secret access key (secret)
+dbs:
+  - path: ${DB_PATH}
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: recommend
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        # R2/B2 require path-style addressing (bucket in the path, not the host).
+        force-path-style: true

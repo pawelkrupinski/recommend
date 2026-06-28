@@ -37,6 +37,13 @@ const DISCOVER = [
 const TRENDING = [
   { id: 301, title: 'Stub Trending One', genreId: 28, country: 'US', companyId: 174 },
 ];
+// A large pool of generated streamable titles that stream ONLY on BACKFILL_PROVIDER
+// (not the default test provider 8), so they're invisible to the provider-8 tests
+// — which still see exactly the canonical streamable set — yet give a user who
+// picks that provider a pool well over the ~36 the UI shows at once. That surplus
+// is what the picks grid's background refill surfaces as cards leave.
+const BACKFILL_PROVIDER = 9; // Amazon Prime Test (see PROVIDERS)
+const DEEP_DISCOVER = Array.from({ length: 50 }, (_, i) => ({ id: 5001 + i, title: `Stub Deep ${i + 1}` }));
 
 const GENRES = [
   { id: 28, name: 'Action' },
@@ -72,6 +79,10 @@ function details(id, language) {
   const genreId = known?.genreId || 28;
   const country = known?.country || 'US';
   const companyId = known?.companyId || 99999;
+  // Backfill titles stream on BACKFILL_PROVIDER; everything else on the default 8.
+  const provider = id >= DEEP_DISCOVER[0].id
+    ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
+    : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
   return {
     id,
     title,
@@ -89,9 +100,7 @@ function details(id, language) {
       cast: [{ id: 600, name: 'Stub Actor' }],
     },
     external_ids: { imdb_id: `tt${1000000 + id}` },
-    'watch/providers': {
-      results: { [REGION]: { flatrate: [{ provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } },
-    },
+    'watch/providers': { results: { [REGION]: { flatrate: [provider] } } },
   };
 }
 
@@ -107,10 +116,17 @@ export function stub(path, params = {}) {
     return { results: PROVIDERS };
   }
   if (path === '/discover/movie') {
-    // The recommender filters Discover by streaming provider; the onboarding
-    // rate queue (acclaimed seed) does not. Serve the matching pool for each.
-    const pool = params.with_watch_providers ? DISCOVER : POPULAR;
-    return { page, total_pages: 1, results: pool.map((m) => card(m, params.language)) };
+    // The onboarding rate queue (acclaimed seed) is provider-less → POPULAR. The
+    // recommender filters Discover by streaming provider: serve the canonical
+    // titles plus the backfill pool, all on one page. The candidate sources walk
+    // pages until they've found enough fresh titles, and computePool's
+    // streamability gate keeps only those on the *user's* services — so a
+    // provider-8 user sees just the canonical set while a backfill-provider user
+    // gets the large pool the refill draws from.
+    if (!params.with_watch_providers) {
+      return { page, total_pages: 1, results: POPULAR.map((m) => card(m, params.language)) };
+    }
+    return { page, total_pages: 1, results: [...DISCOVER, ...DEEP_DISCOVER].map((m) => card(m, params.language)) };
   }
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };

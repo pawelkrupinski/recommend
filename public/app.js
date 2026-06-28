@@ -1,6 +1,7 @@
 import { matchServiceLink, serviceSearchLink } from '/service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
+import { newPicks } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
@@ -516,7 +517,7 @@ async function refillPicks() {
     const qs = discoverParams();
     const { results } = await api('/api/recommend' + (qs ? `?${qs}` : ''));
     const shown = new Set([...grid.querySelectorAll('.card')].map((c) => Number(c.dataset.id)));
-    const fresh = results.filter((m) => !shown.has(m.tmdb_id) && !watchlistIds.has(m.tmdb_id));
+    const fresh = newPicks(results, shown, watchlistIds);
     if (!fresh.length) return;
     if (grid.querySelector('.empty')) grid.innerHTML = '';   // clear a stale empty-state
     for (const m of fresh) grid.append(recCard(m));

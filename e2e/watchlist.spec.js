@@ -90,6 +90,31 @@ test('the Watchlist sort dropdown reorders cards by average rating and persists 
   await expect(titles).toHaveText(['Mid', 'Low', 'High']);
 });
 
+test('the Watchlist remembers the last chosen sort on a fresh visit (no URL query)', async ({ page }) => {
+  await login(page, uniqEmail('watch-remember'));
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const save = (b) => fetch('/api/watchlist', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    await save({ tmdb_id: 703, title: 'High', year: 2003, metascore: 95 });
+    await sleep(1100);
+    await save({ tmdb_id: 701, title: 'Low', year: 2001, imdbRating: 5 });
+    await sleep(1100);
+    await save({ tmdb_id: 702, title: 'Mid', year: 2002, imdbRating: 8, metascore: 60 });
+  });
+
+  await page.goto('/watchlist');
+  await page.locator('#watchlist-sort').selectOption('rating');
+  const titles = page.locator('#watchlist-grid .card .title');
+  await expect(titles).toHaveText(['High', 'Mid', 'Low']);
+
+  // A bare /watchlist with no ?sort (a fresh app boot, like clicking the nav tab)
+  // must still come up "Top rated" because the choice was saved server-side.
+  await page.goto('/watchlist');
+  await expect(page.locator('#watchlist-sort')).toHaveValue('rating');
+  await expect(titles).toHaveText(['High', 'Mid', 'Low']);
+});
+
 test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
   await login(page, uniqEmail('watch-hide'));
   await enterPicks(page);

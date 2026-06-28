@@ -1,8 +1,7 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import './env.js';
+import { send, serveStatic } from './http.js';
 import {
   db,
   getUserSetting, setUserSetting,
@@ -18,12 +17,17 @@ import { handleFacebook } from './facebook.js';
 
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml' };
 
-const json = (res, code, body) => {
-  res.writeHead(code, { 'content-type': 'application/json' });
-  res.end(JSON.stringify(body));
-};
+// JSON responses go through send(): brotli/gzip when the client accepts it, plus
+// an ETag so an unchanged GET (e.g. a ratings list that didn't move) costs a 304
+// rather than re-shipping the body. `cacheControl` defaults to a private,
+// always-revalidate policy — safe for the per-user payloads this API returns.
+const json = (req, res, code, body, cacheControl = 'private, no-cache') =>
+  send(req, res, JSON.stringify(body), {
+    status: code,
+    type: 'application/json; charset=utf-8',
+    cacheControl: code === 200 ? cacheControl : undefined,
+  });
 const readBody = (req) =>
   new Promise((resolve) => {
     let b = '';
@@ -131,7 +135,7 @@ async function api(req, res, url) {
 
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
-      return json(res, 200, {
+      return json(req, res, 200, {
         user: user && { id: user.id, email: user.email, name: user.name, picture: user.picture },
         onboarded: user ? !!getUserSetting(user.id, 'onboarded', false) : false,
         providers: enabledProviders(),
@@ -140,19 +144,19 @@ async function api(req, res, url) {
 
     // ---- delete my account + all my data (right to erasure) -----------
     if (p === '/api/me' && req.method === 'DELETE') {
-      if (!user) return json(res, 401, { error: 'login required' });
+      if (!user) return json(req, res, 401, { error: 'login required' });
       deleteAccount(user.id);
       res.writeHead(200, { 'content-type': 'application/json', 'set-cookie': sessionClearingCookie(req) });
       return res.end(JSON.stringify({ ok: true }));
     }
 
     // Everything below requires a signed-in user.
-    if (!user) return json(res, 401, { error: 'login required' });
+    if (!user) return json(req, res, 401, { error: 'login required' });
     const uid = user.id;
 
     // ---- settings -----------------------------------------------------
     if (p === '/api/settings' && req.method === 'GET') {
-      return json(res, 200, {
+      return json(req, res, 200, {
         country: getUserSetting(uid, 'country', 'PL'),
         providers: getUserSetting(uid, 'providers', []),
       });
@@ -166,41 +170,42 @@ async function api(req, res, url) {
         else if (k === 'onboarded') setUserSetting(uid, k, !!v);
       }
       if (userScopeChanged) invalidateRecommendations(uid);
-      return json(res, 200, { ok: true });
+      return json(req, res, 200, { ok: true });
     }
 
     // ---- provider picker for the chosen region ------------------------
     if (p === '/api/providers' && req.method === 'GET') {
       const region = url.searchParams.get('region') || getUserSetting(uid, 'country', 'PL');
       const list = await providerPicker(region);
-      return json(res, 200, list);
+      // Region service lists barely move — hold for an hour.
+      return json(req, res, 200, list, 'private, max-age=3600');
     }
 
     // ---- ratings ------------------------------------------------------
-    if (p === '/api/ratings' && req.method === 'GET') return json(res, 200, { ratings: getRatings(uid) });
+    if (p === '/api/ratings' && req.method === 'GET') return json(req, res, 200, { ratings: getRatings(uid) });
     if (p === '/api/ratings' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       upsertRating({ ...b, user_id: uid, source: 'app' });
       invalidateRecommendations(uid);
-      return json(res, 200, { ok: true });
+      return json(req, res, 200, { ok: true });
     }
     if (p === '/api/ratings' && req.method === 'DELETE') {
       const b = JSON.parse((await readBody(req)) || '{}');
       deleteRating(uid, b.tmdb_id, b.media_type || 'movie');
       invalidateRecommendations(uid);
-      return json(res, 200, { ok: true });
+      return json(req, res, 200, { ok: true });
     }
     if (p === '/api/dismiss' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       dismiss(uid, b.tmdb_id, b.media_type || 'movie');
       invalidateRecommendations(uid);
-      return json(res, 200, { ok: true });
+      return json(req, res, 200, { ok: true });
     }
     // "Haven't seen" from the rate queue — remembered and filtered out there.
     if (p === '/api/not-seen' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       markNotSeen(uid, b.tmdb_id, b.media_type || 'movie');
-      return json(res, 200, { ok: true });
+      return json(req, res, 200, { ok: true });
     }
 
     // ---- in-app rating queue: popular titles to rate ------------------
@@ -219,13 +224,14 @@ async function api(req, res, url) {
           year: Number((m.release_date || '').slice(0, 4)) || null,
           poster_path: m.poster_path, overview: m.overview, vote_average: m.vote_average,
         }));
-      return json(res, 200, { items });
+      return json(req, res, 200, { items });
     }
 
     // ---- genre list (for the Discover filter) ------------------------
+    // Effectively immutable reference data — let the browser hold it for a day.
     if (p === '/api/genres' && req.method === 'GET') {
       const { genres = [] } = await tmdb.genres('movie');
-      return json(res, 200, { genres });
+      return json(req, res, 200, { genres }, 'private, max-age=86400');
     }
 
     // ---- recommendations ---------------------------------------------
@@ -235,7 +241,7 @@ async function api(req, res, url) {
       const genreId = Number(url.searchParams.get('genre')) || undefined;
       const force = url.searchParams.get('refresh') === '1';
       const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force });
-      return json(res, 200, out);
+      return json(req, res, 200, out);
     }
 
     // ---- where to watch (TMDB providers + MotN deep links) -----------
@@ -247,23 +253,12 @@ async function api(req, res, url) {
       const r = wp.results?.[region] || {};
       const flatrate = (r.flatrate || []).map((x) => ({ name: x.provider_name, logo: x.logo_path }));
       const deepLinks = await streamingOptions(id, mt, region.toLowerCase());
-      return json(res, 200, { tmdbLink: r.link || null, flatrate, deepLinks });
+      return json(req, res, 200, { tmdbLink: r.link || null, flatrate, deepLinks });
     }
 
-    return json(res, 404, { error: 'not found' });
+    return json(req, res, 404, { error: 'not found' });
   } catch (e) {
-    return json(res, 500, { error: e.message });
-  }
-}
-
-async function serveStatic(req, res, url) {
-  let path = url.pathname === '/' ? '/index.html' : url.pathname;
-  try {
-    const buf = await readFile(PUBLIC + path.slice(1));
-    res.writeHead(200, { 'content-type': MIME[extname(path)] || 'application/octet-stream' });
-    res.end(buf);
-  } catch {
-    res.writeHead(404).end('Not found');
+    return json(req, res, 500, { error: e.message });
   }
 }
 
@@ -276,7 +271,10 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return api(req, res, url);
     // Clean URL for the privacy policy (linked from the app and the Meta dashboard).
     if (url.pathname === '/privacy') url.pathname = '/privacy.html';
-    return serveStatic(req, res, url);
+    // serveStatic compresses, caches (in-memory, pre-built variants) and serves a
+    // 304 on a matching ETag; returns false when the file is missing.
+    if (await serveStatic(req, res, PUBLIC, url.pathname)) return;
+    res.writeHead(404).end('Not found');
   } catch (e) {
     console.error('request error:', e.message);
     if (!res.headersSent) { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }

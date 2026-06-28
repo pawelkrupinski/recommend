@@ -4,6 +4,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>recommend — what to watch tonight</title>
+  <!-- Warm the TMDB poster CDN early; every grid is full of its images. -->
+  <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
+  <link rel="dns-prefetch" href="https://image.tmdb.org" />
+  <!-- Fetch the app module alongside the stylesheet instead of after it parses. -->
+  <link rel="modulepreload" href="/app.js" />
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>

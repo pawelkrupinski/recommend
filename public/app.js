@@ -88,7 +88,13 @@ const TAB_NAMES = ['discover', 'watchlist', 'ratings', 'settings'];
 function parseHash() {
   const [tab, query] = location.hash.slice(1).split('?');
   const params = new URLSearchParams(query || '');
-  return { tab: tab || 'discover', genre: params.get('genre') || '' };
+  return {
+    tab: tab || 'discover',
+    genre: params.get('genre') || '',
+    origin: params.get('origin') || '',
+    excludeUs: params.get('excludeUs') === '1',
+    indie: params.get('indie') === '1',
+  };
 }
 
 function activateTab(t) {
@@ -124,13 +130,43 @@ async function loadGenres() {
     }
   } catch { genresLoaded = false; /* allow a retry next open */ }
 }
-// Genre switches read the prebuilt cache (instant); only "Refresh picks" forces
-// a fresh rebuild of the current genre. The choice goes into the URL hash so it
-// survives refresh/back-forward; hashchange then drives the reload.
-$('#genre-filter').onchange = () => {
-  const g = $('#genre-filter').value;
-  location.hash = g ? `discover?genre=${g}` : 'discover';
-};
+// Populate the origin filter once, lazily — a single dropdown mixing continents
+// and countries. Each continent is an <optgroup> whose first row ("All of …")
+// selects the whole continent; its countries follow. Values are type-tagged
+// ('c:'/'k:') so the server can tell a continent from a country (see geo.js).
+let originsLoaded = false;
+async function loadOrigins() {
+  if (originsLoaded) return;
+  originsLoaded = true;
+  try {
+    const { continents } = await api('/api/origins');
+    const sel = $('#origin-filter');
+    for (const c of continents) {
+      const group = document.createElement('optgroup');
+      group.label = c.name;
+      const all = new Option(t('origin.allOf', { name: c.name }), `c:${c.code}`);
+      group.append(all);
+      for (const [code, name] of c.countries) group.append(new Option(name, `k:${code}`));
+      sel.append(group);
+    }
+  } catch { originsLoaded = false; /* allow a retry next open */ }
+}
+// The Discover filters (genre, origin, the two toggles) live in the URL hash so
+// a choice survives refresh/back-forward; hashchange then drives the reload.
+// Switching reads the prebuilt cache where possible; only "Refresh picks"
+// forces a fresh rebuild. Every control rewrites the hash from the full set.
+function syncDiscoverHash() {
+  const params = new URLSearchParams();
+  const g = $('#genre-filter').value; if (g) params.set('genre', g);
+  const o = $('#origin-filter').value; if (o) params.set('origin', o);
+  if ($('#exclude-us').checked) params.set('excludeUs', '1');
+  if ($('#indie').checked) params.set('indie', '1');
+  const qs = params.toString();
+  location.hash = qs ? `discover?${qs}` : 'discover';
+}
+for (const id of ['#genre-filter', '#origin-filter', '#exclude-us', '#indie']) {
+  $(id).onchange = syncDiscoverHash;
+}
 
 // Discover is adaptive. A new account (fewer than RATE_GOAL rated films) gets an
 // onboarding rate queue of acclaimed titles right here, so there's something to do
@@ -151,15 +187,18 @@ let obPages = Infinity;      // last known page count (stop paging once reached)
 let obFilling = false;       // guard against overlapping refills
 let swapping = false;        // guard so the background recs build/swap kicks off once
 
-// The genre filter and Refresh button only make sense for the picks grid; hide
-// them during the onboarding rate queue.
+// The filter controls and Refresh button only make sense for the picks grid;
+// hide them during the onboarding rate queue.
 function showRecsControls(show) {
-  $('#genre-filter').classList.toggle('hidden', !show);
-  $('#refresh').classList.toggle('hidden', !show);
+  for (const id of ['#genre-filter', '#origin-filter', '#exclude-us', '#indie', '#refresh']) {
+    $(id).classList.toggle('hidden', !show);
+  }
+  // The toggles' labels wrap the checkboxes — hide the whole label, not just the box.
+  for (const id of ['#exclude-us', '#indie']) $(id).closest('.toggle').classList.toggle('hidden', !show);
 }
 
 async function loadDiscover(force = false) {
-  await loadGenres();
+  await Promise.all([loadGenres(), loadOrigins()]);
   // How many films has the user rated? Below the goal we onboard; at/above it (or
   // on a forced Refresh) we show the real picks.
   let count = RATE_GOAL;
@@ -242,11 +281,19 @@ async function loadRecs(force = false) {
   info.textContent = t('discover.building');
   grid.innerHTML = '';
   try {
-    // Restore the genre from the URL (options exist now that loadGenres ran).
-    $('#genre-filter').value = parseHash().genre;
+    // Restore the filters from the URL (options exist now that loadGenres /
+    // loadOrigins ran) so a refresh or back/forward repaints the same view.
+    const h = parseHash();
+    $('#genre-filter').value = h.genre;
+    $('#origin-filter').value = h.origin;
+    $('#exclude-us').checked = h.excludeUs;
+    $('#indie').checked = h.indie;
     const genre = $('#genre-filter').value;
     const params = new URLSearchParams();
     if (genre) params.set('genre', genre);
+    if (h.origin) params.set('origin', h.origin);
+    if (h.excludeUs) params.set('excludeUs', '1');
+    if (h.indie) params.set('indie', '1');
     if (force) params.set('refresh', '1');
     const qs = params.toString();
     const [{ results, profileSize }] = await Promise.all([
@@ -608,43 +655,7 @@ async function loadSettings() {
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === s.country ? 'selected' : ''}>${n}</option>`).join('');
   sel.onchange = async () => { await saveSetting('country', sel.value); loadProviders(sel.value, s.providers); };
   await loadProviders(s.country, s.providers);
-  await loadOrigin(s);
 }
-// The movie-origin filter: a continent dropdown plus a country multi-select
-// (both narrow which countries a pick may come from), and two toggles —
-// exclude-US and indie-only. Continents/countries come from /api/origins so the
-// list stays a single source of truth with the server (see geo.js).
-async function loadOrigin(s) {
-  const { continents } = await api('/api/origins');
-  const cont = $('#origin-continent');
-  cont.innerHTML = `<option value="">${t('origin.anyContinent')}</option>`
-    + continents.map((c) => `<option value="${c.code}" ${c.code === s.originContinent ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
-  const box = $('#origin-country-list');
-  const chosen = new Set(s.originCountries || []);
-  box.innerHTML = '';
-  for (const c of continents) for (const [code, name] of c.countries) {
-    const el = document.createElement('div');
-    el.className = 'prov' + (chosen.has(code) ? ' on' : '');
-    el.textContent = name;
-    el.dataset.code = code;
-    el.onclick = () => el.classList.toggle('on');
-    box.append(el);
-  }
-  $('#exclude-us').checked = !!s.excludeUs;
-  $('#indie').checked = !!s.indie;
-}
-$('#save-origin').onclick = async () => {
-  const countries = [...$('#origin-country-list').querySelectorAll('.prov.on')].map((e) => e.dataset.code);
-  await api('/api/settings', { method: 'POST', body: JSON.stringify({
-    originContinent: $('#origin-continent').value,
-    originCountries: countries,
-    excludeUs: $('#exclude-us').checked,
-    indie: $('#indie').checked,
-  }) });
-  const btn = $('#save-origin');
-  btn.textContent = t('settings.saved');
-  setTimeout(() => (btn.textContent = t('settings.saveOrigin')), 1500);
-};
 async function loadProviders(region, selected = [], box = $('#provider-list')) {
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
   box.innerHTML = `<p class="sub">${t('providers.loading')}</p>`;

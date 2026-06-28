@@ -62,6 +62,11 @@
           <select id="genre-filter" data-i18n-title="discover.filterTitle" title="Filter picks by genre">
             <option value="" data-i18n="genre.all">All genres</option>
           </select>
+          <select id="origin-filter" data-i18n-title="discover.originTitle" title="Filter picks by where the film is from">
+            <option value="" data-i18n="origin.any">Any origin</option>
+          </select>
+          <label class="toggle"><input type="checkbox" id="exclude-us" /> <span data-i18n="filter.excludeUs">Non-US</span></label>
+          <label class="toggle"><input type="checkbox" id="indie" /> <span data-i18n="filter.indie">Indie only</span></label>
           <button id="refresh" data-i18n="discover.refresh">↻ Refresh picks</button>
         </div>
         <div id="recs" class="grid"></div>
@@ -91,16 +96,6 @@
           </label>
           <div id="provider-list" class="providers"></div>
           <button id="save-providers" data-i18n="settings.saveServices">Save services</button>
-
-          <h3 data-i18n="settings.originHeading">Movie origin</h3>
-          <p class="hint" data-i18n="settings.originHint">Steer picks toward films from particular places — or away from Hollywood.</p>
-          <label><span data-i18n="label.continent">Continent</span>
-            <select id="origin-continent"></select>
-          </label>
-          <div id="origin-country-list" class="providers"></div>
-          <label class="toggle"><input type="checkbox" id="exclude-us" /> <span data-i18n="settings.excludeUs">Exclude US productions</span></label>
-          <label class="toggle"><input type="checkbox" id="indie" /> <span data-i18n="settings.indie">Independent only — no major studios</span></label>
-          <button id="save-origin" data-i18n="settings.saveOrigin">Save origin filters</button>
 
           <!-- Account / privacy -->
           <div class="danger-zone">

@@ -48,11 +48,17 @@ export function countriesInContinent(continentCode) {
   return c ? c.countries.map(([code]) => code) : [];
 }
 
-// The set of country codes an origin filter permits, given a chosen continent
-// (broad) plus explicitly chosen countries (narrow) — their union. An empty set
-// means "no origin restriction": every country passes.
-export function allowedOriginSet({ continent, countries } = {}) {
-  const set = new Set(countriesInContinent(continent));
-  for (const code of countries || []) set.add(code);
-  return set;
+// The Discover origin picker is a single dropdown mixing continents and
+// countries, so each option carries a type-tagged value: 'c:<continent>' (e.g.
+// 'c:EU') or 'k:<country>' (e.g. 'k:FR'). The tag disambiguates codes that
+// collide across the two namespaces (e.g. 'SA' is both South America and Saudi
+// Arabia). Resolve such a value to the set of country codes it permits; an
+// empty/blank/unknown value yields an empty set ("no origin restriction").
+export function allowedOriginFromValue(value = '') {
+  if (value.startsWith('c:')) return new Set(countriesInContinent(value.slice(2)));
+  if (value.startsWith('k:')) {
+    const code = value.slice(2);
+    return code ? new Set([code]) : new Set();
+  }
+  return new Set();
 }

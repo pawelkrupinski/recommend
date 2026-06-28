@@ -239,50 +239,35 @@ test('recommendations carry the chosen services that stream each pick', async ()
 //   201 — US, Warner Bros (major)   202 — FR, indie   203 — JP, indie
 const idsOf = (data) => new Set(data.results.map((m) => m.tmdb_id));
 
-test('origin filters: settings round-trip and default to off', async () => {
-  const c = await client().login({ email: 'origin-settings@example.com' });
-  let r = await c.json('/api/settings');
-  assert.equal(r.data.originContinent, '');
-  assert.deepEqual(r.data.originCountries, []);
-  assert.equal(r.data.excludeUs, false);
-  assert.equal(r.data.indie, false);
-
-  await c.json('/api/settings', { method: 'POST', body: {
-    originContinent: 'EU', originCountries: ['JP'], excludeUs: true, indie: true } });
-  r = await c.json('/api/settings');
-  assert.equal(r.data.originContinent, 'EU');
-  assert.deepEqual(r.data.originCountries, ['JP']);
-  assert.equal(r.data.excludeUs, true);
-  assert.equal(r.data.indie, true);
-});
-
-test('excludeUs drops US-origin picks from recommendations', async () => {
+// The origin/indie filters are live Discover query params on /api/recommend
+// (like genre), not saved settings — so they're driven from the URL here.
+test('excludeUs query param drops US-origin picks from recommendations', async () => {
   const c = await client().login({ email: 'nous@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
   assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([201, 202, 203]), 'all three by default');
 
-  await c.json('/api/settings', { method: 'POST', body: { excludeUs: true } });
-  const ids = idsOf((await c.json('/api/recommend')).data);
+  const ids = idsOf((await c.json('/api/recommend?excludeUs=1')).data);
   assert.ok(!ids.has(201), 'US title (201) excluded');
   assert.deepEqual(ids, new Set([202, 203]), 'non-US picks remain');
 });
 
-test('indie toggle drops major-studio picks', async () => {
+test('indie query param drops major-studio picks', async () => {
   const c = await client().login({ email: 'indie@example.com' });
-  await c.json('/api/settings', { method: 'POST', body: { providers: [8], indie: true } });
-  const ids = idsOf((await c.json('/api/recommend')).data);
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  const ids = idsOf((await c.json('/api/recommend?indie=1')).data);
   assert.ok(!ids.has(201), 'Warner Bros title (201) excluded as non-indie');
   assert.deepEqual(ids, new Set([202, 203]), 'indie picks remain');
 });
 
-test('continent and country origin filters narrow the pool', async () => {
+test('origin query param narrows the pool by continent or country', async () => {
   const c = await client().login({ email: 'continent@example.com' });
-  await c.json('/api/settings', { method: 'POST', body: { providers: [8], originContinent: 'EU' } });
-  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([202]), 'only the European (FR) title');
-
-  // An explicit country broadens the allowed set alongside the continent.
-  await c.json('/api/settings', { method: 'POST', body: { originContinent: '', originCountries: ['JP'] } });
-  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([203]), 'only the Japanese title');
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // A continent value (c:EU) keeps only European titles.
+  assert.deepEqual(idsOf((await c.json('/api/recommend?origin=c:EU')).data), new Set([202]), 'only the European (FR) title');
+  // A country value (k:JP) keeps only that country's titles.
+  assert.deepEqual(idsOf((await c.json('/api/recommend?origin=k:JP')).data), new Set([203]), 'only the Japanese title');
+  // Filters combine: non-US European leaves the FR title; excluding it empties out.
+  assert.deepEqual(idsOf((await c.json('/api/recommend?origin=c:NA&excludeUs=1')).data), new Set(), 'North America minus US is empty');
 });
 
 test('GET /api/origins lists continents with their countries', async () => {

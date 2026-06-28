@@ -5,7 +5,7 @@ test('saving a Discover pick removes its card, flashes the tab, and lands in the
   await login(page, uniqEmail('watchlist'));
   await enterPicks(page);
 
-  // The stub yields 4 streamable picks (3 from discover + 1 trending). Wait for
+  // The stub yields 4 streamable picks (3 Discover + 1 trending-only). Wait for
   // the grid to finish painting all of them before counting, so `before` is the
   // settled total rather than a mid-build value (the picks build can lag under
   // full-suite load).

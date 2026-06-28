@@ -51,32 +51,6 @@ test('changing country persists across a reload', async ({ page }) => {
   await expect(page.locator('#country')).toHaveValue('US');
 });
 
-test('movie-origin filters show and persist across a reload', async ({ page }) => {
-  await login(page, uniqEmail('origin'));
-  await openSettings(page);
-  await expect(page.locator('#origin-continent')).toBeVisible();
-
-  await page.locator('#origin-continent').selectOption('EU');
-  await page.locator('#exclude-us').check();
-  await page.locator('#indie').check();
-  const france = page.locator('#origin-country-list .prov', { hasText: 'France' });
-  await france.click();
-  await expect(france).toHaveClass(/on/);
-
-  // Wait for the save POST to land before reloading, so persistence is real.
-  await Promise.all([
-    page.waitForResponse((r) => r.url().includes('/api/settings') && r.request().method() === 'POST'),
-    page.locator('#save-origin').click(),
-  ]);
-
-  await page.reload();
-  await openSettings(page);
-  await expect(page.locator('#origin-continent')).toHaveValue('EU');
-  await expect(page.locator('#exclude-us')).toBeChecked();
-  await expect(page.locator('#indie')).toBeChecked();
-  await expect(page.locator('#origin-country-list .prov', { hasText: 'France' })).toHaveClass(/on/);
-});
-
 test('settings survives a cold-start 503 on /api/settings', async ({ page }) => {
   // Render's free tier returns gateway 5xx for the first requests after a
   // spin-down wake. A blip on the Settings GET must not leave the country

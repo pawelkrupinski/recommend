@@ -8,7 +8,7 @@ import { details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
 import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingCard, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
-import { allowedOriginSet } from './geo.js';
+import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
 import { log } from './log.js';
@@ -121,8 +121,8 @@ function scoreMovie(movie, profile, collabHits = 0) {
 }
 
 // ---- origin / indie candidate filters -------------------------------------
-// Hard filters applied to every candidate (across all three pools) the same way
-// the genre filter is — a non-matching title is dropped, not just down-ranked.
+// Hard filters applied to every candidate (whatever source surfaced it) the
+// same way the genre filter is — a non-matching title is dropped, not down-ranked.
 // All operate on TMDB's /movie detail shape (production_countries, companies).
 
 // True when the title's origin satisfies the user's geography filter:
@@ -143,15 +143,13 @@ export function isIndie(movie) {
   return !(movie.production_companies || []).some((c) => MAJOR_STUDIO_IDS.has(c.id));
 }
 
-// Resolve a user's saved origin/indie preferences into the shape the pool
-// builder and cache key consume. `allowed` is the union of the chosen
-// continent's countries and any explicitly chosen ones (see geo.js).
-export function getUserFilters(userId) {
-  const continent = getUserSetting(userId, 'originContinent', '');
-  const countries = getUserSetting(userId, 'originCountries', []) || [];
-  const excludeUs = !!getUserSetting(userId, 'excludeUs', false);
-  const indie = !!getUserSetting(userId, 'indie', false);
-  return { allowed: allowedOriginSet({ continent, countries }), excludeUs, indie };
+// Resolve the Discover filter controls into the shape the pool builder and
+// cache key consume. These are live, per-request browse controls (like the
+// genre filter), passed as query params — not saved preferences. `origin` is
+// the single picker's type-tagged value ('c:<continent>' | 'k:<country>' | '');
+// see geo.js allowedOriginFromValue. Defaults (no args) mean "no filtering".
+export function resolveFilters({ origin = '', excludeUs = false, indie = false } = {}) {
+  return { allowed: allowedOriginFromValue(origin), excludeUs: !!excludeUs, indie: !!indie };
 }
 
 // Stable signature of a filter set for the pool cache key, so each distinct
@@ -226,7 +224,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // sources aren't genre-constrained at source, so filter here too).
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
     // Origin (continent/country/non-US) and indie filters — same hard-drop
-    // model as the genre filter, applied uniformly to all three pools.
+    // model as the genre filter, applied uniformly to every candidate source.
     if (!matchesOrigin(full, filters)) continue;
     if (filters.indie && !isIndie(full)) continue;
     // Drop titles not on a chosen service in the user's region; otherwise keep
@@ -273,7 +271,7 @@ const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
-  filters = filters || getUserFilters(userId);
+  filters = filters || resolveFilters();
   const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters });
   // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
   // serving is a pure cache read — these lookups hit the web on a cold cache.
@@ -289,7 +287,7 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 // background rebuild scheduled; we only block when there's no cached pool at all
 // (a genre the warm hasn't reached) or when force=true (Refresh).
 export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language, filters }) {
-  filters = filters || getUserFilters(userId);
+  filters = filters || resolveFilters();
   let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
   if (!cached || force) {
     cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
@@ -314,7 +312,9 @@ export async function prebuildRecommendations(userId) {
   const region = getUserSetting(userId, 'country', 'PL');
   const providerIds = (getUserSetting(userId, 'providers', []) || []).map(Number);
   const language = tmdbLang(getUserSetting(userId, 'language', DEFAULT_LANGUAGE));
-  const filters = getUserFilters(userId);
+  // Prebuild warms the unfiltered pools (all genres + per genre); origin/indie
+  // filters are applied on demand at serve time from the Discover controls.
+  const filters = resolveFilters();
   const profile = await buildProfile(userId);
   const ratings = getRatings(userId);
   await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings, language, filters });

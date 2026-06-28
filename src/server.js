@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
-import { recommend, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
@@ -177,24 +177,14 @@ async function api(req, res, url) {
         country: getUserSetting(uid, 'country', 'PL'),
         providers: getUserSetting(uid, 'providers', []),
         language: langFor(uid, req),
-        // Movie-origin filters (see taste.js getUserFilters).
-        originContinent: getUserSetting(uid, 'originContinent', ''),
-        originCountries: getUserSetting(uid, 'originCountries', []),
-        excludeUs: !!getUserSetting(uid, 'excludeUs', false),
-        indie: !!getUserSetting(uid, 'indie', false),
       });
     }
     if (p === '/api/settings' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)) || '{}');
-      // Only per-user streaming/country and movie-origin preferences are settable
-      // here. Each changes the shape of the recommendation pool, so any of them
-      // invalidates the user's cached picks.
+      // Only per-user streaming/country preferences are settable here.
       let userScopeChanged = false;
       for (const [k, v] of Object.entries(body)) {
         if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
-        else if (k === 'originContinent') { setUserSetting(uid, k, typeof v === 'string' ? v : ''); userScopeChanged = true; }
-        else if (k === 'originCountries') { setUserSetting(uid, k, Array.isArray(v) ? v : []); userScopeChanged = true; }
-        else if (k === 'excludeUs' || k === 'indie') { setUserSetting(uid, k, !!v); userScopeChanged = true; }
         // Language has its own per-language recommendation pool (see taste.js
         // poolKey), so switching it needs no rec invalidation — just save it.
         else if (k === 'language') { if (isSupportedLanguage(v)) setUserSetting(uid, 'language', v); }
@@ -292,7 +282,13 @@ async function api(req, res, url) {
       const genreId = Number(url.searchParams.get('genre')) || undefined;
       const force = url.searchParams.get('refresh') === '1';
       const language = tmdbLang(langFor(uid, req));
-      const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language });
+      // Live origin/indie browse controls from the Discover bar (like genre).
+      const filters = resolveFilters({
+        origin: url.searchParams.get('origin') || '',
+        excludeUs: url.searchParams.get('excludeUs') === '1',
+        indie: url.searchParams.get('indie') === '1',
+      });
+      const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language, filters });
       return json(req, res, 200, out);
     }
 

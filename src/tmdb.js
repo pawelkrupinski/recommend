@@ -65,8 +65,8 @@ async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
 export const tmdbConfigured = () =>
   process.env.TMDB_STUB === '1' || !!getSetting('tmdbKey', config.tmdbKey);
 
-export const search = (query, year) =>
-  tmdb('/search/movie', { query, ...(year ? { year } : {}) });
+export const search = (query, year, language) =>
+  tmdb('/search/movie', { query, ...(year ? { year } : {}), ...(language ? { language } : {}) });
 
 export const findByImdb = (imdbId) =>
   tmdb(`/find/${imdbId}`, { external_source: 'imdb_id' });
@@ -75,11 +75,14 @@ export const findByImdb = (imdbId) =>
 // IMDb tt-id, used to look up IMDb/Metacritic ratings (see ratings.js).
 // watch/providers lets the recommender drop titles that aren't streamable on the
 // user's services or for free (see taste.js); appended here to avoid a 2nd call.
-export const details = (id, mediaType = 'movie') =>
-  tmdb(`/${mediaType}/${id}`, { append_to_response: 'keywords,credits,external_ids,watch/providers' });
+export const details = (id, mediaType = 'movie', language) =>
+  tmdb(`/${mediaType}/${id}`, {
+    append_to_response: 'keywords,credits,external_ids,watch/providers',
+    ...(language ? { language } : {}),
+  });
 
-export const recommendations = (id, mediaType = 'movie') =>
-  tmdb(`/${mediaType}/${id}/recommendations`);
+export const recommendations = (id, mediaType = 'movie', language) =>
+  tmdb(`/${mediaType}/${id}/recommendations`, language ? { language } : {});
 
 export const watchProviders = (id, mediaType = 'movie') =>
   tmdb(`/${mediaType}/${id}/watch/providers`);
@@ -91,22 +94,24 @@ export const watchProviders = (id, mediaType = 'movie') =>
 // most people have ever rated (the canonical "everyone's seen it" set), spanning
 // decades and genres; the rating/count floors keep them acclaimed, not just
 // heavily watched.
-export const acclaimed = (page = 1) =>
+export const acclaimed = (page = 1, language) =>
   tmdb('/discover/movie', {
     sort_by: 'vote_count.desc',
     'vote_average.gte': 7,
     'vote_count.gte': 1000,
     page,
+    ...(language ? { language } : {}),
   });
 
-export const genres = (mediaType = 'movie') => tmdb(`/genre/${mediaType}/list`);
+export const genres = (mediaType = 'movie', language) =>
+  tmdb(`/genre/${mediaType}/list`, language ? { language } : {});
 
 // Providers available in a region, e.g. to populate the Settings picker.
 export const providersForRegion = (region, mediaType = 'movie') =>
   tmdb(`/watch/providers/${mediaType}`, { watch_region: region });
 
 // Discover titles actually streamable on the user's services in their country.
-export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc' }) {
+export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', language }) {
   return tmdb(`/discover/${mediaType}`, {
     watch_region: region,
     with_watch_providers: providerIds.join('|'),
@@ -115,5 +120,6 @@ export function discover({ region, providerIds, genreId, mediaType = 'movie', pa
     sort_by: sortBy,
     page,
     'vote_count.gte': 50,
+    ...(language ? { language } : {}),
   });
 }

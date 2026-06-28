@@ -1,3 +1,5 @@
+import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
+
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
 const api = async (path, opts) => {
@@ -127,8 +129,8 @@ async function loadDiscover(force = false) {
 function updateOnboardInfo() {
   const left = Math.max(0, RATE_GOAL - obRated);
   $('#discover-info').textContent = left
-    ? `Rate films you've seen so we can learn your taste — ${left} more to go.`
-    : 'Building your personalized picks…';
+    ? t('discover.onboardCountdown', { left })
+    : t('discover.buildingPersonalized');
 }
 
 // Pull acclaimed titles to rate into the Discover grid, skipping pages already
@@ -151,8 +153,7 @@ async function fillOnboardQueue(reset) {
       added += items.length;
     }
   } finally { obFilling = false; }
-  if (!added && reset) $('#discover-info').textContent =
-    "You've rated everything we had to show — switching to your personalized picks.";
+  if (!added && reset) $('#discover-info').textContent = t('discover.ratedEverything');
 }
 
 // A card in the onboarding queue resolved (rated or "haven't seen"): track the
@@ -185,7 +186,7 @@ async function maybeSwap() {
 
 async function loadRecs(force = false) {
   const info = $('#discover-info'), grid = $('#recs');
-  info.textContent = 'Building your picks…';
+  info.textContent = t('discover.building');
   grid.innerHTML = '';
   try {
     // Restore the genre from the URL (options exist now that loadGenres ran).
@@ -215,19 +216,19 @@ function renderRecs(results, profileSize, genre) {
   const picks = results.filter((m) => !watchlistIds.has(m.tmdb_id));
   if (!picks.length) {
     info.textContent = '';
-    grid.innerHTML = genre
-      ? '<p class="empty">No picks in this genre on your services. Try “All genres” or another genre.</p>'
-      : '<p class="empty">No picks yet. Add your TMDB key + streaming services in Settings, then rate some films.</p>';
+    grid.innerHTML = `<p class="empty">${t(genre ? 'discover.emptyGenre' : 'discover.emptyNoPicks')}</p>`;
     return;
   }
-  const inGenre = genre ? ` in ${$('#genre-filter').selectedOptions[0].textContent}` : '';
-  info.textContent = `${picks.length} picks${inGenre} from a taste profile of ${profileSize} rated films.`;
+  info.textContent = genre
+    ? t('discover.picksSummaryGenre', { count: picks.length, genre: $('#genre-filter').selectedOptions[0].textContent, profile: profileSize })
+    : t('discover.picksSummary', { count: picks.length, profile: profileSize });
   grid.innerHTML = '';
   for (const m of picks) grid.append(recCard(m));
 }
 // Shown when the last Discover card leaves the grid — whether it was rated,
-// dismissed, or saved to the watchlist.
-const PICKS_EMPTY = 'No more picks here — hit “Refresh picks” for more.';
+// dismissed, or saved to the watchlist. A function (not a const) so it reflects
+// the language chosen at init, not the default at module load.
+const picksEmptyMsg = () => t('discover.picksEmptyMore');
 function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -250,7 +251,7 @@ function recCard(m) {
   wireWatch(el, m);
   wireServiceLinks(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
-  wireRating(el, m, () => removeCard(el, PICKS_EMPTY));
+  wireRating(el, m, () => removeCard(el, picksEmptyMsg()));
   return el;
 }
 
@@ -306,7 +307,7 @@ const starsMarkup = () => `<div class="rate-stars"><div class="stars">${STAR_SPA
 function ratingRow() {
   return `
     ${starsMarkup()}
-    <button class="skip dismiss-btn">Not interested / seen it</button>`;
+    <button class="skip dismiss-btn">${t('card.notInterested')}</button>`;
 }
 // Wire the 1–10 star widget inside `el`: desktop hover and mobile touch-drag
 // both preview the rating ("n / 10"); a click or finger-lift commits via
@@ -410,7 +411,7 @@ function wireWatch(el, m) {
         tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
       watchlistIds.add(m.tmdb_id);
       flashTab('watchlist');
-      removeCard(el, PICKS_EMPTY);
+      removeCard(el, picksEmptyMsg());
     } finally { btn.disabled = false; }
   };
 }
@@ -418,9 +419,9 @@ function wireWatch(el, m) {
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
-  const director = m.director ? `<p class="credit"><span class="lbl">Director</span> ${esc(m.director)}</p>` : '';
+  const director = m.director ? `<p class="credit"><span class="lbl">${t('modal.director')}</span> ${esc(m.director)}</p>` : '';
   const cast = (m.cast && m.cast.length)
-    ? `<p class="credit"><span class="lbl">Cast</span> ${esc(m.cast.join(', '))}</p>` : '';
+    ? `<p class="credit"><span class="lbl">${t('modal.cast')}</span> ${esc(m.cast.join(', '))}</p>` : '';
   return `<div class="detail-head">
       <img class="detail-poster" src="${poster(m.poster_path)}" />
       <div class="detail-info">
@@ -434,7 +435,7 @@ function movieHeader(m) {
 async function openWhere(m) {
   const modal = $('#modal'), body = $('#modal-body');
   modal.classList.remove('hidden');
-  body.innerHTML = `${movieHeader(m)}<p>Loading availability…</p>`;
+  body.innerHTML = `${movieHeader(m)}<p>${t('modal.loadingAvailability')}</p>`;
   try {
     const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
     // On touch devices, navigate in the SAME tab: streaming-service URLs are
@@ -447,8 +448,8 @@ async function openWhere(m) {
       ? w.deepLinks.map((o) => `<a href="${o.link}"${appTab}>▶ ${esc(o.service)} <span class="sub">${o.type}</span></a>`).join('')
       : (w.flatrate || []).map((f) => `<a href="${w.tmdbLink || '#'}" target="_blank"><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`).join('');
     body.innerHTML = `${movieHeader(m)}
-      <div class="where">${links || '<p class="sub">Not on your subscription services in this country right now.</p>'}</div>
-      <p style="margin-top:18px"><button id="dismiss">Not interested / seen it</button></p>`;
+      <div class="where">${links || `<p class="sub">${t('modal.notAvailable')}</p>`}</div>
+      <p style="margin-top:18px"><button id="dismiss">${t('card.notInterested')}</button></p>`;
     $('#dismiss').onclick = async () => {
       await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id }) });
       modal.classList.add('hidden'); loadDiscover();
@@ -473,7 +474,7 @@ function queueCard(m, onResolve) {
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta"><div class="title">${esc(m.title)}</div><div class="year">${m.year || ''}</div></div>
     ${starsMarkup()}
-    <button class="skip">Haven't seen</button>`;
+    <button class="skip">${t('card.notSeen')}</button>`;
   el.querySelector('img').onclick = () => openWhere(m); // poster → where-to-watch modal
   wireStars(el, async (rating) => {
     await api('/api/ratings', { method: 'POST', body: JSON.stringify({
@@ -496,12 +497,11 @@ async function loadWatchlist() {
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
   setWatchlistCount(watchlist.length);
   const grid = $('#watchlist-grid');
-  grid.innerHTML = watchlist.length ? '' : `<p class="empty">${WATCHLIST_EMPTY}</p>`;
+  grid.innerHTML = watchlist.length ? '' : `<p class="empty">${t('watchlist.empty')}</p>`;
   for (const w of watchlist) grid.append(watchCard(w));
 }
-const WATCHLIST_EMPTY = 'Your watchlist is empty. Hit + on a Discover pick to save it for later.';
 function setWatchlistCount(n) {
-  $('#watchlist-count').textContent = `${n} saved ${n === 1 ? 'title' : 'titles'}`;
+  $('#watchlist-count').textContent = t('watchlist.count', { n });
 }
 function watchCard(w) {
   const m = { tmdb_id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path };
@@ -513,13 +513,13 @@ function watchCard(w) {
       <div class="title">${esc(m.title || m.tmdb_id)}</div>
       <div class="year">${m.year || ''}</div>
     </div>
-    <button class="skip watch-remove">Remove from watchlist</button>`;
+    <button class="skip watch-remove">${t('watchlist.remove')}</button>`;
   el.querySelector('img').onclick = () => openWhere(m);
   el.querySelector('.watch-remove').onclick = async () => {
     await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: w.media_type || 'movie' }) });
     watchlistIds.delete(m.tmdb_id);
     setWatchlistCount(watchlistIds.size);
-    removeCard(el, WATCHLIST_EMPTY);
+    removeCard(el, t('watchlist.empty'));
   };
   return el;
 }
@@ -527,9 +527,9 @@ function watchCard(w) {
 // ---- my ratings -----------------------------------------------------------
 async function loadRatings() {
   const { ratings } = await api('/api/ratings');
-  $('#ratings-count').textContent = `${ratings.length} rated titles`;
+  $('#ratings-count').textContent = t('ratings.count', { n: ratings.length });
   const list = $('#ratings-list');
-  list.innerHTML = ratings.length ? '' : '<p class="empty">No ratings yet.</p>';
+  list.innerHTML = ratings.length ? '' : `<p class="empty">${t('ratings.empty')}</p>`;
   for (const r of ratings) {
     const row = document.createElement('div');
     row.className = 'rrow';
@@ -546,8 +546,16 @@ async function loadRatings() {
 // ---- settings -------------------------------------------------------------
 const COUNTRIES = [['PL','Poland'],['US','United States'],['GB','United Kingdom'],['DE','Germany'],
   ['FR','France'],['ES','Spain'],['IT','Italy'],['NL','Netherlands'],['SE','Sweden'],['CA','Canada'],['AU','Australia']];
+// Native-name options for the language switcher (shared by Settings + onboarding).
+const langOptions = (selected) =>
+  LANGUAGES.map(({ code, name }) => `<option value="${code}" ${code === selected ? 'selected' : ''}>${name}</option>`).join('');
 async function loadSettings() {
   const s = await api('/api/settings');
+  const lang = $('#lang');
+  lang.innerHTML = langOptions(getLanguage());
+  // Switching language reloads so genres, picks and synopses all refetch in the
+  // new language (the tab is preserved via the URL hash).
+  lang.onchange = async () => { await saveSetting('language', lang.value); location.reload(); };
   const sel = $('#country');
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === s.country ? 'selected' : ''}>${n}</option>`).join('');
   sel.onchange = async () => { await saveSetting('country', sel.value); loadProviders(sel.value, s.providers); };
@@ -555,7 +563,7 @@ async function loadSettings() {
 }
 async function loadProviders(region, selected = [], box = $('#provider-list')) {
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
-  box.innerHTML = '<p class="sub">Loading services…</p>';
+  box.innerHTML = `<p class="sub">${t('providers.loading')}</p>`;
   try {
     const { providers, source } = await api(`/api/providers?region=${region}`);
     const chosen = new Set((selected || []).map(Number));
@@ -566,21 +574,19 @@ async function loadProviders(region, selected = [], box = $('#provider-list')) {
       el.className = 'prov' + (chosen.has(p.id) ? ' on' : '') + (unmatched ? ' disabled' : '');
       const logo = p.logo ? `<img src="${IMG}/w45${p.logo}"/>` : '<span class="nologo">🎞️</span>';
       el.innerHTML = `${logo} ${esc(p.name)}`;
-      if (unmatched) el.title = 'No TMDB match — can’t filter recommendations by this service';
+      if (unmatched) el.title = t('providers.noTmdbMatch');
       else { el.onclick = () => el.classList.toggle('on'); el.dataset.id = p.id; }
       box.append(el);
     }
-    const note = source === 'movieofthenight'
-      ? 'Service list from Movie of the Night (1 cached request).'
-      : 'Service list from TMDB.';
+    const note = t(source === 'movieofthenight' ? 'providers.sourceMotn' : 'providers.sourceTmdb');
     box.insertAdjacentHTML('beforebegin', `<p class="sub src-note">${note}</p>`);
-  } catch (e) { box.innerHTML = `<p class="sub">⚠ ${e.message} — set your TMDB key first.</p>`; }
+  } catch (e) { box.innerHTML = `<p class="sub">${t('providers.errorSetKey', { msg: e.message })}</p>`; }
 }
 $('#save-providers').onclick = async () => {
   const ids = [...$('#provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
   await saveSetting('providers', ids);
-  $('#save-providers').textContent = '✓ Saved';
-  setTimeout(() => ($('#save-providers').textContent = 'Save services'), 1500);
+  $('#save-providers').textContent = t('settings.saved');
+  setTimeout(() => ($('#save-providers').textContent = t('settings.saveServices')), 1500);
 };
 const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.stringify({ [k]: v }) });
 
@@ -588,18 +594,16 @@ const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.
 // session cookie, so an anonymous user simply starts fresh, a signed-in one is
 // fully deleted). The confirm/label adapt to which kind of account it is.
 $('#delete-account').onclick = async () => {
-  const msg = ME.anonymous
-    ? 'Clear all your ratings and preferences on this device? This cannot be undone.'
-    : 'Delete your account and all your ratings and preferences? This cannot be undone.';
+  const msg = t(ME.anonymous ? 'account.confirmAnon' : 'account.confirmUser');
   if (!confirm(msg)) return;
   const btn = $('#delete-account');
-  btn.disabled = true; btn.textContent = 'Deleting…';
+  btn.disabled = true; btn.textContent = t('account.deleting');
   try {
     await api('/api/me', { method: 'DELETE' });
     location.href = '/';
   } catch (e) {
-    btn.disabled = false; btn.textContent = 'Delete account';
-    alert('Could not delete account: ' + e.message);
+    btn.disabled = false; btn.textContent = t('settings.deleteAccount');
+    alert(t('account.deleteFailed', { msg: e.message }));
   }
 };
 
@@ -607,13 +611,14 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp
 
 // ---- auth / bootstrap -----------------------------------------------------
 let ME = null;
-const PROVIDER_LABELS = { google: 'Sign in with Google', facebook: 'Sign in with Facebook' };
+const PROVIDER_NAMES = { google: 'Google', facebook: 'Facebook' };
+const providerLabel = (p) => t('auth.signInWith', { provider: PROVIDER_NAMES[p] || (p[0].toUpperCase() + p.slice(1)) });
 // Populate the (optional) sign-in overlay's provider buttons. Called once at
 // startup so the overlay is ready the moment an anonymous user taps "Sign in".
 function renderLogin(providers) {
   $('#login-buttons').innerHTML = providers.length
-    ? providers.map((p) => `<a class="btn-oauth ${p}" href="/auth/${p}">${PROVIDER_LABELS[p] || ('Sign in with ' + p)}</a>`).join('')
-    : '<p class="sub">No login providers are configured on the server yet.</p>';
+    ? providers.map((p) => `<a class="btn-oauth ${p}" href="/auth/${p}">${providerLabel(p)}</a>`).join('')
+    : `<p class="sub">${t('auth.noProviders')}</p>`;
   const err = new URLSearchParams(location.search).get('error');
   if (err) $('#login-error').textContent = '⚠ ' + err;
 }
@@ -629,7 +634,7 @@ $('#login').onclick = (e) => { if (e.target.id === 'login') hideLogin(); };
 function renderUserbar() {
   if (ME.anonymous) {
     $('#userbar').innerHTML = (ME.providers || []).length
-      ? '<a class="logout" id="show-signin">Sign in</a>' : '';
+      ? `<a class="logout" id="show-signin">${t('auth.signIn')}</a>` : '';
     const link = $('#show-signin');
     if (link) link.onclick = showLogin;
     return;
@@ -638,7 +643,7 @@ function renderUserbar() {
   const avatar = user.picture ? `<img src="${user.picture}" alt="" referrerpolicy="no-referrer" />` : '';
   $('#userbar').innerHTML =
     `${avatar}<span class="uname">${esc(user.name || user.email)}</span>`
-    + `<a class="logout" href="/auth/logout">Sign out</a>`;
+    + `<a class="logout" href="/auth/logout">${t('auth.signOut')}</a>`;
 }
 // ---- first-run onboarding -------------------------------------------------
 // Brand-new accounts (onboarded=false) must pick their streaming services before
@@ -646,8 +651,15 @@ function renderUserbar() {
 async function startOnboarding() {
   const ob = $('#onboarding');
   ob.classList.remove('hidden');
+  // Language switches the onboarding copy live (no data loaded yet to refetch).
+  const lang = $('#ob-lang');
+  lang.innerHTML = langOptions(getLanguage());
+  lang.onchange = () => { setLanguage(lang.value); document.documentElement.lang = lang.value; applyStatic(); };
+  // Preselect the detected country for a newcomer; fall back to PL if we don't
+  // recognise it (or there was no geo signal).
+  const detected = COUNTRIES.some(([c]) => c === ME.detectedCountry) ? ME.detectedCountry : 'PL';
   const sel = $('#ob-country');
-  sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === 'PL' ? 'selected' : ''}>${n}</option>`).join('');
+  sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === detected ? 'selected' : ''}>${n}</option>`).join('');
   // Services differ per country, so a country switch reloads with a clean slate.
   sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'));
   await loadProviders(sel.value, [], $('#ob-provider-list'));
@@ -657,7 +669,7 @@ async function startOnboarding() {
     btn.disabled = true;
     try {
       await api('/api/settings', { method: 'POST', body: JSON.stringify({
-        country: sel.value, providers: ids, onboarded: true }) });
+        country: sel.value, providers: ids, language: getLanguage(), onboarded: true }) });
     } catch (e) { btn.disabled = false; alert('⚠ ' + e.message); return; }
     ob.classList.add('hidden');
     enterApp();
@@ -675,6 +687,11 @@ async function init() {
   // user — no login gate. The overlay is prepared up front in case the user later
   // taps "Sign in" (e.g. to sync across devices); it surfaces any ?error= too.
   try { ME = await api('/api/me'); } catch { ME = { user: null, anonymous: true, providers: [] }; }
+  // Set the interface language (saved choice, else detected) and translate all
+  // the static markup before any screen is shown.
+  setLanguage(ME.language || 'en');
+  document.documentElement.lang = getLanguage();
+  applyStatic();
   renderLogin(ME.providers || []);
   if (new URLSearchParams(location.search).get('error')) showLogin();
   // Drop any ?error= left over from a failed prior attempt, keep the tab hash.

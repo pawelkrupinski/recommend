@@ -299,7 +299,12 @@ async function openWhere(m) {
     };
   } catch (e) { body.innerHTML += `<p>⚠ ${e.message}</p>`; }
 }
+// Dismiss the detail modal by tapping the backdrop, the ✕ button, or pressing Escape.
 $('#modal').onclick = (e) => { if (e.target.id === 'modal') e.currentTarget.classList.add('hidden'); };
+$('#modal-close').onclick = () => $('#modal').classList.add('hidden');
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') $('#modal').classList.add('hidden');
+});
 
 // ---- rate -----------------------------------------------------------------
 let ratePage = 0, gone = 0;

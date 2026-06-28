@@ -4,11 +4,16 @@
 }
 * { box-sizing: border-box; }
 .hidden { display: none !important; }
+html { scroll-behavior: smooth; }
 body {
   margin: 0; background: var(--bg); color: var(--fg);
   font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;           /* don't auto-inflate text in landscape */
+  -webkit-tap-highlight-color: transparent; /* no grey flash on tap */
 }
 a { color: var(--accent); }
+/* Keyboard focus ring only (kept off mouse/touch via :focus-visible). */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 header {
   position: sticky; top: 0; z-index: 5; background: var(--panel);
   border-bottom: 1px solid var(--line); padding: 12px 20px;
@@ -70,6 +75,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   overflow: hidden; display: flex; flex-direction: column; position: relative;
+  transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
+}
+/* Pointer devices get a subtle lift on hover; touch devices skip it so the
+   style never "sticks" after a tap. */
+@media (hover: hover) {
+  .card:hover { transform: translateY(-3px); border-color: #3a414c; box-shadow: 0 8px 22px rgba(0,0,0,.35); }
 }
 .card img { width: 100%; aspect-ratio: 2/3; object-fit: cover; background: var(--panel2); cursor: pointer; }
 .card .meta { padding: 8px 10px; }
@@ -153,24 +164,102 @@ button.danger:disabled { opacity: .6; cursor: default; }
   padding: 8px 0; border-bottom: 1px solid var(--line); }
 .rrow .r { color: var(--accent); font-weight: 700; }
 
-/* modal */
+/* modal — z-index sits above the mobile bottom nav (z-index 20) so an open
+   detail sheet always covers it. */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex;
-  align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  align-items: center; justify-content: center; padding: 20px; z-index: 50; }
 .modal.hidden { display: none; }
-.modal-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
-  max-width: 640px; width: 100%; padding: 22px; max-height: 86vh; overflow: auto; }
+.modal-card { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  max-width: 640px; width: 100%; padding: 22px; max-height: 86vh; overflow: auto;
+  -webkit-overflow-scrolling: touch; }
+/* Always-visible close affordance (the backdrop is still tappable to dismiss). */
+.modal-close {
+  position: absolute; top: 12px; right: 12px; z-index: 1;
+  width: 36px; height: 36px; min-height: 0; padding: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; line-height: 1; background: var(--panel2);
+  border: 1px solid var(--line); color: var(--muted);
+}
+.modal-close:hover { color: var(--fg); border-color: var(--accent); }
 .detail-head { display: flex; gap: 18px; margin-bottom: 16px; }
 .detail-poster { width: 150px; flex: none; aspect-ratio: 2/3; object-fit: cover; border-radius: 8px; background: var(--panel2); align-self: flex-start; }
 .detail-info { min-width: 0; }
-.detail-info h2 { margin-top: 0; }
+.detail-info h2 { margin-top: 0; padding-right: 34px; } /* clear the close button */
 .credit { margin: 6px 0 0; font-size: 13px; }
 .credit .lbl { color: var(--muted); margin-right: 6px; }
+/* ---- responsive ---------------------------------------------------------- */
+
+/* Large desktops: a wider canvas and slightly larger posters for the extra room. */
+@media (min-width: 1280px) {
+  main { max-width: 1240px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 20px; }
+}
+
+/* Tablets and down: tighter chrome and a denser grid. */
+@media (max-width: 768px) {
+  header { gap: 14px; padding: 10px 16px; }
+  main { padding: 18px 16px 80px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+}
+
+/* Phones: tab bar moves to a thumb-reachable fixed bottom bar, the Discover
+   toolbar stacks, form controls grow to 16px (so iOS Safari doesn't zoom on
+   focus), and the detail modal becomes a slide-up bottom sheet. */
+@media (max-width: 640px) {
+  /* Tabs -> bottom navigation. #tabs lives inside #app, so it's hidden on the
+     login/onboarding screens automatically. */
+  #tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; gap: 0; background: var(--panel);
+    border-top: 1px solid var(--line);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 16px rgba(0,0,0,.3);
+  }
+  #tabs button { flex: 1; font-size: 11px; padding: 9px 2px; border-radius: 8px; line-height: 1.25; }
+  /* Header now carries just the brand + account; keep them on one row. */
+  header { gap: 12px; }
+  h1 { font-size: 17px; }
+  #userbar .uname { display: none; }
+  /* Leave room above the fixed bottom bar. */
+  main { padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)); }
+
+  /* Discover toolbar: info on its own line, filter + refresh share the next. */
+  .bar { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .bar #discover-info { flex-basis: 100%; margin-right: 0; }
+  #genre-filter { flex: 1; }
+  #refresh { white-space: nowrap; }
+
+  /* 16px keeps iOS from zooming when these are focused. */
+  .form input, .form select, #genre-filter { font-size: 16px; }
+  .form { max-width: none; }
+
+  /* Detail modal as a bottom sheet. */
+  .modal { align-items: flex-end; padding: 0; }
+  .modal-card {
+    max-width: 100%; border-radius: 16px 16px 0 0; max-height: 92vh;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px));
+    animation: sheet-up .22s ease;
+  }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+
+/* Small phones: two even columns and bigger thumb targets. */
 @media (max-width: 480px) {
-  .detail-poster { width: 110px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .detail-head { gap: 12px; }
+  .detail-poster { width: 104px; }
   .stars { gap: 6px; }
   .stars span { font-size: 24px; padding: 9px 0; }   /* larger thumb targets */
   .card .skip { font-size: 13px; padding: 8px; }
+  .login-card { padding: 28px 22px; }
+  header { padding: 10px 14px; }
+  main { padding-left: 14px; padding-right: 14px; }
+}
+
+/* Honour reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .card, .modal-card { transition: none; animation: none; }
 }
 .where a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }

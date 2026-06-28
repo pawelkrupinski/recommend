@@ -16,8 +16,12 @@ fi
 
 if [ ! -f "$DB_PATH" ]; then
   echo "litestream: restoring $DB_PATH from replica (if any)…"
-  # -if-replica-exists makes this a no-op on the very first deploy (empty bucket).
-  litestream restore -if-replica-exists "$DB_PATH"
+  # On the first deploy the bucket is empty. -if-replica-exists is meant to make
+  # this a no-op, but against Cloudflare R2 it returns a NoSuchKey (404) that
+  # litestream treats as fatal — so we tolerate a failed restore and start fresh.
+  # litestream replicate (below) then creates the first generation in the bucket.
+  litestream restore -if-replica-exists "$DB_PATH" \
+    || echo "litestream: no replica to restore yet — starting with a fresh database"
 fi
 
 echo "litestream: replicating $DB_PATH → $LITESTREAM_BUCKET"

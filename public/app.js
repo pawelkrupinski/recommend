@@ -222,6 +222,9 @@ function renderRecs(results, profileSize, genre) {
   grid.innerHTML = '';
   for (const m of results) grid.append(recCard(m));
 }
+// Shown when the last Discover card leaves the grid — whether it was rated,
+// dismissed, or saved to the watchlist.
+const PICKS_EMPTY = 'No more picks here — hit “Refresh picks” for more.';
 function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
@@ -240,7 +243,7 @@ function recCard(m) {
   el.querySelector('img').onclick = () => openWhere(m);
   wireWatch(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
-  wireRating(el, m, () => removeCard(el, 'No more picks here — hit “Refresh picks” for more.'));
+  wireRating(el, m, () => removeCard(el, PICKS_EMPTY));
   return el;
 }
 
@@ -340,8 +343,18 @@ function setWatchBtn(btn, inList) {
   btn.title = label;
   btn.setAttribute('aria-label', label);
 }
-// Wire the + button inside `el` for movie `m`: toggles the title on/off the
-// watchlist and keeps the cached id set and the button in sync.
+// Briefly pulse a nav tab (CSS `.flash` animation) to draw the eye to where
+// something just landed — e.g. the Watchlist tab when a pick is saved.
+function flashTab(tab) {
+  const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+  if (!btn) return;
+  btn.classList.remove('flash');
+  void btn.offsetWidth; // reflow so re-adding restarts the animation mid-flash
+  btn.classList.add('flash');
+  btn.addEventListener('animationend', () => btn.classList.remove('flash'), { once: true });
+}
+// Wire the + button inside `el` for movie `m`: saves the title to the watchlist
+// (removing the card from Discover) or, for an already-saved pick, unsaves it.
 function wireWatch(el, m) {
   const btn = el.querySelector('.watch-btn');
   if (!btn) return;
@@ -354,11 +367,15 @@ function wireWatch(el, m) {
         await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
           tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
         watchlistIds.add(m.tmdb_id);
+        // Saved — drop the card from Discover and pulse the Watchlist tab so it's
+        // clear where the title went.
+        flashTab('watchlist');
+        removeCard(el, PICKS_EMPTY);
       } else {
         await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
         watchlistIds.delete(m.tmdb_id);
+        setWatchBtn(btn, false);
       }
-      setWatchBtn(btn, adding);
     } finally { btn.disabled = false; }
   };
 }

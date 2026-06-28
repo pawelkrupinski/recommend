@@ -26,6 +26,13 @@ nav button {
 }
 nav button:hover { color: var(--fg); }
 nav button.active { color: var(--bg); background: var(--accent); font-weight: 600; }
+/* A brief pulse drawing the eye to a tab when content just landed there (e.g.
+   saving a Discover pick to the Watchlist). Skips the active tab's own styling. */
+nav button.flash { animation: tab-flash .6s ease; }
+@keyframes tab-flash {
+  0%, 100% { color: var(--muted); background: none; }
+  25% { color: var(--bg); background: var(--accent); }
+}
 main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 
 /* userbar (top-right) */
@@ -291,7 +298,7 @@ button.danger:disabled { opacity: .6; cursor: default; }
 /* Honour reduced-motion preferences. */
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .card, .modal-card { transition: none; animation: none; }
+  .card, .modal-card, nav button.flash { transition: none; animation: none; }
 }
 .where a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }

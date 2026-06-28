@@ -78,6 +78,23 @@ test('ratings: create, list, delete', async () => {
   assert.equal(r.data.ratings.length, 0);
 });
 
+test('watchlist: add, list, dedupe, remove', async () => {
+  const c = await client().login({ email: 'watcher@example.com' });
+  let r = await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 603, title: 'The Matrix', year: 1999, poster_path: '/m.jpg' } });
+  assert.equal(r.status, 200);
+  r = await c.json('/api/watchlist');
+  assert.equal(r.data.watchlist.length, 1);
+  assert.equal(r.data.watchlist[0].title, 'The Matrix');
+  assert.equal(r.data.watchlist[0].poster_path, '/m.jpg');
+  // Re-adding the same title is idempotent (upsert on the primary key).
+  await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 603, title: 'The Matrix', year: 1999 } });
+  r = await c.json('/api/watchlist');
+  assert.equal(r.data.watchlist.length, 1, 'no duplicate row for the same title');
+  await c.json('/api/watchlist', { method: 'DELETE', body: { tmdb_id: 603, media_type: 'movie' } });
+  r = await c.json('/api/watchlist');
+  assert.equal(r.data.watchlist.length, 0);
+});
+
 test('rate-queue hides rated, dismissed and not-seen titles (dismissed regression)', async () => {
   const c = await client().login({ email: 'queue@example.com' });
   // The acclaimed seed (provider-less Discover) returns ids 101..105.
@@ -134,6 +151,7 @@ test('provider picker returns services for a region', async () => {
 test('delete account erases the user and ends the session', async () => {
   const c = await client().login({ email: 'doomed@example.com' });
   await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 7, rating: 6, title: 'Se7en' } });
+  await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 8, title: 'Saved' } });
   const del = await c.raw('/api/me', { method: 'DELETE' });
   assert.equal(del.status, 200);
   // The same (now cleared/invalid) cookie no longer resolves to a user.

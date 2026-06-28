@@ -92,6 +92,21 @@ button.danger:disabled { opacity: .6; cursor: default; }
   font-weight: 700; font-size: 13px;
 }
 .score.hi { color: var(--good); border-color: var(--good); }
+
+/* "+ / ✓" watchlist toggle, mirroring the score badge in the opposite corner.
+   Sits over the poster; the ✓ "on" state goes accent-coloured. */
+.watch-btn {
+  position: absolute; top: 8px; left: 8px; z-index: 1;
+  width: 30px; height: 30px; padding: 0; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.78); color: #fff; border: 1px solid var(--line);
+  border-radius: 50%; font-size: 18px; font-weight: 700; cursor: pointer;
+  transition: color .12s ease, border-color .12s ease, background .12s ease;
+}
+@media (hover: hover) { .watch-btn:hover { border-color: var(--accent); } }
+.watch-btn.on { color: var(--accent); border-color: var(--accent); }
+.watch-btn:disabled { opacity: .6; cursor: default; }
+
 .genres { color: var(--muted); font-size: 11px; margin-top: 4px; }
 
 /* external rating badges (IMDb / Metacritic) */

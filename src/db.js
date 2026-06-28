@@ -76,6 +76,19 @@ db.exec(`
     PRIMARY KEY (user_id, tmdb_id, media_type)
   );
 
+  -- Titles the user saved to watch later. Carries enough to render a card
+  -- (title/year/poster) without a TMDB round-trip per item.
+  CREATE TABLE IF NOT EXISTS watchlist (
+    user_id     INTEGER NOT NULL,
+    tmdb_id     INTEGER NOT NULL,
+    media_type  TEXT    NOT NULL DEFAULT 'movie',
+    title       TEXT,
+    year        INTEGER,
+    poster_path TEXT,
+    added_at    TEXT    DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, tmdb_id, media_type)
+  );
+
   -- Generic response cache so we stay inside TMDB / RapidAPI rate limits.
   CREATE TABLE IF NOT EXISTS cache (
     key        TEXT PRIMARY KEY,
@@ -214,7 +227,7 @@ export function setUserAdmin(userId, isAdmin) {
 // callback. Idempotent: a no-op (returns false) if the user no longer exists.
 export function deleteAccount(userId) {
   if (!getUserById(userId)) return false;
-  for (const table of ['ratings', 'dismissed', 'not_seen', 'user_settings']) {
+  for (const table of ['ratings', 'dismissed', 'not_seen', 'watchlist', 'user_settings']) {
     db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
   }
   db.prepare('DELETE FROM users WHERE id = ?').run(userId);
@@ -286,6 +299,24 @@ export function markNotSeen(userId, tmdb_id, media_type = 'movie') {
 }
 export function getNotSeen(userId) {
   return db.prepare('SELECT tmdb_id, media_type FROM not_seen WHERE user_id = ?').all(userId);
+}
+
+// ---- watchlist (per user; saved to watch later) ---------------------------
+const _addToWatchlist = db.prepare(`
+  INSERT INTO watchlist (user_id, tmdb_id, media_type, title, year, poster_path)
+  VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id, tmdb_id, media_type) DO UPDATE SET
+    title = excluded.title, year = excluded.year, poster_path = excluded.poster_path
+`);
+export function addToWatchlist({ user_id, tmdb_id, media_type = 'movie', title, year, poster_path }) {
+  _addToWatchlist.run(user_id, tmdb_id, media_type, title ?? null, year ?? null, poster_path ?? null);
+}
+export function getWatchlist(userId) {
+  return db.prepare('SELECT * FROM watchlist WHERE user_id = ? ORDER BY added_at DESC').all(userId);
+}
+export function removeFromWatchlist(userId, tmdb_id, media_type = 'movie') {
+  db.prepare('DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?')
+    .run(userId, tmdb_id, media_type);
 }
 
 // ---- cache ----------------------------------------------------------------

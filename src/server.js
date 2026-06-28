@@ -7,6 +7,7 @@ import {
   getUserSetting, setUserSetting,
   getRatings, upsertRating, deleteRating, dismiss, getDismissed,
   markNotSeen, getNotSeen,
+  addToWatchlist, getWatchlist, removeFromWatchlist,
   deleteAccount,
 } from './db.js';
 import * as tmdb from './tmdb.js';
@@ -205,6 +206,20 @@ async function api(req, res, url) {
     if (p === '/api/not-seen' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       markNotSeen(uid, b.tmdb_id, b.media_type || 'movie');
+      return json(req, res, 200, { ok: true });
+    }
+
+    // ---- watchlist (saved to watch later) -----------------------------
+    // Independent of the taste profile, so no recommendation invalidation here.
+    if (p === '/api/watchlist' && req.method === 'GET') return json(req, res, 200, { watchlist: getWatchlist(uid) });
+    if (p === '/api/watchlist' && req.method === 'POST') {
+      const b = JSON.parse((await readBody(req)) || '{}');
+      addToWatchlist({ ...b, user_id: uid });
+      return json(req, res, 200, { ok: true });
+    }
+    if (p === '/api/watchlist' && req.method === 'DELETE') {
+      const b = JSON.parse((await readBody(req)) || '{}');
+      removeFromWatchlist(uid, b.tmdb_id, b.media_type || 'movie');
       return json(req, res, 200, { ok: true });
     }
 

@@ -237,11 +237,13 @@ function recCard(m) {
     ${watchBtnMarkup()}
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta">
-      <div class="title">${esc(m.title)}</div>
+      <div class="title-row">
+        <div class="title">${esc(m.title)}</div>
+        ${serviceIcons(m)}
+      </div>
       <div class="year">${m.year || ''} · ⭐ ${(m.vote_average || 0).toFixed(1)}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</div>
       ${ratingBadges(m)}
       <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
-      ${serviceIcons(m)}
     </div>
     ${ratingRow()}`;
   el.querySelector('img').onclick = () => openWhere(m);

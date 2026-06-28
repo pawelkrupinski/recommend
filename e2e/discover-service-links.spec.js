@@ -17,6 +17,14 @@ test('each Discover card shows its chosen streaming-service icon', async ({ page
   await expect(icon).toHaveAttribute('aria-label', 'Watch on Netflix Test');
   // The same logo as the Settings picker (TMDB w45 path).
   await expect(icon.locator('img')).toHaveAttribute('src', /w45\/netflix\.png$/);
+
+  // The icon lives next to the title — on the title's row (above the year line),
+  // to its right — not down below the genres.
+  const titleBox = await card.locator('.title').boundingBox();
+  const yearBox = await card.locator('.year').boundingBox();
+  const iconBox = await icon.boundingBox();
+  expect(iconBox.x, 'icon sits to the right of the title').toBeGreaterThan(titleBox.x);
+  expect(iconBox.y, 'icon sits on the title row, above the year line').toBeLessThan(yearBox.y);
 });
 
 test('clicking a service icon deep-links into the title on that service', async ({ page }) => {

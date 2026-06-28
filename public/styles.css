@@ -119,9 +119,14 @@ button.danger:disabled { opacity: .6; cursor: default; }
 
 .genres { color: var(--muted); font-size: 11px; margin-top: 4px; }
 
+/* Title sits beside its streaming-service icons: the title takes the slack and
+   the icons hug the right, aligned to the title's first line. */
+.title-row { display: flex; align-items: flex-start; gap: 8px; }
+.title-row .title { flex: 1; min-width: 0; }
+
 /* per-card streaming-service icons — one deep link per chosen service the title
    streams on. Mirrors the Settings picker logo (.prov img) at card scale. */
-.svc { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.svc { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; flex-shrink: 0; }
 .svc-ico {
   display: inline-flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 5px; overflow: hidden;
@@ -177,12 +182,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 }
 
 /* Discover cards carry more variable meta than Rate cards — optional IMDb /
-   Metacritic badges, a genre line and a streaming-service icon row — so reserve
-   a fixed meta height. That pins the "Not interested / seen it" button to a
-   constant offset regardless of which badges a given pick happens to have
-   (fits a 2-line title, year, badges, genres and one row of service icons;
-   shorter cards just leave the slack as empty space). */
-#recs .card .meta { height: 140px; overflow: hidden; }
+   Metacritic badges and a genre line (the service icons ride alongside the
+   title, so they add no height) — so reserve a fixed meta height. That pins the
+   "Not interested / seen it" button to a constant offset regardless of which
+   badges a given pick happens to have (112px fits a 2-line title, year, badges
+   and genres; shorter cards just leave the slack as empty space). */
+#recs .card .meta { height: 112px; overflow: hidden; }
 
 /* settings */
 .form { max-width: 540px; display: flex; flex-direction: column; gap: 14px; }

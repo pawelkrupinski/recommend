@@ -15,6 +15,7 @@ import { motnConfigured, streamingOptions, countryServices } from './motn.js';
 import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
+import { log } from './log.js';
 
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
@@ -273,7 +274,11 @@ async function api(req, res, url) {
     return json(req, res, 404, { error: 'not found' });
   } catch (e) {
     // An oversized body throws with err.status = 413; everything else is a 500.
-    return json(req, res, e.status || 500, { error: e.message });
+    const status = e.status || 500;
+    // A 5xx is our bug; a 4xx (e.g. 413) is a client mistake — log it quieter.
+    if (status >= 500) log.error(`${req.method} ${url.pathname} →`, e);
+    else log.warn(`${req.method} ${url.pathname} → ${status}:`, e.message);
+    return json(req, res, status, { error: e.message });
   }
 }
 
@@ -291,7 +296,7 @@ const server = createServer(async (req, res) => {
     if (await serveStatic(req, res, PUBLIC, url.pathname)) return;
     res.writeHead(404).end('Not found');
   } catch (e) {
-    console.error('request error:', e.message);
+    log.error('request error:', e);
     if (!res.headersSent) { res.writeHead(500, { 'content-type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
   }
 });
@@ -307,7 +312,7 @@ let shuttingDown = false;
 function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`\n${signal} received — shutting down…`);
+  log.info(`${signal} received — shutting down…`);
   server.close(() => {
     try { db.close(); } catch { /* already closed */ }
     process.exit(0);
@@ -323,14 +328,14 @@ const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv
 if (isMain) {
   server.on('error', (err) => {
     // e.g. EADDRINUSE — exit non-zero so launchd's KeepAlive restarts us cleanly.
-    console.error('server error:', err.message);
+    log.error('server error:', err);
     process.exit(1);
   });
 
   server.listen(PORT, () => {
-    console.log(`\n  🎬  recommend running →  http://localhost:${PORT}\n`);
-    if (!tmdb.tmdbConfigured()) console.log('  ⚠  No TMDB key yet — set TMDB_API_KEY in the environment.\n');
-    if (!enabledProviders().length) console.log('  ⚠  No OAuth providers configured — set GOOGLE_CLIENT_ID/SECRET and/or FACEBOOK_APP_ID/SECRET.\n');
+    log.info(`🎬  recommend running →  http://localhost:${PORT}`);
+    if (!tmdb.tmdbConfigured()) log.warn('No TMDB key yet — set TMDB_API_KEY in the environment.');
+    if (!enabledProviders().length) log.warn('No OAuth providers configured — set GOOGLE_CLIENT_ID/SECRET and/or FACEBOOK_APP_ID/SECRET.');
     // Warm each user's per-genre recommendation caches in the background so the
     // first Discover load and genre switches are instant.
     warmRecommendations();
@@ -343,10 +348,10 @@ if (isMain) {
   // serving on unhandled rejections; on a truly fatal uncaught error, exit so
   // launchd restarts a fresh process.
   process.on('unhandledRejection', (reason) => {
-    console.error('unhandledRejection:', reason);
+    log.error('unhandledRejection:', reason);
   });
   process.on('uncaughtException', (err) => {
-    console.error('uncaughtException:', err);
+    log.error('uncaughtException:', err);
     shutdown('uncaughtException');
   });
 }

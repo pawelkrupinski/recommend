@@ -8,6 +8,7 @@ import { details, recommendations, discover, genres as tmdbGenres, tmdbConfigure
 import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers } from './db.js';
 import { attachRatings } from './ratings.js';
 import { traktConfigured, relatedMovies } from './trakt.js';
+import { log } from './log.js';
 
 // Relative trust in each feature family. Keywords are specific (strong signal);
 // genres are broad (weak). Tunable.
@@ -241,10 +242,11 @@ export async function prebuildRecommendations(userId) {
   const ratings = getRatings(userId);
   await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings });
   let list = [];
-  try { list = (await tmdbGenres('movie')).genres || []; } catch { return; }
+  try { list = (await tmdbGenres('movie')).genres || []; }
+  catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
   for (const g of list) {
     try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings }); }
-    catch (e) { console.error(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
+    catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
   }
 }
 
@@ -266,7 +268,7 @@ async function runPrebuild(userId) {
   if (running.has(userId)) { pendingDirty.add(userId); return; }
   running.add(userId); pendingDirty.delete(userId);
   try { await prebuildRecommendations(userId); }
-  catch (e) { console.error('prebuild failed:', e.message); }
+  catch (e) { log.error('prebuild failed:', e.message); }
   finally { running.delete(userId); if (pendingDirty.has(userId)) schedulePrebuild(userId, 1000); }
 }
 

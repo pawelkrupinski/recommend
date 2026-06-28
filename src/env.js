@@ -6,6 +6,9 @@
 // file isn't present and everything comes from the host environment.
 import { readFileSync, existsSync } from 'node:fs';
 
+// recommend's own local overrides take precedence; the sibling movies file is a
+// shared fallback for anything not set here (TMDB/RapidAPI/Trakt, etc.).
+const LOCAL_ENV = new URL('../.env.local', import.meta.url).pathname;
 const SIBLING_ENV = new URL('../../movies/.env.local', import.meta.url).pathname;
 
 function loadEnvFile(path) {
@@ -26,6 +29,9 @@ function loadEnvFile(path) {
   }
 }
 
+// First write wins (loadEnvFile skips keys already in process.env), so load the
+// project-local file before the shared one and real env always beats both.
+loadEnvFile(LOCAL_ENV);
 loadEnvFile(SIBLING_ENV);
 
 const list = (s) => (s || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);

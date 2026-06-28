@@ -622,7 +622,12 @@ function movieHeader(m) {
 function trailerSection(m) {
   const trailers = m.trailers || [];
   if (!trailers.length) return '';
-  const watchUrl = (key) => `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`;
+  // Use the youtu.be short host, not www.youtube.com/watch. If the user has
+  // YouTube installed as a web-app (a PWA, common on macOS Chrome), Chrome's
+  // link capturing routes any in-scope www.youtube.com URL into the addressbar-
+  // less app window instead of a browser tab. youtu.be is outside that scope, so
+  // the click stays in a normal new tab and only then redirects to the watch page.
+  const watchUrl = (key) => `https://youtu.be/${encodeURIComponent(key)}`;
   const links = trailers
     .map((tr) => `<a class="trailer-link" href="${watchUrl(tr.key)}" target="_blank" rel="noopener">▶ ${esc(tr.name || t('modal.trailer'))}</a>`)
     .join('');

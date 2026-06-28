@@ -12,10 +12,12 @@ test('a Discover pick popup links to the YouTube trailer (new tab) and keeps "No
   await expect(page.locator('#modal')).toBeVisible();
 
   // The trailer is a link that opens YouTube in a new tab (default language is
-  // English → the stub's English trailer yt-en-<id>).
+  // English → the stub's English trailer yt-en-<id>). It uses the youtu.be short
+  // host — see watchUrl in app.js — so Chrome doesn't capture it into an installed
+  // YouTube web-app window (link capturing only claims the www.youtube.com scope).
   const link = page.locator('#modal-body .trailer-link');
   await expect(link).toBeVisible();
-  await expect(link).toHaveAttribute('href', new RegExp(`youtube\\.com/watch\\?v=yt-en-${id}`));
+  await expect(link).toHaveAttribute('href', new RegExp(`^https://youtu\\.be/yt-en-${id}$`));
   await expect(link).toHaveAttribute('target', '_blank');
 
   // It's blue, distinct from the orange streaming-service links, so the two
@@ -46,7 +48,7 @@ test('a Watchlist popup shows the trailer link but NOT the "Not interested" butt
   // at save time and ride along in the saved card).
   const link = page.locator('#modal-body .trailer-link');
   await expect(link).toBeVisible();
-  await expect(link).toHaveAttribute('href', new RegExp(`youtube\\.com/watch\\?v=yt-en-${id}`));
+  await expect(link).toHaveAttribute('href', new RegExp(`^https://youtu\\.be/yt-en-${id}$`));
   await expect(link).toHaveAttribute('target', '_blank');
 
   // But the dismiss button is gone — you don't "not interested" a title you saved.

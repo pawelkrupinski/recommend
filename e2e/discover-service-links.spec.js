@@ -44,3 +44,22 @@ test('clicking a service icon deep-links into the title on that service', async 
   await page.waitForURL('**/privacy');
   expect(page.url()).toMatch(/\/privacy$/);
 });
+
+test('an unmatched service opens the where-to-watch modal, not a TMDB page', async ({ page }) => {
+  await login(page, uniqEmail('svc-nomatch'));
+  await enterPicks(page);
+
+  // MotN has no deep link that matches the card's Netflix icon. The click must
+  // NOT navigate to the generic tmdbLink — it should open the modal listing the
+  // real options instead, so the user is never dumped on a TMDB page.
+  await page.route('**/api/where**', (route) => route.fulfill({
+    json: { tmdbLink: 'https://tmdb.example/should-not-go-here', flatrate: [], deepLinks: [
+      { service: 'Disney+', serviceId: 'disney', type: 'subscription', link: 'https://disney/x', providerId: 337 },
+    ] },
+  }));
+
+  await page.locator('#recs .card').first().locator('.svc-ico').click();
+  await expect(page.locator('#modal')).toBeVisible();
+  // Stayed in the app — no navigation to the TMDB fallback.
+  expect(page.url()).toMatch(/#discover/);
+});

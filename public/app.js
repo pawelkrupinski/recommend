@@ -1,3 +1,5 @@
+import { matchServiceLink } from '/service-match.js';
+
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
 // Render's free tier spins the service down when idle; the first requests after
@@ -292,28 +294,22 @@ function serviceIcons(m) {
   }).join('');
   return `<div class="svc">${icons}</div>`;
 }
-// Normalize a service name for cross-source matching (mirrors server `norm`):
-// lowercase, drop "+"/"plus" and non-alphanumerics. "Disney+" / "Disney Plus" → "disney".
-const normName = (s) => String(s ?? '').toLowerCase().replace(/\+/g, '').replace(/\bplus\b/g, '').replace(/[^a-z0-9]/g, '');
 // Wire each service icon to deep-link into the title on that service. We resolve
 // the per-service link lazily on click — one cached /api/where call (the same
 // MotN lookup the poster's modal makes), so the picks grid spends no streaming
-// quota up front. Match the icon's TMDB id to the link MotN returned (falling
-// back to a normalized name match), navigating in-tab so the streaming app's
-// Universal Link can take over on mobile; if nothing matches, open the
-// where-to-watch modal so the tap is never a dead end.
+// quota up front. matchServiceLink bridges TMDB's tier/reseller provider names
+// to MotN's plain ones (see service-match.js); we navigate in-tab so the
+// streaming app's Universal Link can take over on mobile. When no service link
+// is a confident match, open the where-to-watch modal with every option rather
+// than dumping the user on a generic TMDB page.
 function wireServiceLinks(el, m) {
   el.querySelectorAll('.svc-ico').forEach((a) => {
     a.onclick = async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      const sid = Number(a.dataset.sid);
-      const want = normName(a.dataset.sname);
       try {
         const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
-        const links = w.deepLinks || [];
-        const hit = links.find((o) => o.providerId === sid) || links.find((o) => normName(o.service) === want);
-        const url = hit?.link || w.tmdbLink;
+        const url = matchServiceLink(w.deepLinks, { sid: Number(a.dataset.sid), sname: a.dataset.sname });
         if (url) { location.href = url; return; }
       } catch { /* fall through to the modal */ }
       openWhere(m);

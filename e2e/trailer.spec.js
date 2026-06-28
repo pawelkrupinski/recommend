@@ -18,6 +18,13 @@ test('a Discover pick popup links to the YouTube trailer (new tab) and keeps "No
   await expect(link).toHaveAttribute('href', new RegExp(`youtube\\.com/watch\\?v=yt-en-${id}`));
   await expect(link).toHaveAttribute('target', '_blank');
 
+  // It's blue, distinct from the orange streaming-service links, so the two
+  // aren't confused. Assert the exact blue AND that it differs from a service link.
+  const colorOf = (loc) => loc.evaluate((el) => getComputedStyle(el).color);
+  await expect(link).toHaveCSS('color', 'rgb(90, 162, 255)');
+  const serviceColor = await colorOf(page.locator('#modal-body .where a').first());
+  expect(await colorOf(link), 'trailer link colour differs from the service-link colour').not.toBe(serviceColor);
+
   // Discover keeps the "Not interested / seen it" dismiss button.
   await expect(page.locator('#modal-body #dismiss')).toBeVisible();
 });

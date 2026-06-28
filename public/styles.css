@@ -1,6 +1,6 @@
 :root {
   --bg: #0e1116; --panel: #171b22; --panel2: #1f242d; --line: #2a3038;
-  --fg: #e6e9ef; --muted: #8b94a3; --accent: #f5c518; --good: #4ade80; --bad: #f87171;
+  --fg: #e6e9ef; --muted: #8b94a3; --accent: #f5c518; --good: #4ade80; --bad: #f87171; --link: #5aa2ff;
   /* Render native widgets (select popups, checkboxes, scrollbars) in dark mode so
      they match the app instead of falling back to the browser's light defaults. */
   color-scheme: dark;
@@ -336,7 +336,10 @@ button.danger:disabled { opacity: .6; cursor: default; }
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }
 .where img { width: 22px; height: 22px; border-radius: 5px; }
 .trailers { margin-top: 14px; }
+/* Blue, not the orange --accent the streaming-service links (.where a) use, so
+   the two aren't confused for each other in the popup. */
 .trailers a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
-  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 8px 8px 0; text-decoration: none; }
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 8px 8px 0;
+  text-decoration: none; color: var(--link); }
 pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; white-space: pre-wrap; }
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }

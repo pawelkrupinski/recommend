@@ -42,3 +42,31 @@ test('acclaimed() seeds the rate queue with widely-rated, well-reviewed films ac
   assert.equal(url.searchParams.get('with_watch_providers'), null,
     'does not constrain the seed to a streaming service');
 });
+
+test('discover() scopes to art-house distributors when given withCompanies', async () => {
+  const url = await captureRequest(() => tmdb.discover({
+    region: 'PL', providerIds: [8, 1899], withCompanies: '41077|90733',
+    sortBy: 'vote_average.desc', voteCountGte: 20,
+  }));
+  assert.equal(url.searchParams.get('with_companies'), '41077|90733',
+    'passes the distributor company ids straight through (pipe = OR)');
+  assert.equal(url.searchParams.get('with_watch_providers'), '8|1899',
+    'still streamability-gated to the user services');
+  assert.equal(url.searchParams.get('vote_count.gte'), '20',
+    'low vote floor — distributor curation is the quality gate, not vote count');
+});
+
+test('discover() caps the rating base with voteCountLte (hidden-gems band)', async () => {
+  const url = await captureRequest(() => tmdb.discover({
+    region: 'PL', providerIds: [8], sortBy: 'vote_average.desc',
+    voteCountGte: 100, voteCountLte: 400,
+  }));
+  assert.equal(url.searchParams.get('vote_count.lte'), '400');
+  assert.equal(url.searchParams.get('vote_count.gte'), '100');
+});
+
+test('discover() omits the indie params when not asked for', async () => {
+  const url = await captureRequest(() => tmdb.discover({ region: 'PL', providerIds: [8] }));
+  assert.equal(url.searchParams.get('with_companies'), null);
+  assert.equal(url.searchParams.get('vote_count.lte'), null);
+});

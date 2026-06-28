@@ -7,8 +7,15 @@ import assert from 'node:assert/strict';
 import { freshDbEnv, readFixture } from '../helpers/env.js';
 
 freshDbEnv();
-const { parseLetterboxdRss } = await import('../../src/letterboxd.js');
+const { parseLetterboxdRss, ACCOUNTS } = await import('../../src/letterboxd.js');
 const xml = readFixture('letterboxd-rss.xml');
+
+test('curated account list is unique and carries the art-house feeds', () => {
+  assert.equal(new Set(ACCOUNTS).size, ACCOUNTS.length, 'no duplicate usernames');
+  // The indie lean: MUBI's feed plus two indie-film publications (verified live to
+  // return film activity RSS with TMDB ids).
+  for (const a of ['mubi', 'filmcomment', 'thefilmstage']) assert.ok(ACCOUNTS.includes(a));
+});
 
 test('extracts the TMDB id, title and year from each watched-film item', () => {
   const out = parseLetterboxdRss(xml);

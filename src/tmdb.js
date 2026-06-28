@@ -135,15 +135,20 @@ export const providersForRegion = (region, mediaType = 'movie') =>
 // `sortBy`/`voteCountGte` are overridable so the same endpoint backs several
 // candidate sources: popularity.desc for the mainstream pool, vote_average.desc
 // (with a higher vote floor) for the acclaimed-but-less-watched pool.
-export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, language }) {
+// `voteCountLte` caps the rating base (the "hidden gems" band where indie films
+// live); `withCompanies` is a pipe-joined OR of production-company ids that scopes
+// the sweep to art-house distributors (the indie-distributor source).
+export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, voteCountLte, withCompanies, language }) {
   return tmdb(`/discover/${mediaType}`, {
     watch_region: region,
     with_watch_providers: providerIds.join('|'),
     with_watch_monetization_types: 'flatrate',
     ...(genreId ? { with_genres: String(genreId) } : {}),
+    ...(withCompanies ? { with_companies: withCompanies } : {}),
     sort_by: sortBy,
     page,
     'vote_count.gte': voteCountGte,
+    ...(voteCountLte ? { 'vote_count.lte': voteCountLte } : {}),
     ...(language ? { language } : {}),
   });
 }

@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { gatherCandidates, pageUntilFresh } = await import('../../src/sources.js');
+const { gatherCandidates, pageUntilFresh, curatedIndieProviderIds } = await import('../../src/sources.js');
 
 // A fake paginated Discover endpoint: `pages` is an array of result arrays (one
 // per page). total_pages is the real length, so the walker knows when it's run
@@ -101,4 +101,14 @@ test('candidates without a collab hit carry no collab entry', async () => {
 test('ignores entries with no id', async () => {
   const { candidates } = await gatherCandidates({}, [src('a', [{ title: 'orphan' }, { id: 4 }])]);
   assert.deepEqual([...candidates.keys()], [4]);
+});
+
+test('curatedIndieProviderIds keeps only the user’s art-house services', async () => {
+  // MUBI (11) and Criterion (258) are curated; Netflix (8) / HBO Max (1899) aren't.
+  assert.deepEqual(curatedIndieProviderIds([8, 11, 1899, 258]), [11, 258]);
+  assert.deepEqual(curatedIndieProviderIds([8, 1899]), [], 'no curated service → source stays off');
+  assert.deepEqual(curatedIndieProviderIds([]), []);
+  assert.deepEqual(curatedIndieProviderIds(undefined), []);
+  // Provider ids may arrive as strings from user settings — match numerically.
+  assert.deepEqual(curatedIndieProviderIds(['11', '8']), ['11'], 'string id still recognised');
 });

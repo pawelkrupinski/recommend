@@ -11,8 +11,14 @@ import { proxiedText } from './fetch.js';
 
 // Active public accounts whose feeds log film watches (each ~50 recent films
 // with TMDB ids). Curated reviewers, not random users — a quality signal. Extend
-// by adding usernames; a dead/empty feed just contributes nothing.
-const ACCOUNTS = ['dave', 'davidehrlich', 'silentdawn', 'kurstboy', 'ghibli'];
+// by adding usernames; a dead/empty feed just contributes nothing. (Only account
+// *activity* RSS is reachable — list RSS is Cloudflare-challenged, verified 403.)
+// mubi / filmcomment / thefilmstage are the art-house lean — the MUBI feed and
+// two indie-film publications, to surface more indie watches into the pool.
+export const ACCOUNTS = [
+  'dave', 'davidehrlich', 'silentdawn', 'kurstboy', 'ghibli',
+  'mubi', 'filmcomment', 'thefilmstage',
+];
 
 // Parse a Letterboxd activity RSS feed into [{ id, title, year }] (TMDB id from
 // <tmdb:movieId>). Items without a TMDB id (lists, non-film activity) are skipped.

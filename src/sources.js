@@ -59,10 +59,10 @@ export async function pageUntilFresh({ fetchPage, want, consumed, ceil = DISCOVE
   }
   return out;
 }
-const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCountGte, want, consumed }) =>
+const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCountGte, voteCountLte, withCompanies, want, consumed }) =>
   pageUntilFresh({
     want, consumed,
-    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType: 'movie', page, sortBy, voteCountGte, language }),
+    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType: 'movie', page, sortBy, voteCountGte, voteCountLte, withCompanies, language }),
   });
 
 // How many not-yet-handled candidates each provider-scoped sweep aims to surface
@@ -132,6 +132,74 @@ export const tmdbDiscoverByGenre = {
     }
     return out;
   },
+};
+
+// ---- Indie / art-house sources -------------------------------------------
+// Popularity and vote-floor sorts structurally bury small releases, so the broad
+// pool skews mainstream. These three reach the indie catalogue from three angles
+// — by distributor, by curated service, and by the acclaimed-but-obscure tail —
+// all still streamability-gated to the user's services.
+
+// Curated art-house distributors on TMDB (production-company ids, pipe = OR).
+// Distributor IS the curation: the most precise indie signal we have. Verified
+// live to return ~100+ streamable titles per major region (A24/NEON/IFC/Focus/
+// Searchlight/Magnolia/MUBI/Janus). Indie films carry few votes, so the floor is
+// low — the distributor, not vote count, is the quality gate here.
+const ARTHOUSE_COMPANIES = [
+  41077,   // A24
+  90733,   // NEON
+  307,     // IFC Films
+  10146,   // Focus Features
+  127929,  // Searchlight Pictures
+  43,      //   (+ legacy Fox Searchlight back catalogue)
+  1030,    // Magnolia Pictures
+  288516,  // MUBI (distribution arm)
+  198828,  // Janus Films / Criterion theatrical
+].join('|');
+const INDIE_FRESH_TARGET = 60;
+export const tmdbIndieDistributors = {
+  name: 'tmdb-indie-distributors',
+  configured: tmdbConfigured,
+  fetch: (ctx) => ctx.providerIds?.length
+    ? discoverFresh({ ...ctx, withCompanies: ARTHOUSE_COMPANIES, sortBy: 'vote_average.desc', voteCountGte: 20, want: INDIE_FRESH_TARGET })
+    : Promise.resolve([]),
+};
+
+// Curated art-house streaming services (TMDB provider ids). When the user
+// subscribes to one, its WHOLE catalogue is indie-worthy — but a merged
+// popularity sweep across all their services drowns it under the mass-market
+// ones. So sweep each curated service the user actually has on its own.
+const CURATED_INDIE_PROVIDERS = [
+  11,   // MUBI
+  258,  // Criterion Channel
+  201,  // MUBI Amazon Channel
+];
+// Pure: which of the user's providers are curated art-house services. Exported
+// for unit testing the gate.
+export const curatedIndieProviderIds = (providerIds) =>
+  (providerIds || []).filter((id) => CURATED_INDIE_PROVIDERS.includes(Number(id)));
+const CURATED_FRESH_TARGET = 40;
+export const tmdbCuratedProviders = {
+  name: 'tmdb-curated-providers',
+  configured: tmdbConfigured,
+  fetch(ctx) {
+    const indie = curatedIndieProviderIds(ctx.providerIds);
+    return indie.length
+      ? discoverFresh({ ...ctx, providerIds: indie, sortBy: 'popularity.desc', voteCountGte: 20, want: CURATED_FRESH_TARGET })
+      : Promise.resolve([]);
+  },
+};
+
+// Acclaimed long tail too obscure for the top-rated sweep: highly rated but on a
+// SMALL rating base (100–400 votes), the band where festival/indie films sit. The
+// main top-rated source floors at 300 votes and so structurally misses them.
+const HIDDEN_GEMS_TARGET = 60;
+export const tmdbHiddenGems = {
+  name: 'tmdb-hidden-gems',
+  configured: tmdbConfigured,
+  fetch: (ctx) => ctx.providerIds?.length
+    ? discoverFresh({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 100, voteCountLte: 400, want: HIDDEN_GEMS_TARGET })
+    : Promise.resolve([]),
 };
 
 // Behaviour-based "more like the films you rated highly".
@@ -223,6 +291,9 @@ export const ALL_SOURCES = [
   tmdbDiscover,
   tmdbDiscoverTopRated,
   tmdbDiscoverByGenre,
+  tmdbIndieDistributors,
+  tmdbCuratedProviders,
+  tmdbHiddenGems,
   tmdbRecommendations,
   tmdbSimilar,
   traktRelated,

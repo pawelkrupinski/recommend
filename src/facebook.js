@@ -11,18 +11,12 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { config } from './env.js';
 import { getUserByProviderSub, deleteAccount } from './db.js';
 import { requestOrigin } from './auth.js';
+import { readBody } from './http.js';
 
 const json = (res, code, body) => {
   res.writeHead(code, { 'content-type': 'application/json' });
   res.end(JSON.stringify(body));
 };
-
-const readBody = (req) =>
-  new Promise((resolve) => {
-    let b = '';
-    req.on('data', (c) => (b += c));
-    req.on('end', () => resolve(b));
-  });
 
 // Parse and verify Facebook's signed_request: "<base64url sig>.<base64url payload>".
 // The signature is HMAC-SHA256 over the *raw payload segment* keyed by the app
@@ -75,7 +69,7 @@ export async function handleFacebook(req, res, url) {
         confirmation_code: code,
       });
     } catch (e) {
-      json(res, 400, { error: e.message });
+      json(res, e.status || 400, { error: e.message });
     }
     return true;
   }

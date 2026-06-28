@@ -2,6 +2,7 @@
 // Supports either a v3 API key (?api_key=) or a v4 read access token (Bearer).
 import { cacheGet, cacheSet, getSetting } from './db.js';
 import { config } from './env.js';
+import { fetchWithTimeout } from './fetch.js';
 
 const BASE = 'https://api.themoviedb.org/3';
 export const IMG = 'https://image.tmdb.org/t/p';
@@ -38,7 +39,7 @@ async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
   let lastErr;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      const res = await fetch(url, { headers });
+      const res = await fetchWithTimeout(url, { headers });
       if (res.status === 429 || res.status >= 500) {
         const wait = Number(res.headers.get('retry-after')) * 1000 || 500 * 2 ** attempt;
         await new Promise((r) => setTimeout(r, wait));

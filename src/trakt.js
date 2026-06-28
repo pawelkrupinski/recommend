@@ -12,6 +12,7 @@
 // Cached hard (7 days; related lists drift slowly) with negative results cached
 // too, so a seed Trakt doesn't know stays cheap to ask about.
 import { cacheGet, cacheSet, getSetting } from './db.js';
+import { fetchWithTimeout } from './fetch.js';
 
 const BASE = 'https://api.trakt.tv';
 const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -37,7 +38,7 @@ async function traktGet(path, cacheKey) {
   const cached = cacheGet(cacheKey, TTL);
   if (cached !== undefined) return cached; // includes cached nulls (negative results)
   try {
-    const res = await fetch(`${BASE}${path}`, { headers: h });
+    const res = await fetchWithTimeout(`${BASE}${path}`, { headers: h });
     if (!res.ok) { cacheSet(cacheKey, null); return null; }
     const json = await res.json();
     cacheSet(cacheKey, json);

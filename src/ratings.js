@@ -12,6 +12,7 @@
 // Results are cached hard (14 days; scores barely move) and negative results
 // are cached too, so a title without a match isn't re-fetched every Discover load.
 import { cacheGet, cacheSet } from './db.js';
+import { fetchWithTimeout } from './fetch.js';
 
 const TTL = 14 * 24 * 60 * 60 * 1000; // 14 days
 // A browser-ish UA: IMDb's CDN and Metacritic both 403 obvious bots.
@@ -31,7 +32,7 @@ export async function imdbRating(imdbId) {
   const cached = cacheGet(ck, TTL);
   if (cached !== undefined) return cached;
   try {
-    const res = await fetch(IMDB_GRAPHQL, {
+    const res = await fetchWithTimeout(IMDB_GRAPHQL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'user-agent': UA },
       body: JSON.stringify({ query: IMDB_QUERY, variables: { id: imdbId } }),
@@ -104,7 +105,7 @@ export async function metacriticScore(title) {
   if (cached !== undefined) return cached;
   for (const slug of candidateSlugs(title)) {
     try {
-      const res = await fetch(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': UA } });
+      const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': UA } });
       if (!res.ok) continue;
       const score = parseMetascore(await res.text());
       if (score != null) { cacheSet(ck, score); return score; }

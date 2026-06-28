@@ -7,6 +7,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { config } from './env.js';
 import { upsertUserFromLogin, getUserById, setUserAdmin, setUserSetting } from './db.js';
+import { fetchWithTimeout } from './fetch.js';
 
 const SESSION_COOKIE = 'rid';
 const STATE_COOKIE = 'oauth';
@@ -97,7 +98,7 @@ const PROVIDERS = {
       return `https://accounts.google.com/o/oauth2/v2/auth?${p}`;
     },
     async profile(req, code) {
-      const tok = await fetch('https://oauth2.googleapis.com/token', {
+      const tok = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -109,7 +110,7 @@ const PROVIDERS = {
         }),
       }).then((r) => r.json());
       if (!tok.access_token) throw new Error('Google token exchange failed');
-      const u = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      const u = await fetchWithTimeout('https://openidconnect.googleapis.com/v1/userinfo', {
         headers: { Authorization: `Bearer ${tok.access_token}` },
       }).then((r) => r.json());
       if (!u.email) throw new Error('Google did not return an email');
@@ -129,14 +130,14 @@ const PROVIDERS = {
       return `https://www.facebook.com/v19.0/dialog/oauth?${p}`;
     },
     async profile(req, code) {
-      const tok = await fetch('https://graph.facebook.com/v19.0/oauth/access_token?' + new URLSearchParams({
+      const tok = await fetchWithTimeout('https://graph.facebook.com/v19.0/oauth/access_token?' + new URLSearchParams({
         client_id: config.facebook.id,
         client_secret: config.facebook.secret,
         redirect_uri: redirectUri(req, 'facebook'),
         code,
       })).then((r) => r.json());
       if (!tok.access_token) throw new Error('Facebook token exchange failed');
-      const u = await fetch('https://graph.facebook.com/me?' + new URLSearchParams({
+      const u = await fetchWithTimeout('https://graph.facebook.com/me?' + new URLSearchParams({
         fields: 'id,name,email,picture.width(200)',
         access_token: tok.access_token,
       })).then((r) => r.json());

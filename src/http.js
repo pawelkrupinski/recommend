@@ -86,6 +86,38 @@ export function send(req, res, body, { status = 200, type = 'application/octet-s
   res.end(req.method === 'HEAD' ? undefined : payload);
 }
 
+// ---- request bodies ------------------------------------------------------
+// JSON API bodies and Facebook's signed_request are all tiny; 1 MiB is generous
+// headroom. The cap matters because the buffer grows with whatever the client
+// sends — an unbounded body could balloon the heap on a 512 MB instance until it
+// OOMs and the process is killed (→ 502). Past the limit we destroy the request
+// and reject with a 413-flagged error the route handlers map to a response.
+export const MAX_BODY_BYTES = 1 << 20; // 1 MiB
+
+// Read a request stream into a UTF-8 string, capped at `limit` bytes. Buffers
+// the raw chunks and decodes once at the end so a multi-byte character split
+// across two TCP chunks isn't corrupted (the old `s += chunk` decoded each chunk
+// in isolation and mangled the boundary byte).
+export function readBody(req, limit = MAX_BODY_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        const err = new Error('request body too large');
+        err.status = 413;
+        req.destroy(err);
+        reject(err);
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
 // ---- static files --------------------------------------------------------
 // One entry per file: raw bytes + pre-built gzip/br variants + ETag. Built lazily
 // on first hit; the process is short-lived relative to deploys so it never goes

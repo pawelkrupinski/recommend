@@ -6,6 +6,7 @@
 //
 // FREE TIER IS 500 REQUESTS/MONTH — cache hard, call lazily, never in bulk.
 import { cacheGet, cacheSet, getSetting } from './db.js';
+import { fetchWithTimeout } from './fetch.js';
 
 const TTL = 15 * 24 * 60 * 60 * 1000; // 15 days — deep links & service lists rarely change
 
@@ -28,7 +29,7 @@ async function motnGet(path, cacheKey) {
   const cached = cacheGet(cacheKey, TTL);
   if (cached !== undefined) return cached; // includes cached nulls (negative results)
   try {
-    const res = await fetch(ep.url, { headers: ep.headers });
+    const res = await fetchWithTimeout(ep.url, { headers: ep.headers });
     if (!res.ok) { cacheSet(cacheKey, null); return null; }
     const json = await res.json();
     cacheSet(cacheKey, json);

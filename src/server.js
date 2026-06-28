@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import './env.js';
-import { send, serveStatic } from './http.js';
+import { send, serveStatic, readBody } from './http.js';
 import {
   db,
   getUserSetting, setUserSetting,
@@ -28,12 +28,6 @@ const json = (req, res, code, body, cacheControl = 'private, no-cache') =>
     status: code,
     type: 'application/json; charset=utf-8',
     cacheControl: code === 200 ? cacheControl : undefined,
-  });
-const readBody = (req) =>
-  new Promise((resolve) => {
-    let b = '';
-    req.on('data', (c) => (b += c));
-    req.on('end', () => resolve(b));
   });
 
 // Normalize a service name for cross-source matching: lowercase, drop "+"/"plus"
@@ -273,7 +267,8 @@ async function api(req, res, url) {
 
     return json(req, res, 404, { error: 'not found' });
   } catch (e) {
-    return json(req, res, 500, { error: e.message });
+    // An oversized body throws with err.status = 413; everything else is a 500.
+    return json(req, res, e.status || 500, { error: e.message });
   }
 }
 

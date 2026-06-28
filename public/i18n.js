@@ -64,7 +64,6 @@ export const MESSAGES = {
     // settings
     'settings.servicesHeading': 'Your streaming services',
     'settings.servicesHint': 'Picks are filtered to titles streamable on these in your country.',
-    'settings.saveServices': 'Save services',
     'settings.originHeading': 'Movie origin',
     'settings.originHint': 'Steer picks toward films from particular places — or away from Hollywood.',
     'settings.excludeUs': 'Exclude US productions',
@@ -143,7 +142,6 @@ export const MESSAGES = {
     // settings
     'settings.servicesHeading': 'Twoje serwisy streamingowe',
     'settings.servicesHint': 'Propozycje są ograniczone do tytułów dostępnych w tych serwisach w Twoim kraju.',
-    'settings.saveServices': 'Zapisz serwisy',
     'settings.originHeading': 'Pochodzenie filmów',
     'settings.originHint': 'Kieruj propozycje ku filmom z konkretnych miejsc — albo z dala od Hollywood.',
     'settings.excludeUs': 'Wyklucz produkcje z USA',

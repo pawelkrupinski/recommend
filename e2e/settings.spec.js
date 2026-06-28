@@ -15,6 +15,31 @@ test('settings shows streaming services, no admin or API-key blocks', async ({ p
   await expect(page.locator('#admin-users')).toHaveCount(0);
 });
 
+test('toggling a streaming service saves on change and persists across a reload', async ({ page }) => {
+  await login(page, uniqEmail('services'));
+  await openSettings(page);
+  // No save button — there isn't one any more; each toggle persists itself.
+  await expect(page.locator('#save-providers')).toHaveCount(0);
+
+  const prov = page.locator('#provider-list .prov:not(.disabled)').first();
+  await expect(prov).toBeVisible({ timeout: 10_000 });
+  const wasOn = await prov.evaluate((e) => e.classList.contains('on'));
+
+  // The click must fire a settings POST without any further action.
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('/api/settings') && r.request().method() === 'POST'),
+    prov.click(),
+  ]);
+  const nowOn = !wasOn;
+  await expect(prov).toHaveClass(nowOn ? /\bon\b/ : /^(?!.*\bon\b)/);
+
+  await page.reload();
+  await openSettings(page);
+  const same = page.locator('#provider-list .prov:not(.disabled)').first();
+  await expect(same).toBeVisible({ timeout: 10_000 });
+  await expect(same).toHaveClass(nowOn ? /\bon\b/ : /^(?!.*\bon\b)/);
+});
+
 test('changing country persists across a reload', async ({ page }) => {
   await login(page, uniqEmail('country'));
   await openSettings(page);

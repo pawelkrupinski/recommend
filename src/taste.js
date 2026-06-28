@@ -12,11 +12,9 @@ import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
 import { boundedRunner } from './concurrency.js';
+import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
 import { log } from './log.js';
 
-// Relative trust in each feature family. Keywords are specific (strong signal);
-// genres are broad (weak). Tunable.
-const FAMILY_WEIGHT = { keyword: 1.0, director: 1.4, cast: 0.5, genre: 0.6, decade: 0.4 };
 const CAST_DEPTH = 5; // how many top-billed actors to consider
 
 // TMDB company ids of the classic Hollywood majors and their in-house labels.
@@ -73,14 +71,24 @@ function featuresOf(movie) {
 const YIELD_EVERY = 16;
 const breathe = () => new Promise((resolve) => setImmediate(resolve));
 
-// Build { weights: Map<feature, score>, mean } from a user's rated movies.
+const EMPTY_PROFILE = () => ({
+  pos: new Map(), neg: new Map(), counts: new Map(), mean: 7, count: 0,
+  ratedFeatureSets: [], genreLists: [],
+});
+
+// Accumulate raw per-feature evidence from a user's rated films. Splits each
+// film's rating delta (rating − user_mean) into positive/negative buckets so the
+// scoring layer can damp negatives (feedback asymmetry), and keeps the rated
+// films' feature sets and genre lists so the pool builder can derive IDF weights
+// and the calibration target. No weighting/squashing happens here — that's
+// scoring.js, which needs the candidate corpus to compute IDF.
 export async function buildProfile(userId) {
   const ratings = getRatings(userId).filter((r) => r.media_type === 'movie');
-  if (!ratings.length) return { weights: new Map(), mean: 7, count: 0 };
+  if (!ratings.length) return EMPTY_PROFILE();
 
   const mean = ratings.reduce((s, r) => s + r.rating, 0) / ratings.length;
-  const weights = new Map();
-  const counts = new Map();
+  const pos = new Map(), neg = new Map(), counts = new Map();
+  const ratedFeatureSets = [], genreLists = [];
 
   let processed = 0;
   for (const r of ratings) {
@@ -88,37 +96,27 @@ export async function buildProfile(userId) {
     let movie;
     try { movie = await details(r.tmdb_id, 'movie'); } catch { continue; }
     const delta = r.rating - mean; // liked-vs-typical signal
-    for (const feat of featuresOf(movie)) {
-      weights.set(feat, (weights.get(feat) || 0) + delta);
+    const feats = featuresOf(movie);
+    ratedFeatureSets.push(feats);
+    genreLists.push((movie.genres || []).map((g) => g.id));
+    for (const feat of feats) {
+      if (delta >= 0) pos.set(feat, (pos.get(feat) || 0) + delta);
+      else neg.set(feat, (neg.get(feat) || 0) + delta);
       counts.set(feat, (counts.get(feat) || 0) + 1);
     }
   }
-
-  // Shrink toward zero for features seen only once or twice (low confidence).
-  for (const [feat, w] of weights) {
-    const n = counts.get(feat);
-    weights.set(feat, w * (n / (n + 1)));
-  }
-  return { weights, mean, count: ratings.length };
+  return { pos, neg, counts, mean, count: ratings.length, ratedFeatureSets, genreLists };
 }
 
-// `collabHits` = how many of the user's loved films Trakt lists this title as
-// related to (0 when Trakt is off or has no link). It rides on top of the
-// content+quality blend as a saturating bonus rather than a re-weighted term.
-function scoreMovie(movie, profile, collabHits = 0) {
-  let raw = 0;
-  for (const feat of featuresOf(movie)) {
-    const w = profile.weights.get(feat);
-    if (!w) continue;
-    const family = feat.split(':')[0];
-    raw += w * (FAMILY_WEIGHT[family] ?? 1);
+// Mean community rating across the candidates that have votes — the global prior
+// C the Bayesian quality term shrinks thin-voted films toward. Falls back to a
+// neutral 6.5 when nothing in the pool has votes.
+function meanVoteAverage(movies) {
+  let sum = 0, n = 0;
+  for (const m of movies) {
+    if ((m.vote_count || 0) > 0 && m.vote_average != null) { sum += m.vote_average; n += 1; }
   }
-  // Squash to a 0..100 "match score" and nudge by TMDB community rating.
-  const match = 50 + 50 * Math.tanh(raw / 12);
-  const quality = (movie.vote_average || 6) * 10; // 0..100
-  const base = 0.75 * match + 0.25 * quality;
-  const collab = COLLAB_WEIGHT * Math.tanh(collabHits / 2); // 1 hit ≈ +7, saturates ≈ +15
-  return Math.min(100, Math.round(base + collab));
+  return n ? sum / n : 6.5;
 }
 
 // ---- origin / indie candidate filters -------------------------------------
@@ -213,7 +211,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   // only; scoring, the genre filter and the streamability gate below are the one
   // shared place those rules live. `consumed` also tells the provider-scoped
   // Discover sources how deep to page — past titles already handled until they've
-  // surfaced enough fresh ones. collab[id] = crowd co-watch hits for scoreMovie.
+  // surfaced enough fresh ones. collab[id] = crowd co-watch hits, an additive bonus.
   const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language, consumed });
 
   // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is
@@ -222,9 +220,11 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   // preserves it, so the strongest fresh sources fill the budget first.
   const pool = [...candidates.values()].filter((m) => !consumed.has(m.id)).slice(0, CANDIDATE_CAP);
 
-  // Score each candidate on its full feature set.
+  // First pass: fetch details, apply the hard filters + streamability gate, and
+  // collect each survivor's features/votes. We score in a second pass because the
+  // IDF feature weights depend on the whole candidate corpus.
   const userSet = new Set(providerIds || []);
-  const scored = [];
+  const survivors = [];
   let processed = 0;
   for (const m of pool) {
     if (++processed % YIELD_EVERY === 0) await breathe();
@@ -241,25 +241,55 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
     if (!services.length) continue;
-    const crew = full.credits?.crew || [];
-    scored.push({
-      tmdb_id: m.id,
-      imdb_id: full.external_ids?.imdb_id || null,
-      title: full.title,
-      year: Number((full.release_date || '').slice(0, 4)) || null,
-      runtime: full.runtime || null,
-      overview: full.overview,
-      poster_path: full.poster_path,
-      vote_average: full.vote_average,
-      genres: (full.genres || []).map((g) => g.name),
-      director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
-      cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
-      services,
-      score: scoreMovie(full, profile, collab.get(m.id) || 0),
-    });
+    survivors.push({ id: m.id, full, services, features: featuresOf(full), collab: collab.get(m.id) || 0 });
   }
+
+  // IDF over the corpus the user's rated films + these candidates form, so a
+  // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
+  // data-derived, not a hand-tuned family table. The profile vector and the
+  // Bayesian quality prior's global mean both come from this same corpus.
+  const idf = buildIdf([...profile.ratedFeatureSets, ...survivors.map((s) => s.features)]);
+  const profileVec = buildProfileVector(profile, idf);
+  const globalMean = meanVoteAverage(survivors.map((s) => s.full));
+
+  const scored = survivors.map((s) => {
+    const crew = s.full.credits?.crew || [];
+    // Confidence-weighted blend of personalised match and quality prior; the
+    // Trakt co-watch bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
+    const base = scoreCandidate({
+      profileVec, itemFeatures: s.features, idf,
+      voteAverage: s.full.vote_average, voteCount: s.full.vote_count, globalMean,
+    });
+    const collabBonus = COLLAB_WEIGHT * Math.tanh(s.collab / 2);
+    return {
+      tmdb_id: s.id,
+      imdb_id: s.full.external_ids?.imdb_id || null,
+      title: s.full.title,
+      year: Number((s.full.release_date || '').slice(0, 4)) || null,
+      runtime: s.full.runtime || null,
+      overview: s.full.overview,
+      poster_path: s.full.poster_path,
+      vote_average: s.full.vote_average,
+      genres: (s.full.genres || []).map((g) => g.name),
+      genreIds: (s.full.genres || []).map((g) => g.id),
+      features: s.features,
+      director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
+      cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
+      services: s.services,
+      score: Math.min(100, Math.round(base + collabBonus)),
+    };
+  });
+
+  // Order by relevance, then re-rank the served head for genre calibration (keep
+  // the mix close to the user's history) and diversity (no near-duplicate
+  // neighbours). genreIds/features are scoring-only — strip before returning.
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, POOL_SIZE);
+  const profileGenreDist = genreDistribution(profile.genreLists);
+  const ranked = rerank(
+    scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
+    profileGenreDist, idf,
+  ).map((r) => r.card);
+  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
 }
 
 // ---- recommendation cache + prebuild --------------------------------------

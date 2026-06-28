@@ -26,6 +26,9 @@ test('homepage exposes Open Graph + Twitter preview tags', async () => {
   assert.match(html, /<meta property="og:image:height" content="630"/);
   assert.match(html, /<meta name="twitter:card" content="summary_large_image"/);
   assert.match(html, /<meta name="twitter:image" content="https:\/\/[^"]+\/og-home\.png"/);
+  // Canonical + favicon, to match ../movies' head.
+  assert.match(html, /<link rel="canonical" href="https:\/\/[^"]+\/"/);
+  assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg"/);
 });
 
 test('the og:image is served as a PNG', async () => {
@@ -47,4 +50,11 @@ test('robots.txt is served as text and allows crawlers (Facebook needs it)', asy
   assert.match(body, /User-agent:\s*\*/i);
   assert.match(body, /Allow:\s*\//i);
   assert.doesNotMatch(body, /Disallow:\s*\/\s*$/im, 'must not blanket-disallow the site');
+});
+
+test('the favicon is served as an SVG', async () => {
+  const res = await fetch(base + '/favicon.svg');
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get('content-type'), 'image/svg+xml');
+  assert.match(await res.text(), /<svg/);
 });

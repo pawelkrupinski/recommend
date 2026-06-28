@@ -19,7 +19,7 @@
 //
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
 // switch to edit, no change to computePool.
-import { discover, recommendations, similar, trending, details, tmdbConfigured } from './tmdb.js';
+import { discover, recommendations, similar, trending, details, genres as movieGenres, tmdbConfigured } from './tmdb.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
 import { letterboxdCandidates } from './letterboxd.js';
 import { filmwebCandidates } from './filmweb.js';
@@ -45,7 +45,7 @@ const seeds = (ratings) =>
 // few pages were all already-handled and the pool came up empty. Counting *fresh*
 // titles lets a light user stop after one page while a heavy user pages deeper
 // into the freshly-streamable long tail. `consumed` = ids already handled.
-const DISCOVER_PAGE_CEIL = 20;     // TMDB caps /discover at 500 pages; stay modest.
+const DISCOVER_PAGE_CEIL = 40;     // TMDB caps /discover at 500 pages; stay modest.
 export async function pageUntilFresh({ fetchPage, want, consumed, ceil = DISCOVER_PAGE_CEIL }) {
   const out = [];
   let fresh = 0;
@@ -68,8 +68,10 @@ const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCou
 // How many not-yet-handled candidates each provider-scoped sweep aims to surface
 // — enough that the merged pool still fills POOL_SIZE after the streamability gate
 // and de-duplication. Popularity carries the bulk; the acclaimed sweep tops up.
-const DISCOVER_FRESH_TARGET = 80;
-const DISCOVER_TOP_RATED_TARGET = 40;
+// Sized well over POOL_SIZE so a heavy user who has rated/dismissed the popular
+// head still gets a deep "all genres" pool instead of running dry after ~50 picks.
+const DISCOVER_FRESH_TARGET = 160;
+const DISCOVER_TOP_RATED_TARGET = 80;
 
 // Expand each seed film through a TMDB list endpoint (recommendations | similar),
 // collecting every result. A dud seed is skipped, not fatal.
@@ -107,6 +109,29 @@ export const tmdbDiscoverTopRated = {
   fetch: (ctx) => ctx.providerIds?.length
     ? discoverFresh({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 300, want: DISCOVER_TOP_RATED_TARGET })
     : Promise.resolve([]),
+};
+
+// Per-genre depth for the "all genres" pool. The un-genre'd popularity sweep only
+// reaches the globally-most-popular head; once a heavy user has handled it the
+// pool runs dry. Each genre's OWN popularity ranking surfaces streamable titles
+// the global one buries, so fanning the sweep across every genre lets the default
+// view run as deep as the per-genre pools collectively do. Only active for the
+// all-genres pool (a selected genre's own sweep already covers it) and when there
+// are providers to scope by. Fresh titles only — `consumed` pages past handled ids.
+const PER_GENRE_TARGET = 15;   // ~15 fresh × every genre ≫ POOL_SIZE after de-dup.
+const movieGenreIds = async (language) =>
+  ((await movieGenres('movie', language)).genres || []).map((g) => g.id);
+export const tmdbDiscoverByGenre = {
+  name: 'tmdb-discover-by-genre',
+  configured: tmdbConfigured,
+  async fetch(ctx) {
+    if (ctx.genreId || !ctx.providerIds?.length) return [];
+    const out = [];
+    for (const genreId of await movieGenreIds(ctx.language)) {
+      out.push(...await discoverFresh({ ...ctx, genreId, sortBy: 'popularity.desc', voteCountGte: 50, want: PER_GENRE_TARGET }));
+    }
+    return out;
+  },
 };
 
 // Behaviour-based "more like the films you rated highly".
@@ -190,12 +215,16 @@ export const filmweb = {
 // Registry, ordered most-relevant-first. gatherCandidates preserves this order,
 // and computePool caps the merged set (CANDIDATE_CAP) before the expensive
 // per-title detail fetch — so the highest-value sources fill the budget first and
-// the broad charts top it up.
+// the broad charts top it up. The provider-scoped Discover sweeps lead: they're
+// the candidates that survive the streamability gate, so spending the detail-fetch
+// budget on them first (ahead of the taste/chart sources, most of whose titles the
+// gate drops) is what lets the deep genre fan-out actually reach the served pool.
 export const ALL_SOURCES = [
   tmdbDiscover,
+  tmdbDiscoverTopRated,
+  tmdbDiscoverByGenre,
   tmdbRecommendations,
   tmdbSimilar,
-  tmdbDiscoverTopRated,
   traktRelated,
   letterboxd,
   filmweb,

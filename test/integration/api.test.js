@@ -250,6 +250,37 @@ test('recommendations carry runtime from TMDB details', async () => {
   assert.ok(data.results.every((m) => m.runtime === 107), 'every pick carries runtime');
 });
 
+test('the served pool runs deeper than the old 80-title cap', async () => {
+  // The pool advances one title at a time as the user rates/dismisses/saves, so
+  // pool DEPTH is how many picks a session yields. Provider 9 streams a 220-title
+  // backfill catalogue; the pool should now fill well past the former 80 cap (it
+  // truncated there before, which is why a heavy user "ran out of picks").
+  const { recommend } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'deep@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [9] } });
+  const me = (await c.json('/api/me')).data;
+  const { results } = await recommend({
+    userId: me.user.id, region: 'PL', providerIds: [9], limit: 1000, force: true, language: 'en-US',
+  });
+  assert.ok(results.length > 80, `pool runs deeper than the old 80 cap (got ${results.length})`);
+});
+
+test('the all-genres pool fans Discover across genres for depth no single sweep reaches', async () => {
+  // Provider 531 carries only the two genre-only titles (5901/5902), which the
+  // stub surfaces solely for a genre-scoped (with_genres) sweep — never the
+  // un-genre'd one. So an all-genres pool that includes them proves it merged the
+  // per-genre sweeps; without the fan-out this user's pool would be empty.
+  const { recommend } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'genremerge@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [531] } });
+  const me = (await c.json('/api/me')).data;
+  const { results } = await recommend({
+    userId: me.user.id, region: 'PL', providerIds: [531], genreId: undefined, limit: 1000, force: true, language: 'en-US',
+  });
+  const ids = new Set(results.map((m) => m.tmdb_id));
+  assert.ok(ids.has(5901) && ids.has(5902), 'genre-only titles reached the all-genres pool via the per-genre fan-out');
+});
+
 test('recommendations include titles only a non-Discover source surfaces', async () => {
   const c = await client().login({ email: 'trending@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });

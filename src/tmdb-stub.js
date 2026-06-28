@@ -43,12 +43,27 @@ const TRENDING = [
 // picks that provider a pool well over the ~36 the UI shows at once. That surplus
 // is what the picks grid's background refill surfaces as cards leave.
 const BACKFILL_PROVIDER = 9; // Amazon Prime Test (see PROVIDERS)
-const DEEP_DISCOVER = Array.from({ length: 50 }, (_, i) => ({ id: 5001 + i, title: `Stub Deep ${i + 1}` }));
+// Over POOL_SIZE (200) so a provider-9 user's pool is capped by POOL_SIZE, not by
+// the stub running short — that's what the pool-depth test asserts against.
+const DEEP_DISCOVER = Array.from({ length: 220 }, (_, i) => ({ id: 5001 + i, title: `Stub Deep ${i + 1}` }));
 
 const GENRES = [
   { id: 28, name: 'Action' },
   { id: 35, name: 'Comedy' },
 ];
+
+// Titles a genre-scoped Discover sweep surfaces that the un-genre'd sweep never
+// does — the per-genre long tail. They stream on their own GENRE_ONLY_PROVIDER,
+// which carries nothing else, so a user on just that service has an empty pool
+// UNLESS the all-genres build fans Discover across genres. That's what proves the
+// genre fan-out reaches the served pool, without touching the provider-8/337
+// fixtures (337 stays the designated empty service the other tests rely on).
+const GENRE_ONLY_PROVIDER = 531;
+const GENRE_ONLY = [
+  { id: 5901, title: 'Stub Genre-Only Action', genreId: 28, country: 'FR', companyId: 99999 },
+  { id: 5902, title: 'Stub Genre-Only Comedy', genreId: 35, country: 'FR', companyId: 99999 },
+];
+const GENRE_ONLY_IDS = new Set(GENRE_ONLY.map((m) => m.id));
 
 const PROVIDERS = [
   { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png', display_priority: 1 },
@@ -74,15 +89,18 @@ const card = (m, language) => ({
 
 // Full /movie/:id detail with the appended blocks taste.js reads.
 function details(id, language) {
-  const known = [...POPULAR, ...DISCOVER, ...TRENDING].find((m) => m.id === id);
+  const known = [...POPULAR, ...DISCOVER, ...TRENDING, ...GENRE_ONLY].find((m) => m.id === id);
   const title = known?.title || `Stub Movie ${id}`;
   const genreId = known?.genreId || 28;
   const country = known?.country || 'US';
   const companyId = known?.companyId || 99999;
-  // Backfill titles stream on BACKFILL_PROVIDER; everything else on the default 8.
-  const provider = id >= DEEP_DISCOVER[0].id
-    ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
-    : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
+  // Genre-only titles stream on GENRE_ONLY_PROVIDER; the backfill pool on
+  // BACKFILL_PROVIDER; everything else on the default 8.
+  const provider = GENRE_ONLY_IDS.has(id)
+    ? { provider_id: GENRE_ONLY_PROVIDER, provider_name: 'Paramount Plus Test', logo_path: '/paramount.png' }
+    : id >= DEEP_DISCOVER[0].id
+      ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
+      : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
   return {
     id,
     title,
@@ -126,7 +144,17 @@ export function stub(path, params = {}) {
     if (!params.with_watch_providers) {
       return { page, total_pages: 1, results: POPULAR.map((m) => card(m, params.language)) };
     }
-    return { page, total_pages: 1, results: [...DISCOVER, ...DEEP_DISCOVER].map((m) => card(m, params.language)) };
+    // The big backfill pool only streams on BACKFILL_PROVIDER, so only surface it
+    // when that provider is the one being queried — keeping the provider-8 tests'
+    // candidate set small (just DISCOVER) while a provider-9 user gets the depth.
+    const providers = String(params.with_watch_providers).split('|').map(Number);
+    const deep = providers.includes(BACKFILL_PROVIDER) ? DEEP_DISCOVER : [];
+    // Genre-only titles surface ONLY for a genre-scoped sweep (with_genres set),
+    // never the un-genre'd one — so they reach the pool only via the genre fan-out.
+    const genreOnly = params.with_genres
+      ? GENRE_ONLY.filter((m) => String(m.genreId) === String(params.with_genres))
+      : [];
+    return { page, total_pages: 1, results: [...DISCOVER, ...deep, ...genreOnly].map((m) => card(m, params.language)) };
   }
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };

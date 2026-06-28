@@ -5,7 +5,7 @@ import { login, uniqEmail } from './helpers.js';
 // used to dead-end on an empty grid once the user cleared the ~36 cards it shows
 // at once — only a manual Refresh brought more. Now it tops itself up in the
 // background as cards leave (refillPicks). The stub serves a large backfill pool
-// on provider 9 (50 titles, well beyond the 36 shown), so dismissing past the
+// on provider 9 (220 titles, well beyond the 36 shown), so dismissing past the
 // initial batch must keep surfacing fresh cards instead of emptying.
 test('the picks grid refills itself instead of dead-ending when cleared', async ({ page }) => {
   await login(page, uniqEmail('refill'));

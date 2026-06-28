@@ -11,7 +11,7 @@ import {
   deleteAccount,
 } from './db.js';
 import * as tmdb from './tmdb.js';
-import { streamingOptions } from './motn.js';
+import { streamingOptions } from './availability.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
@@ -278,7 +278,7 @@ async function api(req, res, url) {
       return json(req, res, 200, out);
     }
 
-    // ---- where to watch (TMDB providers + MotN deep links) -----------
+    // ---- where to watch (TMDB providers + availability deep links) ----
     if (p === '/api/where' && req.method === 'GET') {
       const id = Number(url.searchParams.get('id'));
       const mt = url.searchParams.get('media_type') || 'movie';
@@ -286,9 +286,10 @@ async function api(req, res, url) {
       const wp = await tmdb.watchProviders(id, mt);
       const r = wp.results?.[region] || {};
       const flatrate = (r.flatrate || []).map((x) => ({ name: x.provider_name, logo: x.logo_path }));
-      // Tag each MotN deep link with the matching TMDB provider id (matched by
-      // name against this title's own region providers) so a Discover card's
-      // service icon — keyed by TMDB id — can find its link without name-matching.
+      // Tag each availability deep link with the matching TMDB provider id
+      // (matched by name against this title's own region providers) so a Discover
+      // card's service icon — keyed by TMDB id — can find its link without
+      // name-matching.
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));

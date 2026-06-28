@@ -37,7 +37,7 @@ function activateTab(t) {
   if (!TAB_NAMES.includes(t)) t = 'discover';
   for (const b of tabs.children) b.classList.toggle('active', b.dataset.tab === t);
   for (const s of document.querySelectorAll('.tab')) s.classList.toggle('active', s.id === t);
-  if (t === 'discover') loadRecs();
+  if (t === 'discover') loadDiscover();
   if (t === 'rate') loadRateQueue(true);
   if (t === 'ratings') loadRatings();
   if (t === 'settings') loadSettings();
@@ -74,8 +74,97 @@ $('#genre-filter').onchange = () => {
   location.hash = g ? `discover?genre=${g}` : 'discover';
 };
 
-async function loadRecs(force = false) {
+// Discover is adaptive. A new account (fewer than RATE_GOAL rated films) gets an
+// onboarding rate queue of popular titles right here, so there's something to do
+// before the engine knows enough to suggest anything good. Once enough ratings
+// land, the personalized picks — which the engine has been prebuilding in the
+// background as ratings arrived — are swapped in seamlessly: no spinner, no empty
+// "rate some films first" screen.
+const RATE_GOAL = 10;
+let discoverMode = null;     // 'rate' (onboarding) | 'recs' (personalized picks)
+let obRated = 0;             // how many films the user has rated (drives the countdown)
+let obPage = 0, obGone = 0;  // onboarding rate-queue paging + churn counter
+let swapping = false;        // guard so the background recs build/swap kicks off once
+
+// The genre filter and Refresh button only make sense for the picks grid; hide
+// them during the onboarding rate queue.
+function showRecsControls(show) {
+  $('#genre-filter').classList.toggle('hidden', !show);
+  $('#refresh').classList.toggle('hidden', !show);
+}
+
+async function loadDiscover(force = false) {
   await loadGenres();
+  // How many films has the user rated? Below the goal we onboard; at/above it (or
+  // on a forced Refresh) we show the real picks.
+  let count = RATE_GOAL;
+  try { count = (await api('/api/ratings')).ratings.length; } catch { /* show picks (with its own error) */ }
+  if (count >= RATE_GOAL || force) {
+    discoverMode = 'recs';
+    showRecsControls(true);
+    return loadRecs(force);
+  }
+  discoverMode = 'rate';
+  swapping = false;
+  obRated = count;
+  showRecsControls(false);
+  $('#recs').innerHTML = '';
+  updateOnboardInfo();
+  await fillOnboardQueue(true);
+}
+
+// Header line for the onboarding queue: how many more ratings until picks appear.
+function updateOnboardInfo() {
+  const left = Math.max(0, RATE_GOAL - obRated);
+  $('#discover-info').textContent = left
+    ? `Rate films you've seen so we can learn your taste — ${left} more to go.`
+    : 'Building your personalized picks…';
+}
+
+// Pull popular titles to rate into the Discover grid, skipping pages already
+// fully covered by rated/skipped titles (capped so we never spin forever).
+async function fillOnboardQueue(reset) {
+  const grid = $('#recs');
+  if (reset) { obPage = 0; obGone = 0; }
+  let added = 0;
+  for (let tries = 0; tries < 10 && !added; tries++) {
+    obPage++;
+    const { items } = await api(`/api/rate-queue?page=${obPage}`);
+    for (const m of items) grid.append(queueCard(m, onboardResolve));
+    added = items.length;
+  }
+  if (!added && reset) $('#discover-info').textContent =
+    "You've rated all the popular titles — open the Rate tab for more, or check back later.";
+}
+
+// A card in the onboarding queue resolved (rated or "haven't seen"): track the
+// count, top the grid back up, and once the goal is hit, swap in the picks.
+function onboardResolve(el, kind) {
+  el.remove();
+  if (kind === 'rated') { obRated++; updateOnboardInfo(); maybeSwap(); }
+  const grid = $('#recs');
+  if (++obGone % 5 === 0 || !grid.children.length) fillOnboardQueue(false);
+}
+
+// Goal reached: fetch the personalized picks in the background (the engine has
+// been prebuilding them as ratings landed, so this is usually instant via the
+// cache) and swap the grid over with no loading state. If the pool comes back
+// empty (e.g. no streaming services chosen yet) we stay in the rate queue and
+// retry on the next rating.
+async function maybeSwap() {
+  if (obRated < RATE_GOAL || swapping || discoverMode !== 'rate') return;
+  swapping = true;
+  try {
+    const { results, profileSize } = await api('/api/recommend');
+    if (discoverMode !== 'rate') return;                 // user navigated away mid-build
+    if (!results.length) { swapping = false; return; }   // pool not ready — keep rating
+    discoverMode = 'recs';
+    showRecsControls(true);
+    renderRecs(results, profileSize, '');
+  } catch { swapping = false; }
+}
+
+async function loadRecs(force = false) {
   const info = $('#discover-info'), grid = $('#recs');
   info.textContent = 'Building your picks…';
   grid.innerHTML = '';
@@ -88,21 +177,28 @@ async function loadRecs(force = false) {
     if (force) params.set('refresh', '1');
     const qs = params.toString();
     const { results, profileSize } = await api('/api/recommend' + (qs ? `?${qs}` : ''));
-    if (!results.length) {
-      info.textContent = '';
-      grid.innerHTML = genre
-        ? '<p class="empty">No picks in this genre on your services. Try “All genres” or another genre.</p>'
-        : '<p class="empty">No picks yet. Add your TMDB key + streaming services in Settings, then rate some films.</p>';
-      return;
-    }
-    const inGenre = genre ? ` in ${$('#genre-filter').selectedOptions[0].textContent}` : '';
-    info.textContent = `${results.length} picks${inGenre} from a taste profile of ${profileSize} rated films.`;
-    grid.innerHTML = '';
-    for (const m of results) grid.append(recCard(m));
+    renderRecs(results, profileSize, genre);
   } catch (e) {
     info.textContent = '';
     grid.innerHTML = `<p class="empty">⚠ ${e.message}</p>`;
   }
+}
+
+// Paint the personalized picks grid — shared by a normal Discover load and the
+// seamless onboarding→picks swap.
+function renderRecs(results, profileSize, genre) {
+  const info = $('#discover-info'), grid = $('#recs');
+  if (!results.length) {
+    info.textContent = '';
+    grid.innerHTML = genre
+      ? '<p class="empty">No picks in this genre on your services. Try “All genres” or another genre.</p>'
+      : '<p class="empty">No picks yet. Add your TMDB key + streaming services in Settings, then rate some films.</p>';
+    return;
+  }
+  const inGenre = genre ? ` in ${$('#genre-filter').selectedOptions[0].textContent}` : '';
+  info.textContent = `${results.length} picks${inGenre} from a taste profile of ${profileSize} rated films.`;
+  grid.innerHTML = '';
+  for (const m of results) grid.append(recCard(m));
 }
 function recCard(m) {
   const el = document.createElement('div');
@@ -199,7 +295,7 @@ async function openWhere(m) {
       <p style="margin-top:18px"><button id="dismiss">Not interested / seen it</button></p>`;
     $('#dismiss').onclick = async () => {
       await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id }) });
-      modal.classList.add('hidden'); loadRecs();
+      modal.classList.add('hidden'); loadDiscover();
     };
   } catch (e) { body.innerHTML += `<p>⚠ ${e.message}</p>`; }
 }
@@ -228,7 +324,11 @@ function cardGone(el) {
   el.remove();
   if (++gone % 5 === 0) loadRateQueue(false);
 }
-function rateCard(m) {
+const rateCard = (m) => queueCard(m, (el) => cardGone(el));
+// One rate-and-skip card: 1–10 stars (rating/10) + a "Haven't seen" button.
+// Shared by the Rate tab and the Discover onboarding queue. `onResolve(el, kind)`
+// fires after the POST settles, with kind 'rated' or 'skipped'.
+function queueCard(m, onResolve) {
   const el = document.createElement('div');
   el.className = 'card';
   el.innerHTML = `
@@ -247,7 +347,7 @@ function rateCard(m) {
     s.onclick = async () => {
       await api('/api/ratings', { method: 'POST', body: JSON.stringify({
         tmdb_id: m.tmdb_id, media_type: 'movie', rating: Number(s.dataset.n), title: m.title, year: m.year }) });
-      cardGone(el);
+      onResolve(el, 'rated');
     };
   });
   el.querySelector('.rate-stars').onmouseleave = () => {
@@ -256,7 +356,7 @@ function rateCard(m) {
   };
   el.querySelector('.skip').onclick = async () => {
     await api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
-    cardGone(el);
+    onResolve(el, 'skipped');
   };
   return el;
 }

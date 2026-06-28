@@ -80,3 +80,21 @@ export async function relatedMovies(imdbId, limit = 20) {
     await traktGet(`/movies/${slug}/related?limit=${limit}`, `trakt:related:${slug}:${limit}`)
   );
 }
+
+// Trakt's community charts: site-wide signals independent of any one user's
+// ratings, so they keep feeding fresh candidates once a user's own seeds run
+// dry. `trending` and `anticipated` wrap each movie under `.movie` (alongside a
+// watcher/list count); `popular` returns the movie object directly. Normalised
+// here to the same { tmdb_id, title, year } shape relatedMovies() returns.
+export function parseChart(data) {
+  if (!Array.isArray(data)) return [];
+  return data
+    .map((e) => e.movie || e)
+    .map((m) => ({ tmdb_id: m.ids?.tmdb ?? null, title: m.title, year: m.year ?? null }))
+    .filter((m) => m.tmdb_id);
+}
+
+// `kind` is 'trending' | 'popular' | 'anticipated'. Cached like /related.
+export async function traktChart(kind, limit = 30) {
+  return parseChart(await traktGet(`/movies/${kind}?limit=${limit}`, `trakt:chart:${kind}:${limit}`));
+}

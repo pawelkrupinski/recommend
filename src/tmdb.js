@@ -84,6 +84,17 @@ export const details = (id, mediaType = 'movie', language) =>
 export const recommendations = (id, mediaType = 'movie', language) =>
   tmdb(`/${mediaType}/${id}/recommendations`, language ? { language } : {});
 
+// TMDB's content-overlap "similar" list (shared genres/keywords). A second
+// seed-expansion angle distinct from /recommendations, which is behaviour-based
+// ("people who watched X also watched Y") — together they reach more candidates.
+export const similar = (id, mediaType = 'movie', language) =>
+  tmdb(`/${mediaType}/${id}/similar`, language ? { language } : {});
+
+// Site-wide "hot this week" chart — fresh, taste-independent candidates that the
+// per-seed recommendation lists can't reach (they only orbit films you've rated).
+export const trending = (mediaType = 'movie', language) =>
+  tmdb(`/trending/${mediaType}/week`, language ? { language } : {});
+
 export const watchProviders = (id, mediaType = 'movie') =>
   tmdb(`/${mediaType}/${id}/watch/providers`);
 
@@ -111,7 +122,10 @@ export const providersForRegion = (region, mediaType = 'movie') =>
   tmdb(`/watch/providers/${mediaType}`, { watch_region: region });
 
 // Discover titles actually streamable on the user's services in their country.
-export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', language }) {
+// `sortBy`/`voteCountGte` are overridable so the same endpoint backs several
+// candidate sources: popularity.desc for the mainstream pool, vote_average.desc
+// (with a higher vote floor) for the acclaimed-but-less-watched pool.
+export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, language }) {
   return tmdb(`/discover/${mediaType}`, {
     watch_region: region,
     with_watch_providers: providerIds.join('|'),
@@ -119,7 +133,7 @@ export function discover({ region, providerIds, genreId, mediaType = 'movie', pa
     ...(genreId ? { with_genres: String(genreId) } : {}),
     sort_by: sortBy,
     page,
-    'vote_count.gte': 50,
+    'vote_count.gte': voteCountGte,
     ...(language ? { language } : {}),
   });
 }

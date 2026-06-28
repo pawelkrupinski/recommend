@@ -21,6 +21,8 @@
 // switch to edit, no change to computePool.
 import { discover, recommendations, similar, trending, details, tmdbConfigured } from './tmdb.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
+import { letterboxdCandidates } from './letterboxd.js';
+import { filmwebCandidates } from './filmweb.js';
 import { log } from './log.js';
 
 // How many of a user's rated films seed the per-title expansion sources
@@ -149,6 +151,27 @@ export const traktTrending = traktChartSource('trending');
 export const traktPopular = traktChartSource('popular');
 export const traktAnticipated = traktChartSource('anticipated');
 
+// ---- Scraped sources ------------------------------------------------------
+// These hit live third-party sites (through the residential proxy) and parse
+// HTML/RSS, so they must stay OFF under the deterministic test stub — only the
+// pure parsers are unit-tested, against recorded fixtures. In real deployments
+// they run; a blocked/changed site degrades to [] without touching the build.
+const scrapersEnabled = () => process.env.TMDB_STUB !== '1';
+
+// Letterboxd: recent watches from curated public accounts (direct TMDB ids).
+export const letterboxd = {
+  name: 'letterboxd',
+  configured: scrapersEnabled,
+  fetch: () => letterboxdCandidates(),
+};
+
+// Filmweb: the Polish Top-500 ranking, titles resolved to TMDB ids.
+export const filmweb = {
+  name: 'filmweb',
+  configured: scrapersEnabled,
+  fetch: ({ language }) => filmwebCandidates(language),
+};
+
 // Registry, ordered most-relevant-first. gatherCandidates preserves this order,
 // and computePool caps the merged set (CANDIDATE_CAP) before the expensive
 // per-title detail fetch — so the highest-value sources fill the budget first and
@@ -159,6 +182,8 @@ export const ALL_SOURCES = [
   tmdbSimilar,
   tmdbDiscoverTopRated,
   traktRelated,
+  letterboxd,
+  filmweb,
   tmdbTrending,
   traktTrending,
   traktPopular,

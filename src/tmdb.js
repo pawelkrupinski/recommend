@@ -68,6 +68,16 @@ export const tmdbConfigured = () =>
 export const search = (query, year, language) =>
   tmdb('/search/movie', { query, ...(year ? { year } : {}), ...(language ? { language } : {}) });
 
+// Resolve a free-text title (+ optional year) to its best-match TMDB movie id, or
+// null. Scraped sources that only yield titles (Filmweb) lean on this; TMDB
+// indexes localized titles, so a Polish ranking title resolves to the same id as
+// its English original. Cached through tmdb().
+export async function searchId(title, year, language) {
+  if (!title) return null;
+  const res = await search(title, year, language);
+  return res.results?.[0]?.id ?? null;
+}
+
 export const findByImdb = (imdbId) =>
   tmdb(`/find/${imdbId}`, { external_source: 'imdb_id' });
 

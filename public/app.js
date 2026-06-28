@@ -295,8 +295,14 @@ async function openWhere(m) {
   body.innerHTML = `${movieHeader(m)}<p>Loading availability…</p>`;
   try {
     const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
+    // On touch devices, navigate in the SAME tab: streaming-service URLs are
+    // registered as iOS Universal Links / Android App Links and open the native
+    // app — but only on a direct same-tab tap. target="_blank"/window.open
+    // breaks that handoff and lands the user in the mobile browser instead.
+    // On desktop keep _blank so the recommend tab stays open.
+    const appTab = matchMedia('(pointer: coarse)').matches ? '' : ' target="_blank" rel="noopener"';
     const links = (w.deepLinks && w.deepLinks.length)
-      ? w.deepLinks.map((o) => `<a href="${o.link}" target="_blank">▶ ${esc(o.service)} <span class="sub">${o.type}</span></a>`).join('')
+      ? w.deepLinks.map((o) => `<a href="${o.link}"${appTab}>▶ ${esc(o.service)} <span class="sub">${o.type}</span></a>`).join('')
       : (w.flatrate || []).map((f) => `<a href="${w.tmdbLink || '#'}" target="_blank"><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`).join('');
     body.innerHTML = `${movieHeader(m)}
       <div class="where">${links || '<p class="sub">Not on your subscription services in this country right now.</p>'}</div>

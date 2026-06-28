@@ -60,8 +60,19 @@ export async function streamingOptions(tmdbId, mediaType, country) {
       service: o.service?.name || o.service?.id,
       serviceId: o.service?.id,
       type: o.type, // subscription | free | addon
-      link: o.link,
+      link: appLink(o.link),
       quality: o.quality,
     }));
   return opts;
+}
+
+// MotN only ever returns web URLs, but most are registered as iOS Universal
+// Links / Android App Links and open the native app directly (no custom scheme
+// needed) — as long as the link is followed in the same tab (see public/app.js).
+// A few services register a *different* host than the one MotN hands back;
+// rewrite those so the app handoff still fires.
+function appLink(link) {
+  if (!link) return link;
+  // Max: app links live on play.max.com; www.max.com has no AASA/assetlinks.
+  return link.replace(/^(https:\/\/)(?:www\.)?max\.com\//, '$1play.max.com/');
 }

@@ -7,13 +7,13 @@ WORKDIR /app
 COPY --from=litestream/litestream:0.3.13 /usr/local/bin/litestream /usr/local/bin/litestream
 
 # Copy manifest(s) first to leverage Docker layer caching.
-# package-lock.json may not exist (the app has zero dependencies);
-# the trailing glob keeps COPY from failing when it's absent.
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 
-# Install production deps if a lockfile exists. With zero deps this is
-# effectively a no-op, so don't let a missing lockfile fail the build.
-RUN npm ci --omit=dev || true
+# Install production deps from the lockfile. Load-bearing now: undici (the
+# residential-proxy dispatcher behind the scraped sources) is a real prod
+# dependency, so a failed/incomplete install must FAIL the build loudly rather
+# than ship an image where the scrapers silently degrade to []. No `|| true`.
+RUN npm ci --omit=dev
 
 # Copy the rest of the source.
 COPY . .

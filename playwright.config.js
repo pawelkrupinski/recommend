@@ -33,6 +33,10 @@ export default defineConfig({
       DB_PATH,
       ALLOW_DEV_LOGIN: '1',
       TMDB_STUB: '1',
+      // Skip background recommendation prebuilds: on this single-process test
+      // server they'd contend with the on-demand /api/recommend build the UI
+      // actually waits on, making pick-render timings nondeterministic.
+      DISABLE_REC_PREBUILD: '1',
       // Blank the Movie of the Night key so the provider picker uses the TMDB
       // stub. Without this, a local .env.local RAPIDAPI_KEY leaks in (real env
       // wins in env.js) and the onboarding test gets live data instead of the

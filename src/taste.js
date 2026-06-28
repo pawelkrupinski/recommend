@@ -241,7 +241,13 @@ export async function prebuildRecommendations(userId) {
 const timers = new Map();       // userId -> timeout
 const running = new Set();       // userIds currently prebuilding
 const pendingDirty = new Set();  // userIds asked to rerun while running
+// Tests run against a single-process server and assert on the deterministic
+// on-demand build that /api/recommend does. Background prebuilds (all-genres +
+// one pool per genre) would otherwise pile up on that one process and starve
+// those foreground builds, making render timings race. Off in e2e, on in prod.
+const PREBUILD_DISABLED = process.env.DISABLE_REC_PREBUILD === '1';
 function schedulePrebuild(userId, delay = 4000) {
+  if (PREBUILD_DISABLED) return;
   if (timers.has(userId)) clearTimeout(timers.get(userId));
   timers.set(userId, setTimeout(() => { timers.delete(userId); runPrebuild(userId); }, delay));
 }

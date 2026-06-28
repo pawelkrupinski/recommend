@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { motnConfigured, streamingOptions, countryServices } from './motn.js';
-import { recommend, invalidateRecommendations, warmRecommendations } from './taste.js';
+import { recommend, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
@@ -357,6 +357,9 @@ if (isMain) {
     // Warm each user's per-genre recommendation caches in the background so the
     // first Discover load and genre switches are instant.
     warmRecommendations();
+    // Backfill rich card fields for titles saved before save-time capture so the
+    // Watchlist tab matches Discover. Fire-and-forget; only touches stale rows.
+    backfillWatchlistCards().catch((e) => log.warn('watchlist backfill failed:', e.message));
   });
 
   process.on('SIGINT', () => shutdown('SIGINT'));

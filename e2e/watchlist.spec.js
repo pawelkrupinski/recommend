@@ -5,6 +5,10 @@ test('saving a Discover pick removes its card, flashes the tab, and lands in the
   await login(page, uniqEmail('watchlist'));
   await enterPicks(page);
 
+  // The stub yields 3 streamable picks. Wait for the grid to finish painting all
+  // of them before counting, so `before` is the settled total rather than a
+  // mid-build value (the picks build can lag under full-suite load).
+  await expect(page.locator('#recs .card')).toHaveCount(3);
   const before = await page.locator('#recs .card').count();
   const card = page.locator('#recs .card').first();
   const title = await card.locator('.title').textContent();
@@ -21,6 +25,20 @@ test('saving a Discover pick removes its card, flashes the tab, and lands in the
   const saved = page.locator('#watchlist-grid .card', { hasText: title });
   await expect(saved).toBeVisible();
   await expect(page.locator('#watchlist-count')).toContainText('1 saved');
+
+  // The saved card mirrors a Discover pick: it carries the same service icons and
+  // genre line (captured at save time) — but no score badge and no rate widget.
+  await expect(saved.locator('.svc-ico')).toHaveCount(1);
+  await expect(saved.locator('.genres')).toContainText('Action');
+  await expect(saved.locator('.score')).toHaveCount(0);
+  await expect(saved.locator('.rate-stars')).toHaveCount(0);
+
+  // Tapping the poster opens the same where-to-watch popup, now with the rich
+  // detail header (synopsis) a Discover card's popup shows.
+  await saved.locator('> img').click();
+  await expect(page.locator('#modal')).toBeVisible();
+  await expect(page.locator('#modal-body .detail-head')).toContainText('Overview for');
+  await page.locator('#modal-close').click();
 
   // Removing it there empties the list.
   await saved.locator('.watch-remove').click();

@@ -135,6 +135,45 @@ test('watchlist: add, list, dedupe, remove', async () => {
   assert.equal(r.data.watchlist.length, 0);
 });
 
+test('watchlist: save-time capture stores the rich card fields a Discover pick carries', async () => {
+  const c = await client().login({ email: 'rich-save@example.com' });
+  // The Discover card POSTs its whole pick; the server keeps the card fields.
+  await c.json('/api/watchlist', { method: 'POST', body: {
+    tmdb_id: 201, title: 'Stub Streamable One', year: 2020, poster_path: '/p201.jpg',
+    vote_average: 7.5, runtime: 107, genres: ['Action'],
+    services: [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
+    overview: 'A pick.', director: 'Stub Director', cast: ['Stub Actor'], score: 88,
+  } });
+  const { data } = await c.json('/api/watchlist');
+  const [w] = data.watchlist;
+  assert.deepEqual(w.genres, ['Action'], 'genres persisted and returned as an array');
+  assert.deepEqual(w.services, [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }]);
+  assert.equal(w.vote_average, 7.5);
+  assert.equal(w.runtime, 107);
+  assert.equal(w.director, 'Stub Director');
+  assert.equal(w.score, undefined, 'the recommendation score is not persisted');
+});
+
+test('watchlist: backfill enriches titles saved without card fields', async () => {
+  const { backfillWatchlistCards } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'backfill@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // A legacy-style save: only title/year/poster, no card fields.
+  await c.json('/api/watchlist', { method: 'POST', body: { tmdb_id: 201, title: 'Stub Streamable One', year: 2020 } });
+  let { data } = await c.json('/api/watchlist');
+  assert.equal(data.watchlist[0].genres, undefined, 'starts un-enriched');
+
+  await backfillWatchlistCards(); // re-derives card fields from the TMDB stub
+
+  ({ data } = await c.json('/api/watchlist'));
+  const [w] = data.watchlist;
+  assert.deepEqual(w.genres, ['Action'], 'genres filled from TMDB details');
+  assert.deepEqual(w.services, [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
+    "the user's chosen service that streams it is attached");
+  assert.equal(w.runtime, 107, 'runtime filled');
+  assert.equal(w.title, 'Stub Streamable One', 'title untouched by the backfill');
+});
+
 test('rate-queue hides rated, dismissed and not-seen titles (dismissed regression)', async () => {
   const c = await client().login({ email: 'queue@example.com' });
   // The acclaimed seed (provider-less Discover) returns ids 101..105.

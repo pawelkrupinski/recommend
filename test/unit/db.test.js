@@ -164,6 +164,54 @@ test('mergeUserData folds rows in without clobbering the target', () => {
   assert.deepEqual(db.getUserSetting(acct.id, 'providers'), [8], 'new setting carried over');
 });
 
+test('watchlist persists rich card fields and returns them flattened', () => {
+  const u = newUser();
+  db.addToWatchlist({
+    user_id: u.id, tmdb_id: 603, title: 'The Matrix', year: 1999, poster_path: '/m.jpg',
+    vote_average: 8.2, runtime: 136, genres: ['Action', 'Sci-Fi'],
+    services: [{ id: 8, name: 'Netflix', logo: '/n.png' }],
+    imdbRating: 8.7, metascore: 73, overview: 'A hacker learns the truth.',
+    director: 'The Wachowskis', cast: ['Keanu Reeves'],
+    score: 91, // not a card field — must not be stored
+  });
+  const [w] = db.getWatchlist(u.id);
+  assert.equal(w.title, 'The Matrix');
+  assert.equal(w.vote_average, 8.2);
+  assert.equal(w.runtime, 136);
+  assert.deepEqual(w.genres, ['Action', 'Sci-Fi']);
+  assert.deepEqual(w.services, [{ id: 8, name: 'Netflix', logo: '/n.png' }]);
+  assert.equal(w.imdbRating, 8.7);
+  assert.equal(w.metascore, 73);
+  assert.equal(w.director, 'The Wachowskis');
+  assert.equal(w.score, undefined, 'score is not a stored card field');
+  assert.equal(w.card, undefined, 'the raw JSON column is not leaked to callers');
+});
+
+test('a sparse re-save keeps the existing rich card (COALESCE)', () => {
+  const u = newUser();
+  db.addToWatchlist({ user_id: u.id, tmdb_id: 7, title: 'Rich', genres: ['Drama'], vote_average: 7.0 });
+  // A later save with no card fields (e.g. a merge) must not wipe the enrichment.
+  db.addToWatchlist({ user_id: u.id, tmdb_id: 7, title: 'Rich', year: 2001 });
+  const [w] = db.getWatchlist(u.id);
+  assert.deepEqual(w.genres, ['Drama'], 'genres survive a sparse re-save');
+  assert.equal(w.year, 2001, 'plain columns still update');
+});
+
+test('setWatchlistCard fills card fields without touching title/year/poster', () => {
+  const u = newUser();
+  db.addToWatchlist({ user_id: u.id, tmdb_id: 12, title: 'Old Save', year: 1980, poster_path: '/o.jpg' });
+  const pending = db.watchlistNeedingCard(u.id);
+  assert.equal(pending.length, 1, 'an un-enriched row is on the backfill work list');
+  assert.equal(pending[0].tmdb_id, 12);
+
+  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90 });
+  const [w] = db.getWatchlist(u.id);
+  assert.equal(w.title, 'Old Save', 'title preserved');
+  assert.equal(w.poster_path, '/o.jpg', 'poster preserved');
+  assert.deepEqual(w.genres, ['Horror'], 'card fields filled');
+  assert.equal(db.watchlistNeedingCard(u.id).length, 0, 'no longer needs backfill');
+});
+
 test('cache honours maxAge expiry', () => {
   db.cacheSet('k', { v: 1 });
   assert.deepEqual(db.cacheGet('k'), { v: 1 }, 'no maxAge → always fresh');

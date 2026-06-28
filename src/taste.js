@@ -5,7 +5,8 @@
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, recommendations, discover, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
-import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers } from './db.js';
+import { getRatings, getDismissed, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
+  watchlistNeedingCard, setWatchlistCard } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { attachRatings } from './ratings.js';
 import { traktConfigured, relatedMovies } from './trakt.js';
@@ -317,4 +318,51 @@ export function invalidateRecommendations(userId) {
 export function warmRecommendations() {
   if (!tmdbConfigured()) return;
   for (const u of listUsers()) if (readyForRecs(u.id)) schedulePrebuild(u.id, 1500);
+}
+
+// ---- watchlist card enrichment --------------------------------------------
+// Re-derive the rich card fields for one already-saved title, server side, so a
+// title saved before save-time capture (or whose capture failed) renders exactly
+// like a fresh Discover pick — same fields computePool() produces, minus score
+// (a saved title has no recommendation rank). Hits TMDB details (cached) + the
+// IMDb/Metacritic scrape; no MotN quota is spent.
+export async function enrichWatchlistItem({ tmdb_id, region, providerIds, language }) {
+  const full = await details(tmdb_id, 'movie', language);
+  const crew = full.credits?.crew || [];
+  const item = {
+    imdb_id: full.external_ids?.imdb_id || null, // attachRatings needs this; not stored
+    title: full.title,                           // ditto (metacritic lookup keys on title)
+    runtime: full.runtime || null,
+    overview: full.overview || null,
+    vote_average: full.vote_average ?? null,
+    genres: (full.genres || []).map((g) => g.name),
+    director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
+    cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
+    services: userServices(full, region, new Set((providerIds || []).map(Number))),
+  };
+  await attachRatings([item]); // adds imdbRating + metascore (or leaves them null)
+  return item;
+}
+
+// Background one-off at startup: enrich every saved title that predates save-time
+// capture so the Watchlist tab matches Discover. Naturally idempotent — it only
+// touches rows whose `card` is still null, so a re-run after everything's filled
+// is a cheap empty query. Gentle on TMDB: one user at a time, yielding between
+// items so /health and live traffic aren't starved (see the breathe() rationale).
+export async function backfillWatchlistCards() {
+  if (!tmdbConfigured()) return;
+  for (const u of listUsers()) {
+    const rows = watchlistNeedingCard(u.id);
+    if (!rows.length) continue;
+    const region = getUserSetting(u.id, 'country', 'PL');
+    const providerIds = (getUserSetting(u.id, 'providers', []) || []).map(Number);
+    const language = tmdbLang(getUserSetting(u.id, 'language', DEFAULT_LANGUAGE));
+    for (const r of rows) {
+      await breathe();
+      try {
+        const item = await enrichWatchlistItem({ tmdb_id: r.tmdb_id, region, providerIds, language });
+        setWatchlistCard(u.id, r.tmdb_id, r.media_type, item);
+      } catch (e) { log.warn(`watchlist backfill failed for user ${u.id}/${r.tmdb_id}:`, e.message); }
+    }
+  }
 }

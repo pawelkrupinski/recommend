@@ -77,7 +77,11 @@ db.exec(`
   );
 
   -- Titles the user saved to watch later. Carries enough to render a card
-  -- (title/year/poster) without a TMDB round-trip per item.
+  -- (title/year/poster) without a TMDB round-trip per item, plus a "card" JSON
+  -- blob of the richer Discover-card fields (services, ratings, genres, runtime,
+  -- synopsis, credits) so a saved title's card and detail popup look exactly like
+  -- a Discover pick. Captured from the Discover card at save time; null for rows
+  -- saved before that, which backfillWatchlistCards() enriches in the background.
   CREATE TABLE IF NOT EXISTS watchlist (
     user_id     INTEGER NOT NULL,
     tmdb_id     INTEGER NOT NULL,
@@ -85,6 +89,7 @@ db.exec(`
     title       TEXT,
     year        INTEGER,
     poster_path TEXT,
+    card        TEXT,
     added_at    TEXT    DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, tmdb_id, media_type)
   );
@@ -165,6 +170,16 @@ function addProviderSubColumn() {
   db.exec('ALTER TABLE users ADD COLUMN provider_sub TEXT');
 }
 addProviderSubColumn();
+
+// ---- migration: add watchlist.card to pre-existing DBs ----------------------
+// Older databases stored only title/year/poster per saved title. Add the JSON
+// `card` column once; existing rows stay null until backfillWatchlistCards()
+// enriches them so their cards match Discover picks.
+function addWatchlistCardColumn() {
+  if (tableColumns('watchlist').includes('card')) return;
+  db.exec('ALTER TABLE watchlist ADD COLUMN card TEXT');
+}
+addWatchlistCardColumn();
 
 // ---- backfill: grandfather existing users past first-run onboarding --------
 // The streaming-services picker only gates genuinely new accounts. Mark every
@@ -342,17 +357,50 @@ export function getNotSeen(userId) {
 }
 
 // ---- watchlist (per user; saved to watch later) ---------------------------
+// The richer Discover-card fields we persist alongside a saved title so its card
+// and detail popup render identically to a Discover pick. Score is deliberately
+// excluded — it's a per-build recommendation rank a saved title has no place in.
+// The same shape is produced by the Discover card (captured at save time) and by
+// enrichWatchlistItem (backfill), so both write through this one whitelist.
+const CARD_FIELDS = ['vote_average', 'runtime', 'genres', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast'];
+function pickCard(src) {
+  const card = {};
+  for (const k of CARD_FIELDS) if (src[k] != null) card[k] = src[k];
+  return Object.keys(card).length ? JSON.stringify(card) : null;
+}
+// Flatten a stored row back into the shape the frontend card expects: the `card`
+// JSON blob spread to top level (services/genres as arrays, ratings as numbers),
+// the raw column dropped.
+function rowToWatchItem({ card, ...row }) {
+  return { ...row, ...(card ? JSON.parse(card) : {}) };
+}
+
 const _addToWatchlist = db.prepare(`
-  INSERT INTO watchlist (user_id, tmdb_id, media_type, title, year, poster_path)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO watchlist (user_id, tmdb_id, media_type, title, year, poster_path, card)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(user_id, tmdb_id, media_type) DO UPDATE SET
-    title = excluded.title, year = excluded.year, poster_path = excluded.poster_path
+    title = excluded.title, year = excluded.year, poster_path = excluded.poster_path,
+    -- keep the existing enrichment if a sparse re-save carries no card fields
+    card = COALESCE(excluded.card, watchlist.card)
 `);
-export function addToWatchlist({ user_id, tmdb_id, media_type = 'movie', title, year, poster_path }) {
-  _addToWatchlist.run(user_id, tmdb_id, media_type, title ?? null, year ?? null, poster_path ?? null);
+export function addToWatchlist({ user_id, tmdb_id, media_type = 'movie', title, year, poster_path, ...rest }) {
+  _addToWatchlist.run(user_id, tmdb_id, media_type, title ?? null, year ?? null, poster_path ?? null, pickCard(rest));
 }
 export function getWatchlist(userId) {
-  return db.prepare('SELECT * FROM watchlist WHERE user_id = ? ORDER BY added_at DESC').all(userId);
+  return db.prepare('SELECT * FROM watchlist WHERE user_id = ? ORDER BY added_at DESC').all(userId).map(rowToWatchItem);
+}
+// Fill (or refresh) just the rich card fields of an already-saved title, leaving
+// title/year/poster untouched — used by the background backfill of older rows.
+const _setWatchlistCard = db.prepare(
+  'UPDATE watchlist SET card = ? WHERE user_id = ? AND tmdb_id = ? AND media_type = ?'
+);
+export function setWatchlistCard(userId, tmdb_id, media_type, card) {
+  _setWatchlistCard.run(pickCard(card), userId, tmdb_id, media_type);
+}
+// Saved titles still missing their rich card fields (saved before save-time
+// capture, or whose enrichment failed) — the backfill's work list for one user.
+export function watchlistNeedingCard(userId) {
+  return db.prepare('SELECT tmdb_id, media_type FROM watchlist WHERE user_id = ? AND card IS NULL').all(userId);
 }
 export function removeFromWatchlist(userId, tmdb_id, media_type = 'movie') {
   db.prepare('DELETE FROM watchlist WHERE user_id = ? AND tmdb_id = ? AND media_type = ?')

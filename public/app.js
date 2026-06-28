@@ -49,6 +49,33 @@ function ratingBadges(m) {
   return imdb || mc ? `<div class="ratings">${imdb}${mc}</div>` : '';
 }
 
+// "2021 · ⭐ 7.8 · 1h 47m" — year, community rating and runtime, each shown only
+// when present so a not-yet-enriched card degrades cleanly instead of "· ⭐ 0.0".
+function metaLine(m) {
+  const parts = [m.year || ''];
+  if (m.vote_average != null) parts.push(`⭐ ${m.vote_average.toFixed(1)}`);
+  if (runtime(m.runtime)) parts.push(runtime(m.runtime));
+  return parts.filter(Boolean).join(' · ');
+}
+
+// Poster + meta block shared by Discover picks and Watchlist cards: poster, title
+// beside its service icons, the year/rating/runtime line, external rating badges
+// and genres. Discover wraps it with a score badge + rate row, Watchlist with a
+// Remove button — the card itself is identical so both render the same.
+function posterAndMeta(m) {
+  return `
+    <img src="${poster(m.poster_path)}" loading="lazy" />
+    <div class="meta">
+      <div class="title-row">
+        <div class="title">${esc(m.title || m.tmdb_id)}</div>
+        ${serviceIcons(m)}
+      </div>
+      <div class="year">${metaLine(m)}</div>
+      ${ratingBadges(m)}
+      <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
+    </div>`;
+}
+
 // ---- tabs -----------------------------------------------------------------
 // Each tab is a URL hash (#ratings, #settings…) so a refresh stays on the same
 // tab instead of dropping back to Discover, and back/forward navigate between tabs.
@@ -262,16 +289,7 @@ function recCard(m) {
   el.innerHTML = `
     <div class="score ${hi}">${m.score}</div>
     ${watchBtnMarkup()}
-    <img src="${poster(m.poster_path)}" loading="lazy" />
-    <div class="meta">
-      <div class="title-row">
-        <div class="title">${esc(m.title)}</div>
-        ${serviceIcons(m)}
-      </div>
-      <div class="year">${m.year || ''} · ⭐ ${(m.vote_average || 0).toFixed(1)}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</div>
-      ${ratingBadges(m)}
-      <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
-    </div>
+    ${posterAndMeta(m)}
     ${ratingRow()}`;
   el.querySelector('img').onclick = () => openWhere(m);
   wireWatch(el, m);
@@ -429,8 +447,11 @@ function wireWatch(el, m) {
     ev.stopPropagation();
     btn.disabled = true;
     try {
-      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({
-        tmdb_id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, poster_path: m.poster_path }) });
+      // Save the whole pick, not just title/year/poster: the card already holds
+      // its services, ratings, genres, runtime and synopsis, so storing them now
+      // lets the Watchlist card + popup render exactly like this one — for free,
+      // spending no extra API quota. The server whitelists which fields persist.
+      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: 'movie' }) });
       watchlistIds.add(m.tmdb_id);
       flashTab('watchlist');
       removeCard(el, picksEmptyMsg());
@@ -533,20 +554,18 @@ function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });
 }
 function watchCard(w) {
-  const m = { tmdb_id: w.tmdb_id, title: w.title, year: w.year, poster_path: w.poster_path };
   const el = document.createElement('div');
   el.className = 'card';
-  el.innerHTML = `
-    <img src="${poster(m.poster_path)}" loading="lazy" />
-    <div class="meta">
-      <div class="title">${esc(m.title || m.tmdb_id)}</div>
-      <div class="year">${m.year || ''}</div>
-    </div>
+  // Same card body as a Discover pick (the rich fields were captured when it was
+  // saved), minus the score badge and rate widget; a Remove button stands in for
+  // the rate row. Tapping the poster opens the same where-to-watch popup.
+  el.innerHTML = `${posterAndMeta(w)}
     <button class="skip watch-remove">${t('watchlist.remove')}</button>`;
-  el.querySelector('img').onclick = () => openWhere(m);
+  el.querySelector('img').onclick = () => openWhere(w);
+  wireServiceLinks(el, w); // deep-link each service icon, exactly like Discover
   el.querySelector('.watch-remove').onclick = async () => {
-    await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: w.media_type || 'movie' }) });
-    watchlistIds.delete(m.tmdb_id);
+    await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
+    watchlistIds.delete(w.tmdb_id);
     setWatchlistCount(watchlistIds.size);
     removeCard(el, t('watchlist.empty'));
   };

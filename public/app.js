@@ -128,16 +128,23 @@ $('#refresh').onclick = () => loadRecs(true);
 
 // ---- shared rate + dismiss widget -----------------------------------------
 // Stars (1–10 → rating/10) plus a "Not interested / seen it" button.
+// 10 rating stars, laid out by CSS as two rows of 5, with a hover "n / 10" readout.
+const STAR_SPANS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<span data-n="${n}">★</span>`).join('');
+const starsMarkup = () => `<div class="rate-stars"><div class="stars">${STAR_SPANS}</div><span class="rating-num"></span></div>`;
 function ratingRow() {
   return `
-    <div class="stars">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => `<span data-n="${n}">★</span>`).join('')}</div>
+    ${starsMarkup()}
     <button class="skip dismiss-btn">Not interested / seen it</button>`;
 }
 // Wire the widget inside `el` for movie `m`; calls onResolve() after rate/dismiss.
 function wireRating(el, m, onResolve) {
   const stars = el.querySelectorAll('.stars span');
+  const num = el.querySelector('.rating-num');
   stars.forEach((s) => {
-    s.onmouseenter = () => stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
+    s.onmouseenter = () => {
+      stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
+      if (num) num.textContent = `${s.dataset.n} / 10`;
+    };
     s.onclick = async (ev) => {
       ev.stopPropagation();
       await api('/api/ratings', { method: 'POST', body: JSON.stringify({
@@ -145,7 +152,10 @@ function wireRating(el, m, onResolve) {
       onResolve();
     };
   });
-  el.querySelector('.stars')?.addEventListener('mouseleave', () => stars.forEach((x) => x.classList.remove('on')));
+  el.querySelector('.rate-stars')?.addEventListener('mouseleave', () => {
+    stars.forEach((x) => x.classList.remove('on'));
+    if (num) num.textContent = '';
+  });
   el.querySelector('.dismiss-btn').onclick = async (ev) => {
     ev.stopPropagation();
     await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
@@ -224,19 +234,26 @@ function rateCard(m) {
   el.innerHTML = `
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta"><div class="title">${esc(m.title)}</div><div class="year">${m.year || ''}</div></div>
-    <div class="stars">${[1,2,3,4,5,6,7,8,9,10].map((n) => `<span data-n="${n}">★</span>`).join('')}</div>
+    ${starsMarkup()}
     <button class="skip">Haven't seen</button>`;
   el.querySelector('img').onclick = () => openWhere(m); // poster → where-to-watch modal
   const stars = el.querySelectorAll('.stars span');
+  const num = el.querySelector('.rating-num');
   stars.forEach((s) => {
-    s.onmouseenter = () => stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
+    s.onmouseenter = () => {
+      stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
+      if (num) num.textContent = `${s.dataset.n} / 10`;
+    };
     s.onclick = async () => {
       await api('/api/ratings', { method: 'POST', body: JSON.stringify({
         tmdb_id: m.tmdb_id, media_type: 'movie', rating: Number(s.dataset.n), title: m.title, year: m.year }) });
       cardGone(el);
     };
   });
-  el.querySelector('.stars').onmouseleave = () => stars.forEach((x) => x.classList.remove('on'));
+  el.querySelector('.rate-stars').onmouseleave = () => {
+    stars.forEach((x) => x.classList.remove('on'));
+    if (num) num.textContent = '';
+  };
   el.querySelector('.skip').onclick = async () => {
     await api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
     cardGone(el);

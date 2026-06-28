@@ -101,9 +101,11 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rb.mc.bad { background: #d13b3b; border-color: #d13b3b; }
 
 /* rate widget */
-.stars { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 10px 10px; }
+.rate-stars { display: flex; align-items: center; gap: 8px; padding: 6px 10px 10px; }
+.stars { display: grid; grid-template-columns: repeat(5, max-content); gap: 2px; }
 .stars span { cursor: pointer; color: #444; font-size: 15px; line-height: 1; }
 .stars span.on { color: var(--accent); }
+.rating-num { min-width: 2.8em; font-size: 14px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .card .skip { margin: 0 10px 10px; font-size: 12px; padding: 4px 8px; }
 
 /* Rate page: keep every card identical height so the "Haven't seen" button

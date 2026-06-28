@@ -49,6 +49,47 @@ test('saving a Discover pick removes its card, flashes the tab, and lands in the
   await expect(page.locator('#watchlist-grid')).toContainText('Your watchlist is empty');
 });
 
+test('the Watchlist sort dropdown reorders cards by average rating and persists in the URL', async ({ page }) => {
+  await login(page, uniqEmail('watch-sort'));
+
+  // Seed three saved titles with distinct critic scores straight through the API
+  // (the card fields persist). Averages on a 0–10 scale: Low 5.0, Mid 7.0
+  // ((8+6)/2), High 9.5 (metascore 95). They're saved High → Low → Mid, a >1s gap
+  // apart so added_at (second-resolution) strictly increases — the default
+  // added-DESC order (Mid, Low, High) is then deterministic and differs from the
+  // rating order, proving the sort actually reorders rather than coinciding.
+  await page.evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const save = (b) => fetch('/api/watchlist', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    await save({ tmdb_id: 703, title: 'High', year: 2003, metascore: 95 });
+    await sleep(1100);
+    await save({ tmdb_id: 701, title: 'Low', year: 2001, imdbRating: 5 });
+    await sleep(1100);
+    await save({ tmdb_id: 702, title: 'Mid', year: 2002, imdbRating: 8, metascore: 60 });
+  });
+
+  // Default order is newest-first (added_at DESC).
+  await page.goto('/watchlist');
+  const titles = page.locator('#watchlist-grid .card .title');
+  await expect(titles).toHaveText(['Mid', 'Low', 'High']);
+
+  // Choosing "Top rated" reorders by descending average and records ?sort=rating.
+  await page.locator('#watchlist-sort').selectOption('rating');
+  await expect(page).toHaveURL(/\/watchlist\?sort=rating$/);
+  await expect(titles).toHaveText(['High', 'Mid', 'Low']);
+
+  // The sort survives a reload because it lives in the URL.
+  await page.reload();
+  await expect(page.locator('#watchlist-sort')).toHaveValue('rating');
+  await expect(titles).toHaveText(['High', 'Mid', 'Low']);
+
+  // Switching back to "Recently added" drops the query and restores added order.
+  await page.locator('#watchlist-sort').selectOption('added');
+  await expect(page).toHaveURL(/\/watchlist$/);
+  await expect(titles).toHaveText(['Mid', 'Low', 'High']);
+});
+
 test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
   await login(page, uniqEmail('watch-hide'));
   await enterPicks(page);

@@ -128,6 +128,19 @@ test('createAnonUser makes a fresh, email-less account each call', () => {
   assert.equal(a.provider, 'anon');
 });
 
+test('hasUserContent counts ratings/watchlist but not settings alone', () => {
+  const u = newUser();
+  assert.equal(db.hasUserContent(u.id), false, 'fresh user has no content');
+  db.setUserSetting(u.id, 'country', 'PL');
+  assert.equal(db.hasUserContent(u.id), false, 'settings alone are not content');
+  db.upsertRating({ user_id: u.id, tmdb_id: 1, rating: 5 });
+  assert.equal(db.hasUserContent(u.id), true, 'a rating is content');
+
+  const w = newUser();
+  db.addToWatchlist({ user_id: w.id, tmdb_id: 9, title: 'Saved' });
+  assert.equal(db.hasUserContent(w.id), true, 'a watchlist item is content');
+});
+
 test('mergeUserData folds rows in without clobbering the target', () => {
   const anon = db.createAnonUser(), acct = newUser();
   // Target already has its own take on tmdb 1 and a country; anon adds tmdb 2.

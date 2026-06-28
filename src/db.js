@@ -231,11 +231,25 @@ export function createAnonUser() {
   const info = db.prepare("INSERT INTO users (provider) VALUES ('anon')").run();
   return getUserById(info.lastInsertRowid);
 }
+// Does this user have content of their own (ratings or saved watchlist titles)?
+// Sign-in uses this to decide whether an account is established enough that its
+// data should win outright over an anonymous session's — settings alone (an
+// onboarded-but-never-rated account) don't count as content.
+export function hasUserContent(userId) {
+  const row = db.prepare(
+    `SELECT EXISTS(
+       SELECT 1 FROM ratings   WHERE user_id = ?
+       UNION ALL
+       SELECT 1 FROM watchlist WHERE user_id = ?
+     ) AS has`
+  ).get(userId, userId);
+  return !!row.has;
+}
 // Fold every per-user row of `fromId` into `toId` without overwriting anything
-// `toId` already holds (INSERT OR IGNORE) — so signing in on a device that
-// already has an account keeps that account's data and merely adds whatever was
-// rated/saved anonymously. Returns the number of rows brought across so the
-// caller can decide whether to rebuild recommendations.
+// `toId` already holds (INSERT OR IGNORE) — so when an empty account adopts an
+// anonymous session it gets all of it, and any setting the account already set
+// still wins. Returns the number of rows brought across so the caller can decide
+// whether to rebuild recommendations.
 export function mergeUserData(fromId, toId) {
   let moved = 0;
   for (const table of ['ratings', 'dismissed', 'not_seen', 'watchlist', 'user_settings']) {

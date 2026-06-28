@@ -53,7 +53,7 @@ Full list in [`.env.example`](./.env.example):
 | `APPLICATION_SECRET` | signs session cookies |
 | `ADMIN_ALLOWLIST`    | comma-separated admin emails |
 | `TMDB_API_KEY`       | TMDB metadata (required) |
-| `RAPIDAPI_KEY` / `TRAKT_KEY` | optional (deep links / collaborative signal) |
+| `RAPIDAPI_KEY` / `TRAKT_KEY` | optional (MotN fallback deep links / collaborative signal) |
 | `BASE_URL`   | public origin for OAuth callbacks (prod) |
 | `DB_PATH`    | SQLite path (default `./data/recommend.db`) |
 | `PORT`       | listen port (default 9002) |
@@ -115,7 +115,10 @@ hard in the DB — no extra API key, no extra setup.
 | `src/env.js`      | config + local secret loading from `../movies/.env.local` |
 | `src/db.js`       | `node:sqlite` storage (users, per-user ratings/settings, API cache) |
 | `src/tmdb.js`     | TMDB client (metadata, providers, discover, recs) |
-| `src/motn.js`     | Movie of the Night client (deep links) |
+| `src/availability.js` | "where to watch" seam — JustWatch first, MotN fallback |
+| `src/justwatch.js` | JustWatch client (deep links via GraphQL; primary) |
+| `src/motn.js`     | Movie of the Night client (deep links; fallback, rate-capped) |
+| `src/deeplinks.js` | shared deep-link host normalisation (app handoff) |
 | `src/trakt.js`    | Trakt client (collaborative "related" signal, optional) |
 | `src/ratings.js`  | IMDb + Metacritic ratings (key-free, cached) |
 | `src/taste.js`    | taste profile + candidate scoring |

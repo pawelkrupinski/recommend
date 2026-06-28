@@ -242,25 +242,54 @@ function ratingRow() {
     ${starsMarkup()}
     <button class="skip dismiss-btn">Not interested / seen it</button>`;
 }
+// Wire the 1–10 star widget inside `el`: desktop hover and mobile touch-drag
+// both preview the rating ("n / 10"); a click or finger-lift commits via
+// commit(n). Shared by the Discover (wireRating) and onboarding (queueCard) cards.
+function wireStars(el, commit) {
+  const stars = el.querySelectorAll('.stars span');
+  const starsBox = el.querySelector('.stars');
+  const num = el.querySelector('.rating-num');
+  // Light up stars 1..n and show the "n / 10" hint (n=0 clears).
+  const preview = (n) => {
+    stars.forEach((x, i) => x.classList.toggle('on', i < n));
+    if (num) num.textContent = n ? `${n} / 10` : '';
+  };
+  stars.forEach((s) => {
+    s.onmouseenter = () => preview(Number(s.dataset.n));
+    s.onclick = (ev) => { ev.stopPropagation(); commit(Number(s.dataset.n)); };
+  });
+  el.querySelector('.rate-stars')?.addEventListener('mouseleave', () => preview(0));
+  // Touch: dragging a finger over the stars previews the rating (like desktop
+  // hover), lifting commits it. The star under the finger is found by
+  // hit-testing, so the drag need not start on the eventual target.
+  if (starsBox) {
+    let touchN = 0;
+    const starAt = (t) => {
+      const hit = document.elementFromPoint(t.clientX, t.clientY);
+      const span = hit && hit.closest('.stars span');
+      return span && starsBox.contains(span) ? Number(span.dataset.n) : 0;
+    };
+    const onMove = (ev) => {
+      const n = starAt(ev.touches[0]);
+      if (n) { ev.preventDefault(); touchN = n; preview(n); }
+    };
+    starsBox.addEventListener('touchstart', onMove, { passive: false });
+    starsBox.addEventListener('touchmove', onMove, { passive: false });
+    starsBox.addEventListener('touchend', (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault(); // suppress the synthetic click that follows
+      if (touchN) commit(touchN);
+      else preview(0);
+    });
+    starsBox.addEventListener('touchcancel', () => { touchN = 0; preview(0); });
+  }
+}
 // Wire the widget inside `el` for movie `m`; calls onResolve() after rate/dismiss.
 function wireRating(el, m, onResolve) {
-  const stars = el.querySelectorAll('.stars span');
-  const num = el.querySelector('.rating-num');
-  stars.forEach((s) => {
-    s.onmouseenter = () => {
-      stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
-      if (num) num.textContent = `${s.dataset.n} / 10`;
-    };
-    s.onclick = async (ev) => {
-      ev.stopPropagation();
-      await api('/api/ratings', { method: 'POST', body: JSON.stringify({
-        tmdb_id: m.tmdb_id, media_type: 'movie', rating: Number(s.dataset.n), title: m.title, year: m.year }) });
-      onResolve();
-    };
-  });
-  el.querySelector('.rate-stars')?.addEventListener('mouseleave', () => {
-    stars.forEach((x) => x.classList.remove('on'));
-    if (num) num.textContent = '';
+  wireStars(el, async (rating) => {
+    await api('/api/ratings', { method: 'POST', body: JSON.stringify({
+      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) });
+    onResolve();
   });
   el.querySelector('.dismiss-btn').onclick = async (ev) => {
     ev.stopPropagation();
@@ -335,23 +364,11 @@ function queueCard(m, onResolve) {
     ${starsMarkup()}
     <button class="skip">Haven't seen</button>`;
   el.querySelector('img').onclick = () => openWhere(m); // poster → where-to-watch modal
-  const stars = el.querySelectorAll('.stars span');
-  const num = el.querySelector('.rating-num');
-  stars.forEach((s) => {
-    s.onmouseenter = () => {
-      stars.forEach((x, i) => x.classList.toggle('on', i < s.dataset.n));
-      if (num) num.textContent = `${s.dataset.n} / 10`;
-    };
-    s.onclick = async () => {
-      await api('/api/ratings', { method: 'POST', body: JSON.stringify({
-        tmdb_id: m.tmdb_id, media_type: 'movie', rating: Number(s.dataset.n), title: m.title, year: m.year }) });
-      onResolve(el, 'rated');
-    };
+  wireStars(el, async (rating) => {
+    await api('/api/ratings', { method: 'POST', body: JSON.stringify({
+      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) });
+    onResolve(el, 'rated');
   });
-  el.querySelector('.rate-stars').onmouseleave = () => {
-    stars.forEach((x) => x.classList.remove('on'));
-    if (num) num.textContent = '';
-  };
   el.querySelector('.skip').onclick = async () => {
     await api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
     onResolve(el, 'skipped');

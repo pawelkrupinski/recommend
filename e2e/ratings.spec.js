@@ -67,3 +67,39 @@ test('dragging a finger over the stars previews the rating and lifting commits i
   const row = page.locator('#ratings-list .rrow', { hasText: 'Stub Popular Five' });
   await expect(row.locator('.r')).toHaveText('7');
 });
+
+test('lifting the finger outside the stars cancels the drag — no rating, card stays', async ({ page }) => {
+  await login(page, uniqEmail('touchcancel'));
+
+  const target = '#recs .card:has(.title:text-is("Stub Popular Five"))';
+  await expect(page.locator(target)).toBeVisible();
+  const card = page.locator(target);
+
+  // Start the drag on a star (previewing a score) but lift the finger off the
+  // stars area — the handler hit-tests the lift point and must NOT commit.
+  await card.locator('.stars').evaluate((box) => {
+    const r = box.querySelector('span[data-n="6"]').getBoundingClientRect();
+    const on = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const off = { x: r.left + r.width / 2, y: r.bottom + 200 }; // well below the stars
+    const fire = (name, p) => {
+      const t = new Touch({ identifier: 1, target: box, clientX: p.x, clientY: p.y });
+      box.dispatchEvent(new TouchEvent(name, {
+        touches: name === 'touchend' ? [] : [t], changedTouches: [t],
+        bubbles: true, cancelable: true,
+      }));
+    };
+    fire('touchstart', on);
+    fire('touchmove', on);
+    fire('touchmove', off);
+    fire('touchend', off);
+  });
+
+  // No rating committed: the card is still in Discover and the preview cleared.
+  await expect(page.locator(target)).toBeVisible();
+  await expect(card.locator('.rating-num')).toHaveText('');
+  await expect(card.locator('.stars span.on')).toHaveCount(0);
+
+  // And nothing landed under My ratings.
+  await page.locator('#tabs button[data-tab="ratings"]').click();
+  await expect(page.locator('#ratings-list')).toContainText('No ratings yet');
+});

@@ -219,11 +219,14 @@ async function api(req, res, url) {
     }
 
     // ---- watchlist (saved to watch later) -----------------------------
-    // Independent of the taste profile, so no recommendation invalidation here.
     if (p === '/api/watchlist' && req.method === 'GET') return json(req, res, 200, { watchlist: getWatchlist(uid) });
     if (p === '/api/watchlist' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       addToWatchlist({ ...b, user_id: uid });
+      // Saving a pick removes it from Discover (it's now a handled title the pool
+      // excludes), so invalidate to schedule a background rebuild that backfills
+      // its slot with a fresh title — same replenishment rating/dismissing get.
+      invalidateRecommendations(uid);
       return json(req, res, 200, { ok: true });
     }
     if (p === '/api/watchlist' && req.method === 'DELETE') {

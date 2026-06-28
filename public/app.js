@@ -292,6 +292,21 @@ async function maybeSwap() {
   } catch { swapping = false; }
 }
 
+// The current Discover view as an /api/recommend query string, read straight from
+// the live filter controls — shared by a full load and the background refill so
+// both fetch exactly the same slice. `refresh` forces a server-side pool rebuild.
+function discoverParams({ refresh = false } = {}) {
+  const params = new URLSearchParams();
+  const genre = $('#genre-filter').value;
+  if (genre) params.set('genre', genre);
+  const origin = $('#origin-filter').value;
+  if (origin) params.set('origin', origin);
+  if ($('#exclude-us').checked) params.set('excludeUs', '1');
+  if ($('#indie').checked) params.set('indie', '1');
+  if (refresh) params.set('refresh', '1');
+  return params.toString();
+}
+
 async function loadRecs(force = false) {
   const info = $('#discover-info'), grid = $('#recs');
   info.textContent = t('discover.building');
@@ -305,13 +320,7 @@ async function loadRecs(force = false) {
     $('#exclude-us').checked = h.excludeUs;
     $('#indie').checked = h.indie;
     const genre = $('#genre-filter').value;
-    const params = new URLSearchParams();
-    if (genre) params.set('genre', genre);
-    if (h.origin) params.set('origin', h.origin);
-    if (h.excludeUs) params.set('excludeUs', '1');
-    if (h.indie) params.set('indie', '1');
-    if (force) params.set('refresh', '1');
-    const qs = params.toString();
+    const qs = discoverParams({ refresh: force });
     const [{ results, profileSize }] = await Promise.all([
       api('/api/recommend' + (qs ? `?${qs}` : '')),
       loadWatchlistIds(),
@@ -348,6 +357,7 @@ const picksEmptyMsg = () => t('discover.picksEmptyMore');
 function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
+  el.dataset.id = m.tmdb_id;   // lets refillPicks tell which titles are already on screen
   const hi = m.score >= 75 ? 'hi' : '';
   el.innerHTML = `
     <div class="score ${hi}">${m.score}</div>
@@ -358,7 +368,7 @@ function recCard(m) {
   wireWatch(el, m);
   wireServiceLinks(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
-  wireRating(el, m, () => removeCard(el, picksEmptyMsg()));
+  wireRating(el, m, () => removePick(el));
   return el;
 }
 
@@ -485,6 +495,35 @@ function removeCard(el, emptyMsg) {
   if (grid && !grid.children.length) grid.innerHTML = `<p class="empty">${esc(emptyMsg)}</p>`;
 }
 
+// Drop a Discover pick (rated, dismissed, or saved), then keep the grid stocked:
+// the server already excludes the handled title and, once below PICKS_MIN, we pull
+// the next batch in so the picks never silently run dry mid-session.
+const PICKS_MIN = 8;
+let refilling = false;
+function removePick(el) {
+  removeCard(el, picksEmptyMsg());
+  if ($('#recs').children.length < PICKS_MIN) refillPicks();
+}
+// Fetch the current Discover view again and append picks not already on screen
+// (or now on the watchlist). Cheap and idempotent: the server serves from the
+// cached pool, so this just surfaces the next-ranked titles below what's shown —
+// and the background rebuild that each removal scheduled keeps that pool fresh.
+async function refillPicks() {
+  if (refilling || discoverMode !== 'recs') return;
+  refilling = true;
+  try {
+    const grid = $('#recs');
+    const qs = discoverParams();
+    const { results } = await api('/api/recommend' + (qs ? `?${qs}` : ''));
+    const shown = new Set([...grid.querySelectorAll('.card')].map((c) => Number(c.dataset.id)));
+    const fresh = results.filter((m) => !shown.has(m.tmdb_id) && !watchlistIds.has(m.tmdb_id));
+    if (!fresh.length) return;
+    if (grid.querySelector('.empty')) grid.innerHTML = '';   // clear a stale empty-state
+    for (const m of fresh) grid.append(recCard(m));
+  } catch { /* leave the grid; the next removal retries */ }
+  finally { refilling = false; }
+}
+
 // ---- watchlist toggle (the + button on Discover cards) --------------------
 // Refresh the cached set of watchlisted ids; tolerate failure (cards just keep
 // their last-known + / ✓ state).
@@ -525,7 +564,7 @@ function wireWatch(el, m) {
       await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: 'movie' }) });
       watchlistIds.add(m.tmdb_id);
       flashTab('watchlist');
-      removeCard(el, picksEmptyMsg());
+      removePick(el);
     } finally { btn.disabled = false; }
   };
 }

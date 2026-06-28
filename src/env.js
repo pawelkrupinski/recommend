@@ -50,6 +50,19 @@ export const config = {
   tmdbKey: process.env.TMDB_API_KEY || process.env.TMDB_KEY || '',
   rapidApiKey: process.env.RAPIDAPI_KEY || '',
   traktKey: process.env.TRAKT_KEY || '',
+  // Decodo static-residential (ISP) egress, shared with ../movies. Scraped
+  // sources (Letterboxd/Filmweb/JustWatch) route through it so the target sees a
+  // genuine residential IP — our Render datacenter IP gets Cloudflare-blocked at
+  // the ASN level on some of these hosts. host+ports are non-secret (they match
+  // movies' committed residential-proxy.properties); user/pass come from the env.
+  // Rotating across ports = one Decodo IP each, which also spreads Decodo's
+  // per-IP auth-attempt cap. See the `reference_decodo_isp_proxy` lineage.
+  proxy: {
+    host: 'isp.decodo.com',
+    ports: [10001, 10002, 10003, 10004, 10005, 10006, 10007],
+    user: process.env.KINOWO_PROXY_USER || '',
+    pass: process.env.KINOWO_PROXY_PASS || '',
+  },
 };
 
 export const isAdminEmail = (email) =>

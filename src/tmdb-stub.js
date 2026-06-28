@@ -30,6 +30,13 @@ const DISCOVER = [
   { id: 202, title: 'Stub Streamable Two', genreId: 35, country: 'FR', companyId: 99999 },
   { id: 203, title: 'Stub Streamable Three', genreId: 28, country: 'JP', companyId: 99999 },
 ];
+// A title only the /trending source surfaces (no Discover/recommendations path
+// reaches it) — lets tests prove a non-Discover candidate source feeds the pool.
+// Tagged US + major studio (like 201) so the origin/indie filters drop it too,
+// keeping their expectations simple: it's present by default, gone once filtered.
+const TRENDING = [
+  { id: 301, title: 'Stub Trending One', genreId: 28, country: 'US', companyId: 174 },
+];
 
 const GENRES = [
   { id: 28, name: 'Action' },
@@ -60,7 +67,7 @@ const card = (m, language) => ({
 
 // Full /movie/:id detail with the appended blocks taste.js reads.
 function details(id, language) {
-  const known = [...POPULAR, ...DISCOVER].find((m) => m.id === id);
+  const known = [...POPULAR, ...DISCOVER, ...TRENDING].find((m) => m.id === id);
   const title = known?.title || `Stub Movie ${id}`;
   const genreId = known?.genreId || 28;
   const country = known?.country || 'US';
@@ -105,8 +112,16 @@ export function stub(path, params = {}) {
     const pool = params.with_watch_providers ? DISCOVER : POPULAR;
     return { page, total_pages: 1, results: pool.map((m) => card(m, params.language)) };
   }
+  if (path === '/trending/movie/week') {
+    return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };
+  }
   const rec = path.match(/^\/movie\/(\d+)\/recommendations$/);
   if (rec) return { page: 1, total_pages: 1, results: [] };
+
+  // Content-overlap list; empty in the stub (the seed expansion is exercised via
+  // recommendations) — present so the source's call resolves instead of throwing.
+  const sim = path.match(/^\/movie\/(\d+)\/similar$/);
+  if (sim) return { page: 1, total_pages: 1, results: [] };
 
   const wp = path.match(/^\/movie\/(\d+)\/watch\/providers$/);
   if (wp) {

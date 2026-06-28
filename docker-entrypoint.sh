@@ -15,13 +15,30 @@ if [ -z "$LITESTREAM_BUCKET" ]; then
 fi
 
 if [ ! -f "$DB_PATH" ]; then
-  echo "litestream: restoring $DB_PATH from replica (if any)…"
-  # On the first deploy the bucket is empty. -if-replica-exists is meant to make
-  # this a no-op, but against Cloudflare R2 it returns a NoSuchKey (404) that
-  # litestream treats as fatal — so we tolerate a failed restore and start fresh.
-  # litestream replicate (below) then creates the first generation in the bucket.
-  litestream restore -if-replica-exists "$DB_PATH" \
-    || echo "litestream: no replica to restore yet — starting with a fresh database"
+  echo "litestream: checking object storage for an existing replica…"
+  # The dangerous case: a replica EXISTS but restore fails transiently (R2 can
+  # return a NoSuchKey/404 mid-flight). If we boot blank there, litestream
+  # replicate publishes that empty DB as the newest generation and the next boot
+  # restores it — silently wiping every user (logout + lost ratings). So we only
+  # start fresh when we can positively confirm the bucket is empty; otherwise we
+  # restore, and abort the boot if restore keeps failing rather than wipe data.
+  if snaps=$(litestream snapshots "$DB_PATH" 2>/dev/null) \
+       && ! printf '%s\n' "$snaps" | grep -qE '[0-9a-f]{16}'; then
+    echo "litestream: no replica yet — starting with a fresh database"
+  else
+    echo "litestream: replica present — restoring $DB_PATH (will not start blank)"
+    attempt=1
+    until litestream restore "$DB_PATH"; do
+      if [ "$attempt" -ge "${RESTORE_MAX_ATTEMPTS:-5}" ]; then
+        echo "litestream: FATAL — could not restore an existing replica after ${attempt} attempts;" \
+             "aborting so the host restarts us instead of booting with a blank database"
+        exit 1
+      fi
+      echo "litestream: restore attempt ${attempt} failed; retrying…"
+      attempt=$((attempt + 1))
+      sleep "${RESTORE_RETRY_SLEEP:-2}"
+    done
+  fi
 fi
 
 echo "litestream: replicating $DB_PATH → $LITESTREAM_BUCKET"

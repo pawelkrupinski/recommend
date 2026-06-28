@@ -3,15 +3,25 @@
 // and the RapidAPI proxy (host streaming-availability.p.rapidapi.com). The key prefix
 // decides which. Used to enrich a single title with deep links on demand.
 //
-// FREE TIER IS 500 REQUESTS/MONTH — cache hard, call lazily, never in bulk.
+// FREE TIER IS 500 REQUESTS/MONTH — cache hard, call lazily, never in bulk. This is
+// why MotN is now the *fallback* availability source behind JustWatch (free, deep
+// links) — see availability.js; it only runs when a RapidAPI/MotN key is set.
 import { getSetting } from './db.js';
 import { fetchWithTimeout } from './fetch.js';
 import { readThrough, DAY } from './cache.js';
+import { appLink } from './deeplinks.js';
 
 const TTL = 15 * DAY; // deep links rarely change
 
+export const name = 'motn';
+
+const motnKey = () => getSetting('rapidApiKey', process.env.RAPIDAPI_KEY || '');
+
+// MotN can only answer when a key is configured; without one it has no backend.
+export const configured = () => !!motnKey();
+
 function endpoint(path) {
-  const key = getSetting('rapidApiKey', process.env.RAPIDAPI_KEY || '');
+  const key = motnKey();
   if (!key) return null;
   if (key.startsWith('motn-')) {
     return { url: `https://api.movieofthenight.com/v4${path}`, headers: { 'X-Api-Key': key } };
@@ -31,8 +41,10 @@ async function motnGet(path, cacheKey) {
 }
 
 // Per-service streaming options (with deep links) for one title in one country.
-// Shape: [{ service, serviceId, type, link, quality }] or null.
-export async function streamingOptions(tmdbId, mediaType, country) {
+// Shape: [{ service, serviceId, type, link, quality }] or null. The 4th arg
+// (language) is accepted for a uniform availability-source signature but unused —
+// MotN keys purely on the TMDB id.
+export async function streamingOptions(tmdbId, mediaType, country, _language) {
   const c = country.toLowerCase();
   const data = await motnGet(`/shows/${mediaType}/${tmdbId}?country=${c}`, `motn:show:${mediaType}:${tmdbId}:${c}`);
   if (!data) return null;
@@ -47,30 +59,4 @@ export async function streamingOptions(tmdbId, mediaType, country) {
       quality: o.quality,
     }));
   return opts;
-}
-
-// MotN only ever returns web URLs, but most are registered as iOS Universal
-// Links / Android App Links and open the native app directly (no custom scheme
-// needed) — as long as the link is followed in the same tab (see public/app.js).
-// A few services register a *different* host than the one MotN hands back;
-// rewrite those so the app handoff still fires.
-export function appLink(link) {
-  if (!link) return link;
-  // HBO Max: the app-link host is play.hbomax.com — its AASA registers the
-  // HBO Max app (com.wbd.hbomax) for path *. After the 2025 "Max" → "HBO Max"
-  // rebrand reversion, *.max.com only 301-redirects here (play.max.com →
-  // play.hbomax.com), and a redirect breaks the iOS Universal Link / Android
-  // App Link handoff. MotN already returns play.hbomax.com today, but normalise
-  // any lingering *.max.com link to it so the app still opens.
-  link = link.replace(/^https:\/\/(?:www\.|play\.)?max\.com\//, 'https://play.hbomax.com/');
-  // Prime Video: amazon.<tld>/gp/video/detail/{ASIN} is the *shopping* app's
-  // domain and won't open the Prime Video app. app.primevideo.com has a
-  // wildcard AASA + Android assetlinks for the production app, so /detail/{ASIN}
-  // opens it (falling back to web otherwise). The ASIN carries over as-is; keep
-  // the region-correct one MotN returned (don't touch the rest of the URL).
-  link = link.replace(
-    /^https?:\/\/(?:www\.)?amazon\.[a-z.]+\/gp\/video\/detail\/([A-Z0-9]{10})\b.*$/i,
-    'https://app.primevideo.com/detail/$1',
-  );
-  return link;
 }

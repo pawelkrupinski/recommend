@@ -1,13 +1,10 @@
-// Unit tests for MotN's link rewriting (src/motn.js `appLink`). MotN returns web
-// URLs that mostly double as iOS Universal Links / Android App Links, but a few
-// hosts need rewriting to the one whose AASA actually registers the app.
+// Unit tests for shared deep-link host normalisation (src/deeplinks.js `appLink`).
+// Streaming sources (MotN, JustWatch) return web URLs that mostly double as iOS
+// Universal Links / Android App Links, but a few hosts need rewriting to the one
+// whose AASA actually registers the app.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freshDbEnv } from '../helpers/env.js';
-
-// motn.js -> db.js opens SQLite at import time, so point at a throwaway db first.
-freshDbEnv();
-const { appLink } = await import('../../src/motn.js');
+import { appLink } from '../../src/deeplinks.js';
 
 test('appLink normalises any *.max.com host to play.hbomax.com', () => {
   // Post-2025 rebrand reversion: play.hbomax.com is the app-link host; *.max.com

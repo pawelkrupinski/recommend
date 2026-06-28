@@ -266,25 +266,28 @@ function wireStars(el, commit) {
   // hover), lifting commits it. The star under the finger is found by
   // hit-testing, so the drag need not start on the eventual target.
   if (starsBox) {
-    let touchN = 0;
+    // The star under the finger, or 0 when the finger is off the stars.
     const starAt = (t) => {
       const hit = document.elementFromPoint(t.clientX, t.clientY);
       const span = hit && hit.closest('.stars span');
       return span && starsBox.contains(span) ? Number(span.dataset.n) : 0;
     };
     const onMove = (ev) => {
-      const n = starAt(ev.touches[0]);
-      if (n) { ev.preventDefault(); touchN = n; preview(n); }
+      ev.preventDefault();
+      preview(starAt(ev.touches[0])); // clears the preview when dragged off
     };
     starsBox.addEventListener('touchstart', onMove, { passive: false });
     starsBox.addEventListener('touchmove', onMove, { passive: false });
     starsBox.addEventListener('touchend', (ev) => {
       ev.stopPropagation();
       ev.preventDefault(); // suppress the synthetic click that follows
-      if (touchN) commit(touchN);
+      // Commit only if the finger lifted on a star; lifting outside the stars
+      // cancels the drag (no rating, the card stays) rather than rating.
+      const n = starAt(ev.changedTouches[0]);
+      if (n) commit(n);
       else preview(0);
     });
-    starsBox.addEventListener('touchcancel', () => { touchN = 0; preview(0); });
+    starsBox.addEventListener('touchcancel', () => preview(0));
   }
 }
 // Wire the widget inside `el` for movie `m`; calls onResolve() after rate/dismiss.

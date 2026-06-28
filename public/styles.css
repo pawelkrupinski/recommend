@@ -335,5 +335,8 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .where a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }
 .where img { width: 22px; height: 22px; border-radius: 5px; }
+.trailers { margin-top: 14px; }
+.trailers a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 0 8px 8px 0; text-decoration: none; }
 pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow: auto; white-space: pre-wrap; }
 .empty { color: var(--muted); padding: 40px 0; text-align: center; }

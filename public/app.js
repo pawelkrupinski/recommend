@@ -399,7 +399,7 @@ function serviceIcons(m) {
 // direct title link for this service, fall back to that service's own search for
 // the title (serviceSearchLink) rather than dumping the user on a generic TMDB
 // page; only if even the service is unknown do we open the where-to-watch modal.
-function wireServiceLinks(el, m) {
+function wireServiceLinks(el, m, { dismissable = true } = {}) {
   el.querySelectorAll('.svc-ico').forEach((a) => {
     a.onclick = async (ev) => {
       // A modifier/middle click opens the href (the service search page) in a new
@@ -414,7 +414,7 @@ function wireServiceLinks(el, m) {
           || serviceSearchLink(a.dataset.sname, m.title, w.region);
         if (url) { location.href = url; return; }
       } catch { /* fall through to the modal */ }
-      openWhere(m);
+      openWhere(m, { dismissable });
     };
   });
 }
@@ -605,27 +605,22 @@ function movieHeader(m) {
     </div>${trailerSection(m)}`;
 }
 // YouTube trailers for the title (already language-resolved server-side; see
-// pickTrailers). The first plays inline as a 16:9 embed; any others sit below as
-// links that open on YouTube. Empty string when the film has no trailer, so the
-// modal layout is unchanged for those.
+// pickTrailers). Each is a link that opens the trailer on YouTube in a new tab.
+// Shared by the Discover and Watchlist popups (both render movieHeader). Empty
+// string when the film has no trailer, so the modal layout is unchanged.
 function trailerSection(m) {
   const trailers = m.trailers || [];
   if (!trailers.length) return '';
-  const embedUrl = (key) => `https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}`;
   const watchUrl = (key) => `https://www.youtube.com/watch?v=${encodeURIComponent(key)}`;
-  const [first, ...rest] = trailers;
-  const label = (tr) => esc(tr.name || t('modal.trailer'));
-  const more = rest
-    .map((tr) => `<a class="trailer-more" href="${watchUrl(tr.key)}" target="_blank" rel="noopener">▶ ${label(tr)}</a>`)
+  const links = trailers
+    .map((tr) => `<a class="trailer-link" href="${watchUrl(tr.key)}" target="_blank" rel="noopener">▶ ${esc(tr.name || t('modal.trailer'))}</a>`)
     .join('');
-  return `<div class="trailers">
-      <iframe class="trailer-embed" src="${embedUrl(first.key)}" title="${label(first)}"
-        loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowfullscreen style="width:100%;aspect-ratio:16/9;border:0;border-radius:8px;margin-top:14px"></iframe>
-      ${more ? `<div class="trailer-more-row">${more}</div>` : ''}
-    </div>`;
+  return `<div class="trailers">${links}</div>`;
 }
-async function openWhere(m) {
+// `dismissable` adds the "Not interested / seen it" button that drops the title
+// from Discover. Discover (and the onboarding queue) opt in; the Watchlist popup
+// passes false — dismissing a title you've deliberately saved makes no sense there.
+async function openWhere(m, { dismissable = true } = {}) {
   const modal = $('#modal'), body = $('#modal-body');
   modal.classList.remove('hidden');
   body.innerHTML = `${movieHeader(m)}<p>${t('modal.loadingAvailability')}</p>`;
@@ -647,13 +642,17 @@ async function openWhere(m) {
           const tab = search ? appTab : ' target="_blank"';
           return `<a href="${search || w.tmdbLink || '#'}"${tab}><img src="${IMG}/w92${f.logo}"/> ${esc(f.name)}</a>`;
         }).join('');
+    const dismissBtn = dismissable
+      ? `<p style="margin-top:18px"><button id="dismiss">${t('card.notInterested')}</button></p>` : '';
     body.innerHTML = `${movieHeader(m)}
       <div class="where">${links || `<p class="sub">${t('modal.notAvailable')}</p>`}</div>
-      <p style="margin-top:18px"><button id="dismiss">${t('card.notInterested')}</button></p>`;
-    $('#dismiss').onclick = async () => {
-      await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id }) });
-      modal.classList.add('hidden'); loadDiscover();
-    };
+      ${dismissBtn}`;
+    if (dismissable) {
+      $('#dismiss').onclick = async () => {
+        await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id }) });
+        modal.classList.add('hidden'); loadDiscover();
+      };
+    }
   } catch (e) { body.innerHTML += `<p>⚠ ${e.message}</p>`; }
 }
 // Dismiss the detail modal by tapping the backdrop, the ✕ button, or pressing Escape.
@@ -725,8 +724,8 @@ function watchCard(w) {
   // the rate row. Tapping the poster opens the same where-to-watch popup.
   el.innerHTML = `${posterAndMeta(w)}
     <button class="skip watch-remove">${t('watchlist.remove')}</button>`;
-  el.querySelector('img').onclick = () => openWhere(w);
-  wireServiceLinks(el, w); // deep-link each service icon, exactly like Discover
+  el.querySelector('img').onclick = () => openWhere(w, { dismissable: false });
+  wireServiceLinks(el, w, { dismissable: false }); // deep-link each service icon, exactly like Discover
   el.querySelector('.watch-remove').onclick = async () => {
     await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
     watchlistIds.delete(w.tmdb_id);

@@ -591,9 +591,14 @@ function wireWatch(el, m) {
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
-  const director = m.director ? `<p class="credit"><span class="lbl">${t('modal.director')}</span> ${esc(m.director)}</p>` : '';
+  // We only persist names (no IMDb person ids), so each name links to an IMDb
+  // name search, which lands on the person when the match is unambiguous.
+  const imdbName = (name) =>
+    `<a class="imdb-name" href="https://www.imdb.com/find/?s=nm&q=${encodeURIComponent(name)}" target="_blank" rel="noopener">${esc(name)}</a>`;
+  const names = (list) => list.map(imdbName).join(', ');
+  const director = m.director ? `<p class="credit"><span class="lbl">${t('modal.director')}</span> ${names(m.director.split(', '))}</p>` : '';
   const cast = (m.cast && m.cast.length)
-    ? `<p class="credit"><span class="lbl">${t('modal.cast')}</span> ${esc(m.cast.join(', '))}</p>` : '';
+    ? `<p class="credit"><span class="lbl">${t('modal.cast')}</span> ${names(m.cast)}</p>` : '';
   return `<div class="detail-head">
       <img class="detail-poster" src="${poster(m.poster_path)}" />
       <div class="detail-info">

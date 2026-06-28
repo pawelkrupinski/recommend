@@ -19,7 +19,7 @@
 //
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
 // switch to edit, no change to computePool.
-import { discover, recommendations, similar, trending, details, tmdbConfigured } from './tmdb.js';
+import { discover, recommendations, similar, trending, details, genres as movieGenres, tmdbConfigured } from './tmdb.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
 import { letterboxdCandidates } from './letterboxd.js';
 import { filmwebCandidates } from './filmweb.js';
@@ -111,6 +111,29 @@ export const tmdbDiscoverTopRated = {
     : Promise.resolve([]),
 };
 
+// Per-genre depth for the "all genres" pool. The un-genre'd popularity sweep only
+// reaches the globally-most-popular head; once a heavy user has handled it the
+// pool runs dry. Each genre's OWN popularity ranking surfaces streamable titles
+// the global one buries, so fanning the sweep across every genre lets the default
+// view run as deep as the per-genre pools collectively do. Only active for the
+// all-genres pool (a selected genre's own sweep already covers it) and when there
+// are providers to scope by. Fresh titles only — `consumed` pages past handled ids.
+const PER_GENRE_TARGET = 15;   // ~15 fresh × every genre ≫ POOL_SIZE after de-dup.
+const movieGenreIds = async (language) =>
+  ((await movieGenres('movie', language)).genres || []).map((g) => g.id);
+export const tmdbDiscoverByGenre = {
+  name: 'tmdb-discover-by-genre',
+  configured: tmdbConfigured,
+  async fetch(ctx) {
+    if (ctx.genreId || !ctx.providerIds?.length) return [];
+    const out = [];
+    for (const genreId of await movieGenreIds(ctx.language)) {
+      out.push(...await discoverFresh({ ...ctx, genreId, sortBy: 'popularity.desc', voteCountGte: 50, want: PER_GENRE_TARGET }));
+    }
+    return out;
+  },
+};
+
 // Behaviour-based "more like the films you rated highly".
 export const tmdbRecommendations = {
   name: 'tmdb-recommendations',
@@ -192,12 +215,16 @@ export const filmweb = {
 // Registry, ordered most-relevant-first. gatherCandidates preserves this order,
 // and computePool caps the merged set (CANDIDATE_CAP) before the expensive
 // per-title detail fetch — so the highest-value sources fill the budget first and
-// the broad charts top it up.
+// the broad charts top it up. The provider-scoped Discover sweeps lead: they're
+// the candidates that survive the streamability gate, so spending the detail-fetch
+// budget on them first (ahead of the taste/chart sources, most of whose titles the
+// gate drops) is what lets the deep genre fan-out actually reach the served pool.
 export const ALL_SOURCES = [
   tmdbDiscover,
+  tmdbDiscoverTopRated,
+  tmdbDiscoverByGenre,
   tmdbRecommendations,
   tmdbSimilar,
-  tmdbDiscoverTopRated,
   traktRelated,
   letterboxd,
   filmweb,

@@ -50,7 +50,7 @@ test('topServices drops storefronts and reseller/tier variants', () => {
     { provider_id: 12, provider_name: 'Netflix Standard with Ads', display_priority: 4 }, // variant
     { provider_id: 13, provider_name: 'HBO Max Amazon Channel', display_priority: 5 }, // variant
   ];
-  const names = topServices([], tmdb).map((p) => p.name);
+  const names = topServices(tmdb).map((p) => p.name);
   assert.deepEqual(names, ['Netflix'], 'only the real subscription service survives');
 });
 
@@ -63,19 +63,10 @@ test('topServices dedupes by brand and caps at 20', () => {
       provider_id: 100 + i, provider_name: `Niche Channel ${i}`, display_priority: 10 + i,
     })),
   ];
-  const out = topServices([], tmdb);
+  const out = topServices(tmdb);
   assert.equal(out.length, 20, 'capped to the top 20');
   const netflixCount = out.filter((p) => /netflix/i.test(p.name)).length;
   assert.equal(netflixCount, 1, 'brand dedupe keeps a single Netflix');
   assert.equal(out[0].name, 'Netflix', 'recognized major sorts first');
   assert.ok(!('dp' in out[0]), 'internal display_priority field is stripped from output');
-});
-
-test('topServices keeps the curated primary list and tops up from TMDB', () => {
-  const primary = [{ id: 999, name: 'Canal+ Test', logo: '/c.png', dp: 1, source: 'motn' }];
-  const tmdb = [{ provider_id: 8, provider_name: 'Netflix', display_priority: 1 }];
-  const out = topServices(primary, tmdb);
-  const names = out.map((p) => p.name);
-  assert.ok(names.includes('Canal+ Test'), 'primary entry retained');
-  assert.ok(names.includes('Netflix'), 'TMDB extra added');
 });

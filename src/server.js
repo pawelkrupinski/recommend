@@ -11,7 +11,7 @@ import {
   deleteAccount,
 } from './db.js';
 import * as tmdb from './tmdb.js';
-import { motnConfigured, streamingOptions, countryServices } from './motn.js';
+import { streamingOptions } from './motn.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards } from './taste.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
@@ -87,53 +87,32 @@ export const majorRank = (name) => {
   return i === -1 ? 1000 : i;
 };
 
-// Merge a curated primary list (MotN) with TMDB's region providers to reach the
-// top N: drop storefronts and reseller/tier variants, dedupe by provider id, by
-// normalized name, and by recognized brand (so we don't show "Netflix" twice),
-// then order by recognized popularity (majorRank) with dp as a tie-breaker.
-export function topServices(primary, tmdbProviders) {
-  const haveId = new Set(primary.filter((p) => p.id != null).map((p) => p.id));
-  const haveName = new Set(primary.map((p) => norm(p.name)));
-  const haveBrand = new Set(primary.map((p) => majorRank(p.name)).filter((r) => r < 1000));
+// Curate TMDB's region providers down to the top N: drop storefronts and
+// reseller/tier variants, dedupe by recognized brand (so we don't show
+// "Netflix" twice), then order by recognized popularity (majorRank) with dp as
+// a tie-breaker.
+export function topServices(tmdbProviders) {
+  const haveBrand = new Set();
   const extras = [];
   for (const p of tmdbProviders) {
     const name = p.provider_name;
-    if (haveId.has(p.provider_id) || haveName.has(norm(name))) continue;
     if (STORE_RE.test(name) || VARIANT_RE.test(name)) continue;
     const brand = majorRank(name);
     if (brand < 1000) { if (haveBrand.has(brand)) continue; haveBrand.add(brand); }
     extras.push({ id: p.provider_id, name, logo: p.logo_path, dp: p.display_priority ?? 99, source: 'tmdb' });
   }
-  return [...primary, ...extras]
+  return extras
     .sort((a, b) => majorRank(a.name) - majorRank(b.name) || a.dp - b.dp)
     .slice(0, TOP_SERVICES)
     .map(({ dp, ...p }) => p);
 }
 
-// Build the Settings provider picker for a region. When a MotN key is present we use
-// MotN's clean per-country service list (1 cached request) and map each service to a
-// TMDB provider id (needed for the free /discover filtering). Otherwise we fall back
-// to TMDB's own list, de-prioritizing its quirky niche-heavy ordering.
+// Build the Settings provider picker for a region from TMDB's region list,
+// curated down to the top services (see topServices) so the picker stays
+// scannable rather than a wall of niche channels.
 async function providerPicker(region) {
   const tmdbData = await tmdb.providersForRegion(region, 'movie');
-  const tmdbProviders = tmdbData.results || [];
-
-  if (motnConfigured()) {
-    const services = await countryServices(region);
-    if (services?.length) {
-      // MotN's curated names/logos for this country, then topped up from TMDB's
-      // region list (MotN's free tier omits some majors, e.g. Player/Canal+ in PL).
-      const motn = services.map((s) => {
-        const t = matchTmdb(s.name, tmdbProviders);
-        return { id: t?.provider_id ?? null, name: s.name, logo: t?.logo_path ?? null,
-          dp: t?.display_priority ?? 9999, source: 'motn' };
-      });
-      return { providers: topServices(motn, tmdbProviders), source: 'movieofthenight' };
-    }
-  }
-
-  // Fallback (no MotN key): same filtering/ordering over TMDB's list alone.
-  return { providers: topServices([], tmdbProviders), source: 'tmdb' };
+  return { providers: topServices(tmdbData.results || []), source: 'tmdb' };
 }
 
 async function api(req, res, url) {

@@ -77,10 +77,8 @@ export const MESSAGES = {
     'settings.deleteAccount': 'Delete account',
     // provider picker
     'providers.loading': 'Loading services…',
-    'providers.sourceMotn': 'Service list from Movie of the Night (1 cached request).',
     'providers.sourceTmdb': 'Service list from TMDB.',
     'providers.errorSetKey': '⚠ {msg} — set your TMDB key first.',
-    'providers.noTmdbMatch': 'No TMDB match — can’t filter recommendations by this service',
     // delete account
     'account.confirmAnon': 'Clear all your ratings and preferences on this device? This cannot be undone.',
     'account.confirmUser': 'Delete your account and all your ratings and preferences? This cannot be undone.',
@@ -153,10 +151,8 @@ export const MESSAGES = {
     'settings.deleteAccount': 'Usuń konto',
     // provider picker
     'providers.loading': 'Ładowanie serwisów…',
-    'providers.sourceMotn': 'Lista serwisów z Movie of the Night (1 zapytanie z pamięci podręcznej).',
     'providers.sourceTmdb': 'Lista serwisów z TMDB.',
     'providers.errorSetKey': '⚠ {msg} — najpierw ustaw klucz TMDB.',
-    'providers.noTmdbMatch': 'Brak dopasowania w TMDB — nie można filtrować propozycji po tym serwisie',
     // delete account
     'account.confirmAnon': 'Wyczyścić wszystkie Twoje oceny i preferencje na tym urządzeniu? Tej operacji nie można cofnąć.',
     'account.confirmUser': 'Usunąć Twoje konto oraz wszystkie oceny i preferencje? Tej operacji nie można cofnąć.',

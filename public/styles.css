@@ -214,7 +214,6 @@ button.danger:disabled { opacity: .6; cursor: default; }
   background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 12px;
 }
 .prov.on { border-color: var(--accent); background: #2b2614; }
-.prov.disabled { opacity: .45; cursor: not-allowed; }
 .prov img { width: 24px; height: 24px; border-radius: 5px; }
 .prov .nologo { width: 24px; text-align: center; }
 .src-note { margin: 4px 0 0; }

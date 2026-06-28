@@ -684,21 +684,19 @@ async function loadProviders(region, selected = [], box = $('#provider-list'), o
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
   box.innerHTML = `<p class="sub">${t('providers.loading')}</p>`;
   try {
-    const { providers, source } = await api(`/api/providers?region=${region}`);
+    const { providers } = await api(`/api/providers?region=${region}`);
     const chosen = new Set((selected || []).map(Number));
     box.innerHTML = '';
     for (const p of providers) {
       const el = document.createElement('div');
-      const unmatched = p.id == null; // MotN service with no TMDB id can't drive Discover
-      el.className = 'prov' + (chosen.has(p.id) ? ' on' : '') + (unmatched ? ' disabled' : '');
+      el.className = 'prov' + (chosen.has(p.id) ? ' on' : '');
       const logo = p.logo ? `<img src="${IMG}/w45${p.logo}"/>` : '<span class="nologo">🎞️</span>';
       el.innerHTML = `${logo} ${esc(p.name)}`;
-      if (unmatched) el.title = t('providers.noTmdbMatch');
-      else { el.onclick = () => { el.classList.toggle('on'); onToggle(box); }; el.dataset.id = p.id; }
+      el.onclick = () => { el.classList.toggle('on'); onToggle(box); };
+      el.dataset.id = p.id;
       box.append(el);
     }
-    const note = t(source === 'movieofthenight' ? 'providers.sourceMotn' : 'providers.sourceTmdb');
-    box.insertAdjacentHTML('beforebegin', `<p class="sub src-note">${note}</p>`);
+    box.insertAdjacentHTML('beforebegin', `<p class="sub src-note">${t('providers.sourceTmdb')}</p>`);
   } catch (e) { box.innerHTML = `<p class="sub">${t('providers.errorSetKey', { msg: e.message })}</p>`; }
 }
 // Each service toggle persists immediately — no save button. We send the full

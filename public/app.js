@@ -77,18 +77,22 @@ function posterAndMeta(m) {
 }
 
 // ---- tabs -----------------------------------------------------------------
-// Each tab is a URL hash (#ratings, #settings…) so a refresh stays on the same
-// tab instead of dropping back to Discover, and back/forward navigate between tabs.
+// Each tab is a real URL path (/ratings, /settings…) — not a #hash — so the nav
+// links and card service buttons are genuine anchors you can ctrl/middle-click
+// into a new tab. A refresh stays on the same tab and back/forward navigate
+// between them; the server serves the SPA shell for every app path.
 const tabs = $('#tabs');
 const TAB_NAMES = ['discover', 'watchlist', 'ratings', 'settings'];
 
-// The hash carries the tab plus any tab-specific state as a query string,
-// e.g. "#discover?genre=28". Parse it into { tab, genre } so a refresh or
-// back/forward restores both the tab and the chosen genre.
-function parseHash() {
-  const [tab, query] = location.hash.slice(1).split('?');
-  const params = new URLSearchParams(query || '');
-  return { tab: tab || 'discover', genre: params.get('genre') || '' };
+// The path is the tab (/discover, /watchlist…) and ?genre= carries the Discover
+// genre, e.g. "/discover?genre=28". Parse it into { tab, genre } so a refresh,
+// shared link or back/forward restores both the tab and the chosen genre.
+function parseRoute() {
+  const tab = location.pathname.replace(/^\/+/, '').split('/')[0];
+  return {
+    tab: TAB_NAMES.includes(tab) ? tab : 'discover',
+    genre: new URLSearchParams(location.search).get('genre') || '',
+  };
 }
 
 function activateTab(t) {
@@ -101,12 +105,22 @@ function activateTab(t) {
   if (t === 'settings') loadSettings();
 }
 
-// Clicks just set the hash; hashchange does the actual switching.
+// Navigate to an in-app path without a full page load, then activate its tab.
+function navigate(path) {
+  history.pushState(null, '', path);
+  activateTab(parseRoute().tab);
+}
+
+// A plain left-click on a nav link is intercepted for SPA navigation; a modifier
+// or middle click falls through to the browser, which opens the real href (the
+// server serves the SPA shell there too, so a new tab boots straight into it).
 tabs.addEventListener('click', (e) => {
-  const t = e.target.dataset.tab;
-  if (t) location.hash = t;
+  const a = e.target.closest('a[data-tab]');
+  if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  navigate(a.getAttribute('href'));
 });
-window.addEventListener('hashchange', () => activateTab(parseHash().tab));
+window.addEventListener('popstate', () => activateTab(parseRoute().tab));
 
 // ---- discover -------------------------------------------------------------
 // Populate the genre filter once, lazily, the first time Discover is opened.
@@ -125,11 +139,12 @@ async function loadGenres() {
   } catch { genresLoaded = false; /* allow a retry next open */ }
 }
 // Genre switches read the prebuilt cache (instant); only "Refresh picks" forces
-// a fresh rebuild of the current genre. The choice goes into the URL hash so it
-// survives refresh/back-forward; hashchange then drives the reload.
+// a fresh rebuild of the current genre. The choice goes into the URL path's query
+// (/discover?genre=…) so it survives refresh/back-forward; navigate() drives the
+// reload.
 $('#genre-filter').onchange = () => {
   const g = $('#genre-filter').value;
-  location.hash = g ? `discover?genre=${g}` : 'discover';
+  navigate(g ? `/discover?genre=${g}` : '/discover');
 };
 
 // Discover is adaptive. A new account (fewer than RATE_GOAL rated films) gets an
@@ -243,7 +258,7 @@ async function loadRecs(force = false) {
   grid.innerHTML = '';
   try {
     // Restore the genre from the URL (options exist now that loadGenres ran).
-    $('#genre-filter').value = parseHash().genre;
+    $('#genre-filter').value = parseRoute().genre;
     const genre = $('#genre-filter').value;
     const params = new URLSearchParams();
     if (genre) params.set('genre', genre);
@@ -301,13 +316,17 @@ function recCard(m) {
 
 // Only the user's own chosen services that carry this title (the server filters
 // to them) are shown, each as a small logo — the same TMDB icon the Settings
-// picker uses. Each is a deep link into the title on that service (see
-// wireServiceLinks); a service with no TMDB logo falls back to a film glyph.
+// picker uses. Each is a real link: its href is the service's own search for the
+// title (serviceSearchLink, built synchronously — no quota), so it's genuinely
+// ctrl/middle-clickable into a new tab. A plain click upgrades to the exact MotN
+// deep link (see wireServiceLinks). A service with no known search URL renders
+// without an href (plain click still opens the where-to-watch modal).
 function serviceIcons(m) {
   if (!m.services || !m.services.length) return '';
   const icons = m.services.map((s) => {
     const inner = s.logo ? `<img src="${IMG}/w45${s.logo}" alt="${esc(s.name)}" />` : '<span class="nologo">🎞️</span>';
-    return `<a class="svc-ico" href="#" data-sid="${s.id}" data-sname="${esc(s.name)}"
+    const href = serviceSearchLink(s.name, m.title, REGION);
+    return `<a class="svc-ico"${href ? ` href="${esc(href)}"` : ''} data-sid="${s.id}" data-sname="${esc(s.name)}"
       title="Watch on ${esc(s.name)}" aria-label="Watch on ${esc(s.name)}">${inner}</a>`;
   }).join('');
   return `<div class="svc">${icons}</div>`;
@@ -324,6 +343,10 @@ function serviceIcons(m) {
 function wireServiceLinks(el, m) {
   el.querySelectorAll('.svc-ico').forEach((a) => {
     a.onclick = async (ev) => {
+      // A modifier/middle click opens the href (the service search page) in a new
+      // tab — let the browser handle it; only a plain click upgrades to the exact
+      // deep link in-tab (so a streaming app's Universal Link can take over).
+      if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
       ev.preventDefault();
       ev.stopPropagation();
       try {
@@ -430,7 +453,7 @@ function watchBtnMarkup() {
 // Briefly pulse a nav tab (CSS `.flash` animation) to draw the eye to where
 // something just landed — e.g. the Watchlist tab when a pick is saved.
 function flashTab(tab) {
-  const btn = document.querySelector(`#tabs button[data-tab="${tab}"]`);
+  const btn = document.querySelector(`#tabs a[data-tab="${tab}"]`);
   if (!btn) return;
   btn.classList.remove('flash');
   void btn.offsetWidth; // reflow so re-adding restarts the animation mid-flash
@@ -645,7 +668,10 @@ $('#save-origin').onclick = async () => {
   btn.textContent = t('settings.saved');
   setTimeout(() => (btn.textContent = t('settings.saveOrigin')), 1500);
 };
-async function loadProviders(region, selected = [], box = $('#provider-list')) {
+// `onToggle` runs after each service is toggled. In Settings it persists the
+// change immediately; onboarding leaves it off and saves the whole set once at
+// the end (see runOnboarding), so it passes a no-op.
+async function loadProviders(region, selected = [], box = $('#provider-list'), onToggle = saveProviders) {
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
   box.innerHTML = `<p class="sub">${t('providers.loading')}</p>`;
   try {
@@ -659,19 +685,17 @@ async function loadProviders(region, selected = [], box = $('#provider-list')) {
       const logo = p.logo ? `<img src="${IMG}/w45${p.logo}"/>` : '<span class="nologo">🎞️</span>';
       el.innerHTML = `${logo} ${esc(p.name)}`;
       if (unmatched) el.title = t('providers.noTmdbMatch');
-      else { el.onclick = () => el.classList.toggle('on'); el.dataset.id = p.id; }
+      else { el.onclick = () => { el.classList.toggle('on'); onToggle(box); }; el.dataset.id = p.id; }
       box.append(el);
     }
     const note = t(source === 'movieofthenight' ? 'providers.sourceMotn' : 'providers.sourceTmdb');
     box.insertAdjacentHTML('beforebegin', `<p class="sub src-note">${note}</p>`);
   } catch (e) { box.innerHTML = `<p class="sub">${t('providers.errorSetKey', { msg: e.message })}</p>`; }
 }
-$('#save-providers').onclick = async () => {
-  const ids = [...$('#provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
-  await saveSetting('providers', ids);
-  $('#save-providers').textContent = t('settings.saved');
-  setTimeout(() => ($('#save-providers').textContent = t('settings.saveServices')), 1500);
-};
+// Each service toggle persists immediately — no save button. We send the full
+// set of chosen ids on every change so the server need not track diffs.
+const saveProviders = (box = $('#provider-list')) =>
+  saveSetting('providers', [...box.querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id)));
 const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.stringify({ [k]: v }) });
 
 // Wipe all of the current account's data and reload (the server clears the
@@ -695,6 +719,9 @@ function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp
 
 // ---- auth / bootstrap -----------------------------------------------------
 let ME = null;
+// The user's country (from /api/me), used to point a service icon's search-link
+// href at the right regional storefront (only Apple TV varies by country today).
+let REGION = '';
 const PROVIDER_NAMES = { google: 'Google', facebook: 'Facebook' };
 const providerLabel = (p) => t('auth.signInWith', { provider: PROVIDER_NAMES[p] || (p[0].toUpperCase() + p.slice(1)) });
 // Populate the (optional) sign-in overlay's provider buttons. Called once at
@@ -745,8 +772,9 @@ async function startOnboarding() {
   const sel = $('#ob-country');
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === detected ? 'selected' : ''}>${n}</option>`).join('');
   // Services differ per country, so a country switch reloads with a clean slate.
-  sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'));
-  await loadProviders(sel.value, [], $('#ob-provider-list'));
+  const noSave = () => {}; // onboarding saves the full set once at the end
+  sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
+  await loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
   $('#ob-continue').onclick = async () => {
     const btn = $('#ob-continue');
     const ids = [...$('#ob-provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
@@ -763,7 +791,7 @@ async function startOnboarding() {
 function enterApp() {
   $('#app').classList.remove('hidden');
   renderUserbar();
-  activateTab(parseHash().tab); // open whatever tab the URL points at (default Discover)
+  activateTab(parseRoute().tab); // open whatever tab the URL points at (default Discover)
 }
 
 async function init() {
@@ -771,15 +799,22 @@ async function init() {
   // user — no login gate. The overlay is prepared up front in case the user later
   // taps "Sign in" (e.g. to sync across devices); it surfaces any ?error= too.
   try { ME = await api('/api/me'); } catch { ME = { user: null, anonymous: true, providers: [] }; }
+  REGION = ME.country || '';
   // Set the interface language (saved choice, else detected) and translate all
   // the static markup before any screen is shown.
   setLanguage(ME.language || 'en');
   document.documentElement.lang = getLanguage();
   applyStatic();
   renderLogin(ME.providers || []);
-  if (new URLSearchParams(location.search).get('error')) showLogin();
-  // Drop any ?error= left over from a failed prior attempt, keep the tab hash.
-  if (location.search) history.replaceState(null, '', location.pathname + location.hash);
+  const params = new URLSearchParams(location.search);
+  if (params.get('error')) showLogin();
+  // Drop any ?error= left over from a failed prior attempt, but keep the route
+  // and its ?genre= (the path now carries the active tab, not a #hash).
+  if (params.has('error')) {
+    params.delete('error');
+    const qs = params.toString();
+    history.replaceState(null, '', location.pathname + (qs ? `?${qs}` : ''));
+  }
   if (!ME.onboarded) return startOnboarding();
   enterApp();
 }

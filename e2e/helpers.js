@@ -36,7 +36,7 @@ export async function enterPicks(page) {
         body: JSON.stringify({ tmdb_id: 900 + i, rating: 8, title: `Seed ${i}`, year: 2020 }) });
     }
   });
-  await page.goto('/#discover');
+  await page.goto('/discover');
   // The first pick card waits on a cold /api/recommend build (pool computation
   // over the stub), not a UI paint — give it a backend-sized budget so cold-start
   // latency doesn't trip the default 5s expect timeout.

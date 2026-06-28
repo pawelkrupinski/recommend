@@ -182,6 +182,22 @@ test('where-to-watch reports the user region so search links can target the righ
   assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty without a MotN key)');
 });
 
+test('app paths serve the SPA shell so client routing works on refresh / deep link', async () => {
+  const c = client();
+  for (const path of ['/discover', '/watchlist', '/ratings', '/settings']) {
+    const res = await c.raw(path);
+    assert.equal(res.status, 200, `${path} serves 200`);
+    assert.match(await res.text(), /id="app"/, `${path} returns the SPA shell`);
+  }
+});
+
+test('GET /api/me reports the user country (for service-link storefronts)', async () => {
+  const c = await client().login({ email: 'country@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { country: 'FR' } });
+  const me = await c.json('/api/me');
+  assert.equal(me.data.country, 'FR');
+});
+
 test('rate-queue hides rated, dismissed and not-seen titles (dismissed regression)', async () => {
   const c = await client().login({ email: 'queue@example.com' });
   // The acclaimed seed (provider-less Discover) returns ids 101..105.

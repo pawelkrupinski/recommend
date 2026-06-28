@@ -22,6 +22,10 @@ import { log } from './log.js';
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
 
+// The client-routed tab paths. A GET to any of these serves the SPA shell
+// (index.html) so the app can boot into that tab — mirrors TAB_NAMES in app.js.
+const APP_ROUTES = new Set(['/discover', '/watchlist', '/ratings', '/settings']);
+
 // JSON responses go through send(): brotli/gzip when the client accepts it, plus
 // an ETag so an unchanged GET (e.g. a ratings list that didn't move) costs a 304
 // rather than re-shipping the body. `cacheControl` defaults to a private,
@@ -148,6 +152,9 @@ async function api(req, res, url) {
         anonymous: user.provider === 'anon',
         onboarded: !!getUserSetting(uid, 'onboarded', false),
         providers: enabledProviders(),
+        // The user's country (saved choice, else detected) — the client uses it to
+        // aim a service icon's search link at the right regional storefront.
+        country: getUserSetting(uid, 'country', detectedCountry),
         // Effective UI language (saved choice, else detected) plus the raw
         // detection so onboarding can preselect country/language for newcomers.
         language: langFor(uid, req),
@@ -326,6 +333,11 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return api(req, res, url);
     // Clean URL for the privacy policy (linked from the app and the Meta dashboard).
     if (url.pathname === '/privacy') url.pathname = '/privacy.html';
+    // Client-routed tabs are real paths (/discover, /watchlist…), not #hashes, so
+    // serve the SPA shell for each — a refresh, shared link or ctrl-clicked nav
+    // link lands here and the app boots straight into that tab. '/' already maps
+    // to index.html via serveStatic.
+    else if (APP_ROUTES.has(url.pathname)) url.pathname = '/index.html';
     // serveStatic compresses, caches (in-memory, pre-built variants) and serves a
     // 304 on a matching ETag; returns false when the file is missing.
     if (await serveStatic(req, res, PUBLIC, url.pathname)) return;

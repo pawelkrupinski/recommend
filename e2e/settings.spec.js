@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { login, uniqEmail } from './helpers.js';
 
 async function openSettings(page) {
-  await page.locator('#tabs button[data-tab="settings"]').click();
+  await page.locator('#tabs a[data-tab="settings"]').click();
   await expect(page.locator('#settings')).toHaveClass(/active/);
 }
 
@@ -65,7 +65,7 @@ test('settings survives a cold-start 503 on /api/settings', async ({ page }) => 
     }
     return route.continue();
   });
-  await page.goto('/#settings');
+  await page.goto('/settings');
   await expect(page.locator('#settings')).toHaveClass(/active/);
   await expect(page.locator('#country')).not.toHaveValue('');
   await expect(page.locator('#provider-list .prov').first()).toBeVisible({ timeout: 10_000 });

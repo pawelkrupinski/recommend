@@ -12,7 +12,7 @@ test('a rated title appears in "My ratings" and can be deleted', async ({ page }
   await expect(page.locator(target)).toHaveCount(0);
 
   // It shows up under My ratings with the score.
-  await page.locator('#tabs button[data-tab="ratings"]').click();
+  await page.locator('#tabs a[data-tab="ratings"]').click();
   const row = page.locator('#ratings-list .rrow', { hasText: 'Stub Popular Five' });
   await expect(row).toBeVisible();
   await expect(row.locator('.r')).toHaveText('9');
@@ -63,7 +63,7 @@ test('dragging a finger over the stars previews the rating and lifting commits i
   await expect(page.locator(target)).toHaveCount(0);
 
   // It lands under My ratings with the dragged-to score.
-  await page.locator('#tabs button[data-tab="ratings"]').click();
+  await page.locator('#tabs a[data-tab="ratings"]').click();
   const row = page.locator('#ratings-list .rrow', { hasText: 'Stub Popular Five' });
   await expect(row.locator('.r')).toHaveText('7');
 });
@@ -100,6 +100,6 @@ test('lifting the finger outside the stars cancels the drag — no rating, card 
   await expect(card.locator('.stars span.on')).toHaveCount(0);
 
   // And nothing landed under My ratings.
-  await page.locator('#tabs button[data-tab="ratings"]').click();
+  await page.locator('#tabs a[data-tab="ratings"]').click();
   await expect(page.locator('#ratings-list')).toContainText('No ratings yet');
 });

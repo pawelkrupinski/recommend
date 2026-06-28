@@ -47,10 +47,10 @@
     <header>
       <h1>🎬 recommend</h1>
       <nav id="tabs">
-        <button data-tab="discover" class="active" data-i18n="tab.discover">Discover</button>
-        <button data-tab="watchlist" data-i18n="tab.watchlist">Watchlist</button>
-        <button data-tab="ratings" data-i18n="tab.ratings">My ratings</button>
-        <button data-tab="settings" data-i18n="tab.settings">Settings</button>
+        <a href="/discover" data-tab="discover" class="active" data-i18n="tab.discover">Discover</a>
+        <a href="/watchlist" data-tab="watchlist" data-i18n="tab.watchlist">Watchlist</a>
+        <a href="/ratings" data-tab="ratings" data-i18n="tab.ratings">My ratings</a>
+        <a href="/settings" data-tab="settings" data-i18n="tab.settings">Settings</a>
       </nav>
       <div id="userbar"></div>
     </header>
@@ -90,7 +90,6 @@
             <select id="country"></select>
           </label>
           <div id="provider-list" class="providers"></div>
-          <button id="save-providers" data-i18n="settings.saveServices">Save services</button>
 
           <h3 data-i18n="settings.originHeading">Movie origin</h3>
           <p class="hint" data-i18n="settings.originHint">Steer picks toward films from particular places — or away from Hollywood.</p>

@@ -20,10 +20,15 @@ const POPULAR = [
   { id: 104, title: 'Stub Popular Four' },
   { id: 105, title: 'Stub Popular Five' },
 ];
+// `country` is the title's production country and `companyId` a production
+// company id — the inputs to the origin/non-US/indie filters (taste.js). One is
+// a US major-studio film, the rest non-US indies, so the filter tests can tell
+// them apart. 174 = Warner Bros. (a MAJOR_STUDIO_IDS member); 99999 is unknown
+// (treated as indie).
 const DISCOVER = [
-  { id: 201, title: 'Stub Streamable One', genreId: 28 },
-  { id: 202, title: 'Stub Streamable Two', genreId: 35 },
-  { id: 203, title: 'Stub Streamable Three', genreId: 28 },
+  { id: 201, title: 'Stub Streamable One', genreId: 28, country: 'US', companyId: 174 },
+  { id: 202, title: 'Stub Streamable Two', genreId: 35, country: 'FR', companyId: 99999 },
+  { id: 203, title: 'Stub Streamable Three', genreId: 28, country: 'JP', companyId: 99999 },
 ];
 
 const GENRES = [
@@ -58,6 +63,8 @@ function details(id, language) {
   const known = [...POPULAR, ...DISCOVER].find((m) => m.id === id);
   const title = known?.title || `Stub Movie ${id}`;
   const genreId = known?.genreId || 28;
+  const country = known?.country || 'US';
+  const companyId = known?.companyId || 99999;
   return {
     id,
     title,
@@ -67,6 +74,8 @@ function details(id, language) {
     overview: overviewFor(title, language),
     vote_average: 7.5,
     genres: [{ id: genreId, name: GENRES.find((g) => g.id === genreId)?.name || 'Action' }],
+    production_countries: [{ iso_3166_1: country, name: country }],
+    production_companies: [{ id: companyId, name: `Company ${companyId}` }],
     keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }] },
     credits: {
       crew: [{ id: 500, job: 'Director', name: 'Stub Director' }],

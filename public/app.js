@@ -608,7 +608,43 @@ async function loadSettings() {
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === s.country ? 'selected' : ''}>${n}</option>`).join('');
   sel.onchange = async () => { await saveSetting('country', sel.value); loadProviders(sel.value, s.providers); };
   await loadProviders(s.country, s.providers);
+  await loadOrigin(s);
 }
+// The movie-origin filter: a continent dropdown plus a country multi-select
+// (both narrow which countries a pick may come from), and two toggles —
+// exclude-US and indie-only. Continents/countries come from /api/origins so the
+// list stays a single source of truth with the server (see geo.js).
+async function loadOrigin(s) {
+  const { continents } = await api('/api/origins');
+  const cont = $('#origin-continent');
+  cont.innerHTML = `<option value="">${t('origin.anyContinent')}</option>`
+    + continents.map((c) => `<option value="${c.code}" ${c.code === s.originContinent ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const box = $('#origin-country-list');
+  const chosen = new Set(s.originCountries || []);
+  box.innerHTML = '';
+  for (const c of continents) for (const [code, name] of c.countries) {
+    const el = document.createElement('div');
+    el.className = 'prov' + (chosen.has(code) ? ' on' : '');
+    el.textContent = name;
+    el.dataset.code = code;
+    el.onclick = () => el.classList.toggle('on');
+    box.append(el);
+  }
+  $('#exclude-us').checked = !!s.excludeUs;
+  $('#indie').checked = !!s.indie;
+}
+$('#save-origin').onclick = async () => {
+  const countries = [...$('#origin-country-list').querySelectorAll('.prov.on')].map((e) => e.dataset.code);
+  await api('/api/settings', { method: 'POST', body: JSON.stringify({
+    originContinent: $('#origin-continent').value,
+    originCountries: countries,
+    excludeUs: $('#exclude-us').checked,
+    indie: $('#indie').checked,
+  }) });
+  const btn = $('#save-origin');
+  btn.textContent = t('settings.saved');
+  setTimeout(() => (btn.textContent = t('settings.saveOrigin')), 1500);
+};
 async function loadProviders(region, selected = [], box = $('#provider-list')) {
   box.parentElement.querySelectorAll('.src-note').forEach((n) => n.remove());
   box.innerHTML = `<p class="sub">${t('providers.loading')}</p>`;

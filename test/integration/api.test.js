@@ -227,6 +227,65 @@ test('recommendations carry the chosen services that stream each pick', async ()
   }
 });
 
+// The stub's three streamable titles span the origin/indie filter axes:
+//   201 — US, Warner Bros (major)   202 — FR, indie   203 — JP, indie
+const idsOf = (data) => new Set(data.results.map((m) => m.tmdb_id));
+
+test('origin filters: settings round-trip and default to off', async () => {
+  const c = await client().login({ email: 'origin-settings@example.com' });
+  let r = await c.json('/api/settings');
+  assert.equal(r.data.originContinent, '');
+  assert.deepEqual(r.data.originCountries, []);
+  assert.equal(r.data.excludeUs, false);
+  assert.equal(r.data.indie, false);
+
+  await c.json('/api/settings', { method: 'POST', body: {
+    originContinent: 'EU', originCountries: ['JP'], excludeUs: true, indie: true } });
+  r = await c.json('/api/settings');
+  assert.equal(r.data.originContinent, 'EU');
+  assert.deepEqual(r.data.originCountries, ['JP']);
+  assert.equal(r.data.excludeUs, true);
+  assert.equal(r.data.indie, true);
+});
+
+test('excludeUs drops US-origin picks from recommendations', async () => {
+  const c = await client().login({ email: 'nous@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([201, 202, 203]), 'all three by default');
+
+  await c.json('/api/settings', { method: 'POST', body: { excludeUs: true } });
+  const ids = idsOf((await c.json('/api/recommend')).data);
+  assert.ok(!ids.has(201), 'US title (201) excluded');
+  assert.deepEqual(ids, new Set([202, 203]), 'non-US picks remain');
+});
+
+test('indie toggle drops major-studio picks', async () => {
+  const c = await client().login({ email: 'indie@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8], indie: true } });
+  const ids = idsOf((await c.json('/api/recommend')).data);
+  assert.ok(!ids.has(201), 'Warner Bros title (201) excluded as non-indie');
+  assert.deepEqual(ids, new Set([202, 203]), 'indie picks remain');
+});
+
+test('continent and country origin filters narrow the pool', async () => {
+  const c = await client().login({ email: 'continent@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8], originContinent: 'EU' } });
+  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([202]), 'only the European (FR) title');
+
+  // An explicit country broadens the allowed set alongside the continent.
+  await c.json('/api/settings', { method: 'POST', body: { originContinent: '', originCountries: ['JP'] } });
+  assert.deepEqual(idsOf((await c.json('/api/recommend')).data), new Set([203]), 'only the Japanese title');
+});
+
+test('GET /api/origins lists continents with their countries', async () => {
+  const c = await client().login({ email: 'origins-ref@example.com' });
+  const { status, data } = await c.json('/api/origins');
+  assert.equal(status, 200);
+  const eu = data.continents.find((x) => x.code === 'EU');
+  assert.ok(eu, 'Europe present');
+  assert.ok(eu.countries.some(([code]) => code === 'FR'), 'France listed under Europe');
+});
+
 test('API key fields are ignored — keys come from the environment only', async () => {
   const c = await client().login({ email: 'plain@example.com' });
   // The settings endpoint no longer manages API keys; key fields are no-ops.

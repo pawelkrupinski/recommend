@@ -16,6 +16,7 @@ import { recommend, invalidateRecommendations, warmRecommendations, backfillWatc
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
+import { CONTINENTS } from './geo.js';
 import { log } from './log.js';
 
 const PORT = process.env.PORT || 9002;
@@ -169,14 +170,24 @@ async function api(req, res, url) {
         country: getUserSetting(uid, 'country', 'PL'),
         providers: getUserSetting(uid, 'providers', []),
         language: langFor(uid, req),
+        // Movie-origin filters (see taste.js getUserFilters).
+        originContinent: getUserSetting(uid, 'originContinent', ''),
+        originCountries: getUserSetting(uid, 'originCountries', []),
+        excludeUs: !!getUserSetting(uid, 'excludeUs', false),
+        indie: !!getUserSetting(uid, 'indie', false),
       });
     }
     if (p === '/api/settings' && req.method === 'POST') {
       const body = JSON.parse((await readBody(req)) || '{}');
-      // Only per-user streaming/country preferences are settable here.
+      // Only per-user streaming/country and movie-origin preferences are settable
+      // here. Each changes the shape of the recommendation pool, so any of them
+      // invalidates the user's cached picks.
       let userScopeChanged = false;
       for (const [k, v] of Object.entries(body)) {
         if (k === 'country' || k === 'providers') { setUserSetting(uid, k, v); userScopeChanged = true; }
+        else if (k === 'originContinent') { setUserSetting(uid, k, typeof v === 'string' ? v : ''); userScopeChanged = true; }
+        else if (k === 'originCountries') { setUserSetting(uid, k, Array.isArray(v) ? v : []); userScopeChanged = true; }
+        else if (k === 'excludeUs' || k === 'indie') { setUserSetting(uid, k, !!v); userScopeChanged = true; }
         // Language has its own per-language recommendation pool (see taste.js
         // poolKey), so switching it needs no rec invalidation — just save it.
         else if (k === 'language') { if (isSupportedLanguage(v)) setUserSetting(uid, 'language', v); }
@@ -184,6 +195,12 @@ async function api(req, res, url) {
       }
       if (userScopeChanged) invalidateRecommendations(uid);
       return json(req, res, 200, { ok: true });
+    }
+
+    // ---- movie-origin reference (continents + countries for the picker) ----
+    // Immutable reference data, like /api/genres — let the browser hold it a day.
+    if (p === '/api/origins' && req.method === 'GET') {
+      return json(req, res, 200, { continents: CONTINENTS }, 'private, max-age=86400');
     }
 
     // ---- provider picker for the chosen region ------------------------

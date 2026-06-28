@@ -11,6 +11,7 @@ import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
+import { boundedRunner } from './concurrency.js';
 import { log } from './log.js';
 
 // Relative trust in each feature family. Keywords are specific (strong signal);
@@ -329,10 +330,21 @@ export async function prebuildRecommendations(userId) {
 }
 
 // Debounced background prebuild, keyed per user so one user's burst of ratings
-// triggers just one rebuild and never blocks another user's.
-const timers = new Map();       // userId -> timeout
-const running = new Set();       // userIds currently prebuilding
-const pendingDirty = new Set();  // userIds asked to rerun while running
+// triggers just one rebuild and never blocks another user's. A global cap bounds
+// how many users build at once: at boot, warmRecommendations() submits every
+// onboarded user, and without the cap they'd all fan out to TMDB/Trakt/scrapers
+// at once and stampede the upstreams (cold-start "fetch failed"). The runner
+// holds MAX_CONCURRENT_PREBUILDS in flight and queues the rest.
+const timers = new Map();       // userId -> debounce timeout
+const pendingDirty = new Set();  // userIds dirtied while their build was running
+const MAX_CONCURRENT_PREBUILDS = 2;
+const prebuildRunner = boundedRunner(MAX_CONCURRENT_PREBUILDS, async (userId) => {
+  pendingDirty.delete(userId);
+  try { await prebuildRecommendations(userId); }
+  catch (e) { log.error('prebuild failed:', e.message); }
+  // Re-run if the user's data changed while this build was in flight.
+  if (pendingDirty.has(userId)) schedulePrebuild(userId, 1000);
+});
 // Tests run against a single-process server and assert on the deterministic
 // on-demand build that /api/recommend does. Background prebuilds (all-genres +
 // one pool per genre) would otherwise pile up on that one process and starve
@@ -341,19 +353,18 @@ const PREBUILD_DISABLED = process.env.DISABLE_REC_PREBUILD === '1';
 function schedulePrebuild(userId, delay = 4000) {
   if (PREBUILD_DISABLED) return;
   if (timers.has(userId)) clearTimeout(timers.get(userId));
-  timers.set(userId, setTimeout(() => { timers.delete(userId); runPrebuild(userId); }, delay));
+  timers.set(userId, setTimeout(() => {
+    timers.delete(userId);
+    // Already building? mark dirty so it re-runs afterward with the latest data;
+    // otherwise hand it to the capped runner (which may queue it behind others).
+    if (prebuildRunner.isActive(userId)) pendingDirty.add(userId);
+    else prebuildRunner.submit(userId);
+  }, delay));
 }
 // Like schedulePrebuild but never pushes back an already-pending/running rebuild
 // — used on the stale-serve path so browsing genres can't starve the refresh.
 function ensurePrebuild(userId) {
-  if (!timers.has(userId) && !running.has(userId)) schedulePrebuild(userId);
-}
-async function runPrebuild(userId) {
-  if (running.has(userId)) { pendingDirty.add(userId); return; }
-  running.add(userId); pendingDirty.delete(userId);
-  try { await prebuildRecommendations(userId); }
-  catch (e) { log.error('prebuild failed:', e.message); }
-  finally { running.delete(userId); if (pendingDirty.has(userId)) schedulePrebuild(userId, 1000); }
+  if (!timers.has(userId) && !prebuildRunner.has(userId)) schedulePrebuild(userId);
 }
 
 // Don't build any picks until a user has rated enough films for them to be

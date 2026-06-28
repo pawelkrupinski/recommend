@@ -265,11 +265,11 @@ async function fillOnboardQueue(reset) {
   if (!added && reset) $('#discover-info').textContent = t('discover.ratedEverything');
 }
 
-// A card in the onboarding queue resolved (rated or "haven't seen"): track the
+// An onboarding-queue card's write landed (rated or "haven't seen"): track the
 // count, top the grid back up if it dipped below QUEUE_MIN, and once the goal is
-// hit, swap in the picks.
-function onboardResolve(el, kind) {
-  el.remove();
+// hit, swap in the picks. The card itself was already removed optimistically on
+// click (commitCard), so this is pure post-save bookkeeping.
+function onboardResolve(kind) {
   if (kind === 'rated') { obRated++; updateOnboardInfo(); maybeSwap(); }
   if ($('#recs').children.length < QUEUE_MIN) fillOnboardQueue(false);
 }
@@ -369,7 +369,7 @@ function recCard(m) {
   wireWatch(el, m);
   wireServiceLinks(el, m);
   // Rating or dismissing removes the card; the API also excludes it from future picks.
-  wireRating(el, m, () => removePick(el));
+  wireRating(el, m);
   return el;
 }
 
@@ -476,17 +476,20 @@ function wireStars(el, commit) {
     starsBox.addEventListener('touchcancel', () => preview(0));
   }
 }
-// Wire the widget inside `el` for movie `m`; calls onResolve() after rate/dismiss.
-function wireRating(el, m, onResolve) {
-  wireStars(el, async (rating) => {
-    await api('/api/ratings', { method: 'POST', body: JSON.stringify({
-      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) });
-    onResolve();
-  });
-  el.querySelector('.dismiss-btn').onclick = async (ev) => {
+// Wire the rate/dismiss widget inside `el` for movie `m`. Both actions are
+// optimistic (commitCard): the card leaves the grid the instant you act, so the
+// UI never waits on the round-trip; refillIfLow tops the grid back up once the
+// write lands.
+function wireRating(el, m) {
+  wireStars(el, (rating) => commitCard(el, () => removeCard(el, picksEmptyMsg()),
+    api('/api/ratings', { method: 'POST', body: JSON.stringify({
+      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) }),
+    refillIfLow));
+  el.querySelector('.dismiss-btn').onclick = (ev) => {
     ev.stopPropagation();
-    await api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
-    onResolve();
+    commitCard(el, () => removeCard(el, picksEmptyMsg()),
+      api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) }),
+      refillIfLow);
   };
 }
 // Remove a card; if its grid is now empty, show `emptyMsg`.
@@ -495,15 +498,30 @@ function removeCard(el, emptyMsg) {
   el.remove();
   if (grid && !grid.children.length) grid.innerHTML = `<p class="empty">${esc(emptyMsg)}</p>`;
 }
+// Optimistic card action: `remove` takes the card out of the grid immediately and
+// the write rides along in the background; `after` (refill / onboarding
+// bookkeeping, which only makes sense once the write has landed) runs when it
+// resolves. If the write fails we slot the card back so a rating or dismiss is
+// never silently lost.
+function commitCard(el, remove, saving, after = () => {}) {
+  const grid = el.parentElement;
+  remove();
+  saving.then(after, () => {
+    if (!grid) return;
+    grid.querySelector('.empty')?.remove();   // clear a placeholder shown when the grid emptied
+    grid.prepend(el);
+  });
+}
 
 // Drop a Discover pick (rated, dismissed, or saved), then keep the grid stocked:
 // the server already excludes the handled title and, once below PICKS_MIN, we pull
 // the next batch in so the picks never silently run dry mid-session.
 const PICKS_MIN = 8;
 let refilling = false;
+const refillIfLow = () => { if ($('#recs').children.length < PICKS_MIN) refillPicks(); };
 function removePick(el) {
   removeCard(el, picksEmptyMsg());
-  if ($('#recs').children.length < PICKS_MIN) refillPicks();
+  refillIfLow();
 }
 // Fetch the current Discover view again and append picks not already on screen
 // (or now on the watchlist). Cheap and idempotent: the server serves from the
@@ -637,15 +655,15 @@ function queueCard(m, onResolve) {
     ${starsMarkup()}
     <button class="skip">${t('card.notSeen')}</button>`;
   el.querySelector('img').onclick = () => openWhere(m); // poster → where-to-watch modal
-  wireStars(el, async (rating) => {
-    await api('/api/ratings', { method: 'POST', body: JSON.stringify({
-      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) });
-    onResolve(el, 'rated');
-  });
-  el.querySelector('.skip').onclick = async () => {
-    await api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) });
-    onResolve(el, 'skipped');
-  };
+  // Optimistic, like the picks cards: the card leaves the grid on click and the
+  // write follows in the background (onResolve runs once it lands).
+  wireStars(el, (rating) => commitCard(el, () => el.remove(),
+    api('/api/ratings', { method: 'POST', body: JSON.stringify({
+      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) }),
+    () => onResolve('rated')));
+  el.querySelector('.skip').onclick = () => commitCard(el, () => el.remove(),
+    api('/api/not-seen', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) }),
+    () => onResolve('skipped'));
   return el;
 }
 

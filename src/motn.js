@@ -74,5 +74,15 @@ export async function streamingOptions(tmdbId, mediaType, country) {
 function appLink(link) {
   if (!link) return link;
   // Max: app links live on play.max.com; www.max.com has no AASA/assetlinks.
-  return link.replace(/^(https:\/\/)(?:www\.)?max\.com\//, '$1play.max.com/');
+  link = link.replace(/^(https:\/\/)(?:www\.)?max\.com\//, '$1play.max.com/');
+  // Prime Video: amazon.<tld>/gp/video/detail/{ASIN} is the *shopping* app's
+  // domain and won't open the Prime Video app. app.primevideo.com has a
+  // wildcard AASA + Android assetlinks for the production app, so /detail/{ASIN}
+  // opens it (falling back to web otherwise). The ASIN carries over as-is; keep
+  // the region-correct one MotN returned (don't touch the rest of the URL).
+  link = link.replace(
+    /^https?:\/\/(?:www\.)?amazon\.[a-z.]+\/gp\/video\/detail\/([A-Z0-9]{10})\b.*$/i,
+    'https://app.primevideo.com/detail/$1',
+  );
+  return link;
 }

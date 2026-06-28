@@ -60,8 +60,8 @@ export const config = {
   proxy: {
     host: 'isp.decodo.com',
     ports: [10001, 10002, 10003, 10004, 10005, 10006, 10007],
-    user: process.env.KINOWO_PROXY_USER || '',
-    pass: process.env.KINOWO_PROXY_PASS || '',
+    user: process.env.FILMOWO_PROXY_USER || '',
+    pass: process.env.FILMOWO_PROXY_PASS || '',
   },
 };
 

@@ -11,14 +11,12 @@
 //
 // Cached hard (7 days; related lists drift slowly) with negative results cached
 // too, so a seed Trakt doesn't know stays cheap to ask about.
-import { cacheGet, cacheSet, getSetting } from './db.js';
-import { fetchWithTimeout } from './fetch.js';
+import { getSetting } from './db.js';
+import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
+import { readThrough, DAY } from './cache.js';
 
 const BASE = 'https://api.trakt.tv';
-const TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
-// Trakt sits behind Cloudflare, which 403s requests with no User-Agent (Node's
-// fetch sends none). Same trick ratings.js uses for IMDb/Metacritic.
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const TTL = 7 * DAY; // related lists drift slowly
 
 // Off in stub mode so the test suite stays offline/deterministic — Trakt has no
 // canned-fixture layer like TMDB's, and the chart sources fetch unconditionally
@@ -31,7 +29,7 @@ function headers() {
   if (!key) return null;
   // Trakt requires the API version and the Client ID on every request; the UA
   // keeps Cloudflare from 403-ing us.
-  return { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': key, 'User-Agent': UA };
+  return { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': key, 'User-Agent': BROWSER_UA };
 }
 
 // Low-level cached GET. Returns parsed JSON, or null when unconfigured / not
@@ -39,17 +37,10 @@ function headers() {
 async function traktGet(path, cacheKey) {
   const h = headers();
   if (!h) return null;
-  const cached = cacheGet(cacheKey, TTL);
-  if (cached !== undefined) return cached; // includes cached nulls (negative results)
-  try {
+  return readThrough(cacheKey, TTL, async () => {
     const res = await fetchWithTimeout(`${BASE}${path}`, { headers: h });
-    if (!res.ok) { cacheSet(cacheKey, null); return null; }
-    const json = await res.json();
-    cacheSet(cacheKey, json);
-    return json;
-  } catch {
-    return null;
-  }
+    return res.ok ? await res.json() : null;
+  });
 }
 
 function parseRelated(data) {

@@ -4,12 +4,11 @@
 // keeps env deterministic and matches the other suites.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { freshDbEnv } from '../helpers/env.js';
+import { freshDbEnv, readFixture } from '../helpers/env.js';
 
 freshDbEnv();
 const { parseLetterboxdRss } = await import('../../src/letterboxd.js');
-const xml = readFileSync(new URL('../fixtures/letterboxd-rss.xml', import.meta.url), 'utf8');
+const xml = readFixture('letterboxd-rss.xml');
 
 test('extracts the TMDB id, title and year from each watched-film item', () => {
   const out = parseLetterboxdRss(xml);

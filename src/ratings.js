@@ -11,12 +11,10 @@
 //
 // Results are cached hard (14 days; scores barely move) and negative results
 // are cached too, so a title without a match isn't re-fetched every Discover load.
-import { cacheGet, cacheSet } from './db.js';
-import { fetchWithTimeout } from './fetch.js';
+import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
+import { readThrough, DAY } from './cache.js';
 
-const TTL = 14 * 24 * 60 * 60 * 1000; // 14 days
-// A browser-ish UA: IMDb's CDN and Metacritic both 403 obvious bots.
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+const TTL = 14 * DAY; // critic/audience scores barely move
 // Mirror TMDB/IMDb suppression: a rating backed by <5 votes is noise.
 const MIN_VOTES = 5;
 
@@ -28,26 +26,19 @@ const IMDB_QUERY = 'query Rating($id:ID!){title(id:$id){ratingsSummary{aggregate
 // unknown. Cached; transient network faults are not cached so they retry later.
 export async function imdbRating(imdbId) {
   if (!imdbId) return null;
-  const ck = `imdb:rating:${imdbId}`;
-  const cached = cacheGet(ck, TTL);
-  if (cached !== undefined) return cached;
-  try {
+  return readThrough(`imdb:rating:${imdbId}`, TTL, async () => {
     const res = await fetchWithTimeout(IMDB_GRAPHQL, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'user-agent': UA },
+      headers: { 'content-type': 'application/json', 'user-agent': BROWSER_UA },
       body: JSON.stringify({ query: IMDB_QUERY, variables: { id: imdbId } }),
     });
-    if (!res.ok) { cacheSet(ck, null); return null; }
+    if (!res.ok) return null;
     const json = await res.json();
     const s = json?.data?.title?.ratingsSummary;
     const r = Number(s?.aggregateRating);
     const votes = Number(s?.voteCount) || 0;
-    const val = Number.isFinite(r) && r > 0 && votes >= MIN_VOTES ? r : null;
-    cacheSet(ck, val);
-    return val;
-  } catch {
-    return null; // network blip — leave uncached so it retries next time
-  }
+    return Number.isFinite(r) && r > 0 && votes >= MIN_VOTES ? r : null;
+  });
 }
 
 // ---- Metacritic -----------------------------------------------------------
@@ -100,21 +91,15 @@ export function parseMetascore(html) {
 // score wins. Cached, negatives included.
 export async function metacriticScore(title) {
   if (!title?.trim()) return null;
-  const ck = `mc:score:${slugify(title)}`;
-  const cached = cacheGet(ck, TTL);
-  if (cached !== undefined) return cached;
-  for (const slug of candidateSlugs(title)) {
-    try {
-      const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': UA } });
+  return readThrough(`mc:score:${slugify(title)}`, TTL, async () => {
+    for (const slug of candidateSlugs(title)) {
+      const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': BROWSER_UA } });
       if (!res.ok) continue;
       const score = parseMetascore(await res.text());
-      if (score != null) { cacheSet(ck, score); return score; }
-    } catch {
-      return null; // network blip — leave uncached so it retries next time
+      if (score != null) return score; // first slug with a score wins, gets cached
     }
-  }
-  cacheSet(ck, null);
-  return null;
+    return null; // no slug scored → cache the negative
+  });
 }
 
 // ---- enrichment -----------------------------------------------------------

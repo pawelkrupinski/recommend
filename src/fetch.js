@@ -9,6 +9,11 @@ import { config } from './env.js';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+// A real browser's User-Agent. Several upstreams (Trakt behind Cloudflare, IMDb's
+// CDN, Metacritic, the scraped sites) 403 requests that send Node's default (or
+// no) UA, so every outbound scrape/API call presents this one.
+export const BROWSER_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
 export function fetchWithTimeout(url, options = {}, ms = DEFAULT_TIMEOUT_MS) {
   return fetch(url, { ...options, signal: AbortSignal.timeout(ms) });
 }
@@ -43,4 +48,16 @@ export async function proxiedFetch(url, options = {}, ms = PROXY_TIMEOUT_MS) {
   const opts = { ...options, signal: AbortSignal.timeout(ms) };
   if (proxyConfigured()) opts.dispatcher = await agentForNextPort();
   return fetch(url, opts);
+}
+
+// GET a page through the residential proxy with a browser UA, returning its body
+// text — or null on any non-200 or failure. The shared front end of the scraped
+// sources (Letterboxd/Filmweb), which then parse the text and degrade to [].
+export async function proxiedText(url) {
+  try {
+    const res = await proxiedFetch(url, { headers: { 'User-Agent': BROWSER_UA } });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
 }

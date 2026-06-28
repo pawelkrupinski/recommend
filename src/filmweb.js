@@ -5,14 +5,13 @@
 // title+year and resolve each to a TMDB id via search (TMDB indexes localized
 // titles, so the Polish ranking title resolves to the same film as its original).
 // Routed through the residential proxy so a datacenter IP isn't blocked in prod.
-import { proxiedFetch } from './fetch.js';
+import { proxiedText } from './fetch.js';
 import { searchId } from './tmdb.js';
 
 const RANKING_URL = 'https://www.filmweb.pl/ranking/film';
 // Cap how many ranked films we resolve — each is one (cached) TMDB search, and
 // the top of the ranking is the strongest signal anyway.
 const MAX_FILMS = 25;
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 // Pull (title, year) for each ranked film from the page HTML. Each ranking row is
 // `…rankingType__title">…<a href="/film/…">Title</a>…rankingType__year…content="YYYY"…`;
@@ -30,14 +29,8 @@ export function parseFilmwebRanking(html) {
 // Top ranked films resolved to TMDB ids: [{ id, title, year }]. Resolution
 // failures (no TMDB match) are dropped; a fetch failure degrades the source to [].
 export async function filmwebCandidates(language) {
-  let html;
-  try {
-    const res = await proxiedFetch(RANKING_URL, { headers: { 'User-Agent': UA } });
-    if (!res.ok) return [];
-    html = await res.text();
-  } catch {
-    return [];
-  }
+  const html = await proxiedText(RANKING_URL);
+  if (!html) return []; // fetch failure / non-200 degrades the source to []
   const films = parseFilmwebRanking(html);
   const resolved = await Promise.all(films.map(async (f) => {
     try {

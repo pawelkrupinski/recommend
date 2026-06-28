@@ -3,10 +3,10 @@
 import { cacheGet, cacheSet, getSetting } from './db.js';
 import { config } from './env.js';
 import { fetchWithTimeout } from './fetch.js';
+import { DAY } from './cache.js';
 
 const BASE = 'https://api.themoviedb.org/3';
 export const IMG = 'https://image.tmdb.org/t/p';
-const DAY = 24 * 60 * 60 * 1000;
 
 function auth() {
   // Admin-set DB key wins; otherwise fall back to the environment (TMDB_API_KEY).

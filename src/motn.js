@@ -4,10 +4,11 @@
 // decides which. Used to enrich a single title with deep links on demand.
 //
 // FREE TIER IS 500 REQUESTS/MONTH — cache hard, call lazily, never in bulk.
-import { cacheGet, cacheSet, getSetting } from './db.js';
+import { getSetting } from './db.js';
 import { fetchWithTimeout } from './fetch.js';
+import { readThrough, DAY } from './cache.js';
 
-const TTL = 15 * 24 * 60 * 60 * 1000; // 15 days — deep links rarely change
+const TTL = 15 * DAY; // deep links rarely change
 
 function endpoint(path) {
   const key = getSetting('rapidApiKey', process.env.RAPIDAPI_KEY || '');
@@ -23,17 +24,10 @@ function endpoint(path) {
 async function motnGet(path, cacheKey) {
   const ep = endpoint(path);
   if (!ep) return null;
-  const cached = cacheGet(cacheKey, TTL);
-  if (cached !== undefined) return cached; // includes cached nulls (negative results)
-  try {
+  return readThrough(cacheKey, TTL, async () => {
     const res = await fetchWithTimeout(ep.url, { headers: ep.headers });
-    if (!res.ok) { cacheSet(cacheKey, null); return null; }
-    const json = await res.json();
-    cacheSet(cacheKey, json);
-    return json;
-  } catch {
-    return null;
-  }
+    return res.ok ? await res.json() : null;
+  });
 }
 
 // Per-service streaming options (with deep links) for one title in one country.

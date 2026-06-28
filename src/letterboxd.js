@@ -7,13 +7,12 @@
 // needed. So we aggregate a small set of high-activity public reviewer accounts
 // as a "what cinephiles are watching right now" signal. Routed through the
 // residential proxy so a datacenter IP doesn't get challenged in production.
-import { proxiedFetch } from './fetch.js';
+import { proxiedText } from './fetch.js';
 
 // Active public accounts whose feeds log film watches (each ~50 recent films
 // with TMDB ids). Curated reviewers, not random users — a quality signal. Extend
 // by adding usernames; a dead/empty feed just contributes nothing.
 const ACCOUNTS = ['dave', 'davidehrlich', 'silentdawn', 'kurstboy', 'ghibli'];
-const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 // Parse a Letterboxd activity RSS feed into [{ id, title, year }] (TMDB id from
 // <tmdb:movieId>). Items without a TMDB id (lists, non-film activity) are skipped.
@@ -30,13 +29,9 @@ export function parseLetterboxdRss(xml) {
 }
 
 async function fetchAccount(account) {
-  try {
-    const res = await proxiedFetch(`https://letterboxd.com/${account}/rss/`, { headers: { 'User-Agent': UA } });
-    if (!res.ok) return [];
-    return parseLetterboxdRss(await res.text());
-  } catch {
-    return []; // a single dead/blocked feed never sinks the source
-  }
+  // A single dead/blocked feed yields null → [], never sinking the source.
+  const xml = await proxiedText(`https://letterboxd.com/${account}/rss/`);
+  return xml ? parseLetterboxdRss(xml) : [];
 }
 
 // All accounts' recent watches, flattened. gatherCandidates de-dupes across

@@ -4,12 +4,11 @@
 // freshDbEnv() must run before the dynamic import.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { freshDbEnv } from '../helpers/env.js';
+import { freshDbEnv, readFixture } from '../helpers/env.js';
 
 freshDbEnv();
 const { parseFilmwebRanking } = await import('../../src/filmweb.js');
-const html = readFileSync(new URL('../fixtures/filmweb-ranking.html', import.meta.url), 'utf8');
+const html = readFixture('filmweb-ranking.html');
 
 test('extracts a title and 4-digit year for each ranked film', () => {
   const films = parseFilmwebRanking(html);

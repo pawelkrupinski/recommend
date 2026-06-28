@@ -3,9 +3,15 @@
 // so the env must point at a throwaway database first.
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { rmSync } from 'node:fs';
+import { rmSync, readFileSync } from 'node:fs';
 
 let counter = 0;
+
+// Read a recorded fixture (test/fixtures/<name>) as UTF-8 text. `../fixtures`
+// resolves the same from here (test/helpers) as from a test file (test/unit).
+export function readFixture(name) {
+  return readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
+}
 
 // Point DB_PATH at a unique temp file and force deterministic, offline behaviour
 // (fixed signing secret, TMDB fixtures, dev-login enabled). Returns the db path

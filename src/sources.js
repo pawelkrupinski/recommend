@@ -14,8 +14,8 @@
 //                                         //         genreId, ratings, language }
 //   }
 // where Candidate = { id, title?, year?, collab? }. `id` is the TMDB movie id.
-// `collab` (optional) is a crowd-co-watch hit count that scoreMovie() folds in as
-// a bonus; gatherCandidates sums it across every source and duplicate.
+// `collab` (optional) is a crowd-co-watch hit count that the scorer folds in as
+// an additive bonus; gatherCandidates sums it across every source and duplicate.
 //
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
 // switch to edit, no change to computePool.

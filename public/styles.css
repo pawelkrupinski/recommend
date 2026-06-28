@@ -100,12 +100,21 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rb.mc.mixed { background: #c9a227; border-color: #c9a227; }
 .rb.mc.bad { background: #d13b3b; border-color: #d13b3b; }
 
-/* rate widget */
-.rate-stars { display: flex; align-items: center; gap: 8px; padding: 6px 10px 10px; }
-.stars { display: grid; grid-template-columns: repeat(5, max-content); gap: 2px; }
-.stars span { cursor: pointer; color: #444; font-size: 15px; line-height: 1; }
+/* rate widget — the ten stars span the full card width as two even rows of five,
+   sized for thumb taps. The hover "n / 10" readout sits on its own line below so
+   it never eats into the stars' width (and stays out of the way on touch). */
+.rate-stars { display: flex; flex-direction: column; padding: 6px 10px 10px; }
+.stars { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%; }
+.stars span {
+  cursor: pointer; color: #444; font-size: 18px; line-height: 1;
+  text-align: center; padding: 6px 0; border-radius: 4px;
+}
 .stars span.on { color: var(--accent); }
-.rating-num { min-width: 2.8em; font-size: 14px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.rating-num {
+  align-self: flex-end; min-height: 1.25em; margin-top: 2px;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums; pointer-events: none;
+}
 .card .skip { margin: 0 10px 10px; font-size: 12px; padding: 4px 8px; }
 
 /* Rate + Discover cards: keep every card identical height so the action button
@@ -161,7 +170,13 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .detail-info h2 { margin-top: 0; }
 .credit { margin: 6px 0 0; font-size: 13px; }
 .credit .lbl { color: var(--muted); margin-right: 6px; }
-@media (max-width: 480px) { .detail-poster { width: 110px; } }
+@media (max-width: 480px) {
+  .detail-poster { width: 110px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .stars { gap: 6px; }
+  .stars span { font-size: 24px; padding: 9px 0; }   /* larger thumb targets */
+  .card .skip { font-size: 13px; padding: 8px; }
+}
 .where a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }
 .where img { width: 22px; height: 22px; border-radius: 5px; }

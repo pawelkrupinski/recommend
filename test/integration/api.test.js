@@ -91,6 +91,9 @@ test('rate-queue hides rated, dismissed and not-seen titles (dismissed regressio
   assert.ok(!ids.includes(102), 'rated title is filtered out');
   assert.ok(!ids.includes(103), 'not-seen title is filtered out');
   assert.deepEqual(ids.sort(), [104, 105], 'only the untouched popular titles remain');
+  // totalPages lets the client stop paging at the last page instead of
+  // re-fetching it and duplicating cards in the onboarding queue.
+  assert.equal(data.totalPages, 1, 'exposes the page count from TMDB');
 });
 
 test('settings: per-user country defaults to PL and persists', async () => {

@@ -224,7 +224,7 @@ async function api(req, res, url) {
           year: Number((m.release_date || '').slice(0, 4)) || null,
           poster_path: m.poster_path, overview: m.overview, vote_average: m.vote_average,
         }));
-      return json(req, res, 200, { items });
+      return json(req, res, 200, { items, totalPages: data.total_pages || 1 });
     }
 
     // ---- genre list (for the Discover filter) ------------------------

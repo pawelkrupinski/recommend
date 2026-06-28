@@ -33,6 +33,11 @@ export default defineConfig({
       DB_PATH,
       ALLOW_DEV_LOGIN: '1',
       TMDB_STUB: '1',
+      // Blank the Movie of the Night key so the provider picker uses the TMDB
+      // stub. Without this, a local .env.local RAPIDAPI_KEY leaks in (real env
+      // wins in env.js) and the onboarding test gets live data instead of the
+      // stubbed "Netflix Test" list. CI has no .env.local, so it already passes.
+      RAPIDAPI_KEY: '',
       APPLICATION_SECRET: 'e2e-secret-do-not-use-in-prod',
       ADMIN_ALLOWLIST: 'boss@example.com',
     },

@@ -84,6 +84,7 @@ const QUEUE_MIN = 15;        // keep at least this many cards in either rate gri
 let discoverMode = null;     // 'rate' (onboarding) | 'recs' (personalized picks)
 let obRated = 0;             // how many films the user has rated (drives the countdown)
 let obPage = 0;              // onboarding rate-queue paging
+let obPages = Infinity;      // last known page count (stop paging once reached)
 let obFilling = false;       // guard against overlapping refills
 let swapping = false;        // guard so the background recs build/swap kicks off once
 
@@ -124,18 +125,20 @@ function updateOnboardInfo() {
 
 // Pull popular titles to rate into the Discover grid, skipping pages already
 // fully covered by rated/skipped titles, until the grid holds at least QUEUE_MIN
-// cards (capped so we never spin forever). The guard stops overlapping refills
+// cards (capped so we never spin forever). Stop once the last page is reached so
+// we never re-fetch it and duplicate cards. The guard stops overlapping refills
 // from racing as several cards resolve in quick succession.
 async function fillOnboardQueue(reset) {
   if (obFilling) return;
   obFilling = true;
   const grid = $('#recs');
-  if (reset) { obPage = 0; grid.innerHTML = ''; }
+  if (reset) { obPage = 0; obPages = Infinity; grid.innerHTML = ''; }
   let added = 0;
   try {
-    for (let tries = 0; tries < 10 && grid.children.length < QUEUE_MIN; tries++) {
+    for (let tries = 0; tries < 10 && grid.children.length < QUEUE_MIN && obPage < obPages; tries++) {
       obPage++;
-      const { items } = await api(`/api/rate-queue?page=${obPage}`);
+      const { items, totalPages } = await api(`/api/rate-queue?page=${obPage}`);
+      obPages = totalPages || 1;
       for (const m of items) grid.append(queueCard(m, onboardResolve));
       added += items.length;
     }

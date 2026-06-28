@@ -55,6 +55,7 @@ function details(id) {
     id,
     title,
     release_date: '2020-01-01',
+    runtime: 107,
     poster_path: `/poster${id}.jpg`,
     overview: `Overview for ${title}.`,
     vote_average: 7.5,

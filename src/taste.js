@@ -157,6 +157,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       imdb_id: full.external_ids?.imdb_id || null,
       title: full.title,
       year: Number((full.release_date || '').slice(0, 4)) || null,
+      runtime: full.runtime || null,
       overview: full.overview,
       poster_path: full.poster_path,
       vote_average: full.vote_average,

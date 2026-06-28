@@ -7,6 +7,9 @@ const api = async (path, opts) => {
 };
 const poster = (p) => (p ? `${IMG}/w342${p}` : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E');
 
+// Minutes → "1h 47m" / "47m". Empty string when runtime is missing or zero.
+const runtime = (min) => (min ? `${min >= 60 ? `${Math.floor(min / 60)}h ` : ''}${min % 60}m`.trim() : '');
+
 // IMDb (0–10) + Metacritic (0–100) badges. MC uses its own green/yellow/red
 // tiers (≥61 good, 40–60 mixed, ≤39 bad). Each badge only shows when present.
 const mcTier = (n) => (n >= 61 ? 'good' : n >= 40 ? 'mixed' : 'bad');
@@ -219,7 +222,7 @@ function recCard(m) {
     <img src="${poster(m.poster_path)}" loading="lazy" />
     <div class="meta">
       <div class="title">${esc(m.title)}</div>
-      <div class="year">${m.year || ''} · ⭐ ${(m.vote_average || 0).toFixed(1)}</div>
+      <div class="year">${m.year || ''} · ⭐ ${(m.vote_average || 0).toFixed(1)}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</div>
       ${ratingBadges(m)}
       <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
     </div>
@@ -313,7 +316,7 @@ function movieHeader(m) {
   return `<div class="detail-head">
       <img class="detail-poster" src="${poster(m.poster_path)}" />
       <div class="detail-info">
-        <h2>${esc(m.title)} <span class="sub">${m.year || ''}</span></h2>
+        <h2>${esc(m.title)} <span class="sub">${m.year || ''}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</span></h2>
         ${ratingBadges(m)}
         ${director}${cast}
         <p class="sub">${esc(m.overview || '')}</p>

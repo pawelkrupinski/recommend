@@ -105,6 +105,18 @@ test('settings: per-user country defaults to PL and persists', async () => {
   assert.equal(r.data.country, 'US');
 });
 
+test('recommendations carry runtime from TMDB details', async () => {
+  const c = await client().login({ email: 'runtime@example.com' });
+  // Pick the stub provider (id 8) so the discover candidate pool is non-empty.
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  const { status, data } = await c.json('/api/recommend');
+  assert.equal(status, 200);
+  assert.ok(data.results.length, 'pool is non-empty with a provider selected');
+  // Stub details() reports runtime: 107 for every title; it should survive
+  // shaping, caching and serving.
+  assert.ok(data.results.every((m) => m.runtime === 107), 'every pick carries runtime');
+});
+
 test('API key fields are ignored — keys come from the environment only', async () => {
   const c = await client().login({ email: 'plain@example.com' });
   // The settings endpoint no longer manages API keys; key fields are no-ops.

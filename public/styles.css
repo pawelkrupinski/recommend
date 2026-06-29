@@ -166,12 +166,13 @@ button.danger:disabled { opacity: .6; cursor: default; }
    sized for thumb taps. The hover "n / 10" readout sits on its own line below so
    it never eats into the stars' width (and stays out of the way on touch). */
 .rate-stars { display: flex; flex-direction: column; padding: 6px 10px 10px; }
-/* touch-action: none lets a finger drag across the stars to preview a rating
-   (see wireStars) instead of scrolling the page; user-select/touch-callout off
-   stops the ★ glyphs being selected or long-pressed mid-drag. */
+/* touch-action: pan-y lets a horizontal finger drag across the stars preview a
+   rating (see wireStars), while a vertical drag still scrolls the page; the JS
+   resolves the gesture direction. user-select/touch-callout off stops the ★
+   glyphs being selected or long-pressed mid-drag. */
 .stars {
   display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 100%;
-  touch-action: none; -webkit-user-select: none; user-select: none;
+  touch-action: pan-y; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
 .stars span {

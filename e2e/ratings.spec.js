@@ -68,6 +68,41 @@ test('dragging a finger over the stars previews the rating and lifting commits i
   await expect(row.locator('.r')).toHaveText('7');
 });
 
+test('a vertical drag on the stars scrolls the page instead of rating', async ({ page }) => {
+  await login(page, uniqEmail('touchscroll'));
+
+  const target = '#recs .card:has(.title:text-is("Stub Popular Five"))';
+  await expect(page.locator(target)).toBeVisible();
+  const card = page.locator(target);
+
+  // Press on a star and drag straight DOWN. The handler must let the browser
+  // scroll: the touchmove is left un-cancelled (dispatchEvent returns true) and
+  // no rating is previewed. Before the fix the move was always preventDefault-ed
+  // (dispatchEvent → false) and the page could not scroll from the stars.
+  const moveNotCancelled = await card.locator('.stars').evaluate((box) => {
+    const r = box.querySelector('span[data-n="6"]').getBoundingClientRect();
+    const start = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    const down = { x: start.x, y: start.y + 200 }; // straight down → scroll
+    const fire = (name, p) => {
+      const t = new Touch({ identifier: 1, target: box, clientX: p.x, clientY: p.y });
+      return box.dispatchEvent(new TouchEvent(name, {
+        touches: name === 'touchend' ? [] : [t], changedTouches: [t],
+        bubbles: true, cancelable: true,
+      }));
+    };
+    fire('touchstart', start);
+    const notCancelled = fire('touchmove', down); // true ⇒ default scroll allowed
+    fire('touchend', down);
+    return notCancelled;
+  });
+
+  // The page kept its scroll gesture, and nothing was rated.
+  expect(moveNotCancelled).toBe(true);
+  await expect(page.locator(target)).toBeVisible();
+  await expect(card.locator('.rating-num')).toHaveText('');
+  await expect(card.locator('.stars span.on')).toHaveCount(0);
+});
+
 test('lifting the finger outside the stars cancels the drag — no rating, card stays', async ({ page }) => {
   await login(page, uniqEmail('touchcancel'));
 

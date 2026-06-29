@@ -518,13 +518,39 @@ function wireStars(el, commit) {
       const span = hit && hit.closest('.stars span');
       return span && starsBox.contains(span) ? Number(span.dataset.n) : 0;
     };
-    const onMove = (ev) => {
-      ev.preventDefault();
-      preview(starAt(ev.touches[0])); // clears the preview when dragged off
+    // A touch that starts on the stars is ambiguous: a horizontal drag rates,
+    // a vertical drag should scroll the page (touch-action: pan-y lets the
+    // browser do that). We watch the first few pixels of movement to decide.
+    // mode: null = undecided, 'rate' = previewing, 'scroll' = handed to the page.
+    let startX = 0, startY = 0, mode = null;
+    const SLOP = 8; // px of travel before we commit to a direction
+    const onStart = (ev) => {
+      const t = ev.touches[0];
+      startX = t.clientX; startY = t.clientY; mode = null;
+      preview(starAt(t)); // immediate feedback on tap / before the drag resolves
     };
-    starsBox.addEventListener('touchstart', onMove, { passive: false });
+    const onMove = (ev) => {
+      const t = ev.touches[0];
+      if (mode === null) {
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        if (Math.abs(dx) < SLOP && Math.abs(dy) < SLOP) return;
+        // Only a steeply vertical drag scrolls; a shallow or diagonal drag
+        // across the stars (they wrap onto two rows) still rates.
+        mode = Math.abs(dy) > Math.abs(dx) * 2 ? 'scroll' : 'rate';
+        if (mode === 'scroll') preview(0); // let the page take the gesture
+      }
+      if (mode === 'rate') {
+        ev.preventDefault();
+        preview(starAt(t)); // clears the preview when dragged off
+      }
+    };
+    starsBox.addEventListener('touchstart', onStart, { passive: true });
     starsBox.addEventListener('touchmove', onMove, { passive: false });
     starsBox.addEventListener('touchend', (ev) => {
+      // A vertical (scroll) drag never rates, even if the finger lifts over a
+      // star after the page moved under it.
+      if (mode === 'scroll') { mode = null; return; }
+      mode = null;
       ev.stopPropagation();
       ev.preventDefault(); // suppress the synthetic click that follows
       // Commit only if the finger lifted on a star; lifting outside the stars
@@ -533,7 +559,7 @@ function wireStars(el, commit) {
       if (n) commit(n);
       else preview(0);
     });
-    starsBox.addEventListener('touchcancel', () => preview(0));
+    starsBox.addEventListener('touchcancel', () => { preview(0); mode = null; });
   }
 }
 // Wire the rate/dismiss widget inside `el` for movie `m`. Both actions are

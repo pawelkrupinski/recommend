@@ -12,7 +12,8 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
@@ -404,6 +405,14 @@ if (isMain) {
   // Sample event-loop lag and flag stalls so the Fly logs reveal whether slow
   // first-byte times are the shared CPU blocking under synchronous work.
   startPerfMonitor();
+
+  // Composition root: move the recommendation build (buildAndCache → buildCorpus's
+  // gather + ~500 detail fetches + enrich) onto a worker thread so a build never
+  // blocks the main event loop — the measured ~9s stall that wedged /watchlist and
+  // /health. Wired BEFORE warmRecommendations so the boot-time prebuilds run in the
+  // worker too. Tests/imports don't reach this branch, so they keep the inline
+  // default builder.
+  setBuildRunner(createWorkerBuildRunner());
 
   server.listen(PORT, () => {
     log.info(`🎬  recommend running →  http://localhost:${PORT}`);

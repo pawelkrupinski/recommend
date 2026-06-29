@@ -441,7 +441,7 @@ async function resolveToneTags(cards) {
 // run on a cold cache, a forced Refresh, and the background prebuild (so frozen
 // seeds self-heal). Caches both layers: the corpus (reused across ratings) and the
 // ranked pool stamped with the current generation.
-async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
+export async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
   filters = filters || resolveFilters();
@@ -463,6 +463,42 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
   return value;
 }
 
+// ---- build dispatcher (main-thread inline by default, worker at the root) ---
+// buildAndCache is the event-loop blocker we move off the main thread in
+// production: its expensive layer (buildCorpus — gather + ~500 detail fetches +
+// enrich) runs as a long synchronous-ish chain that starves /health and live
+// requests (measured prod stall ~9s). The dispatcher is the SOLID seam for that —
+// recommend()/prebuild() call runBuild() instead of buildAndCache() directly, and
+// the composition root (server.js, isMain) swaps in a worker-thread runner via
+// setBuildRunner(). Tests and plain imports never call setBuildRunner, so they
+// keep the fast, deterministic inline default. The build's product is DB-backed:
+// whichever runner builds, it cacheSet()s the pool under poolKey, and recommend()
+// reads it back with cacheGet() — no large data crosses the thread boundary.
+const inlineBuildRunner = (args) => buildAndCache(args);
+let buildRunner = inlineBuildRunner;
+export function setBuildRunner(fn) { buildRunner = fn; }
+export function resetBuildRunner() { buildRunner = inlineBuildRunner; }
+// Exported so the worker-path tests can locate (and seed) a user's cached pool —
+// the same seam the worker writes to and recommend() reads from across threads.
+export { poolKey };
+
+// Coalesce concurrent builds of the same pool: a foreground recommend and a
+// background prebuild (or two requests racing a cold genre) can ask for the same
+// poolKey at once — without this they'd each pay the full gather+enrich. Keyed by
+// poolKey and cleared on settle, so callers of an in-flight build share its one
+// promise. The dedup sits above the runner so it holds whether the build runs
+// inline or in the worker.
+const inFlightBuilds = new Map(); // poolKey -> Promise
+function runBuild(args) {
+  const { userId, region, providerIds, genreId, language, filters } = args;
+  const key = poolKey(userId, region, providerIds, genreId, language, filters || resolveFilters());
+  const existing = inFlightBuilds.get(key);
+  if (existing) return existing;
+  const p = Promise.resolve(buildRunner(args)).finally(() => inFlightBuilds.delete(key));
+  inFlightBuilds.set(key, p);
+  return p;
+}
+
 // Serve a user's recommendations: read the cached pool (already enriched during
 // its build), drop anything rated/dismissed since, then take the top `limit`.
 // Three paths, cheapest first: a fresh cached pool is served as-is (`hit`); a pool
@@ -481,7 +517,11 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
   } else {
     const corpus = force ? null : cacheGet(corpusKey(userId, region, providerIds, genreId, language, filters));
     if (!corpus) {
-      cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
+      // The expensive gather+enrich rebuild — dispatched through runBuild so it
+      // runs in the worker (off the main loop) in prod; read the result back from
+      // the shared DB once it lands.
+      await runBuild({ userId, region, providerIds, genreId, language, filters });
+      cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
       mode = 'built';
     } else {
       // The ranking is stale but the corpus isn't — re-rank the cached candidates
@@ -530,13 +570,13 @@ export async function prebuildRecommendations(userId) {
   const filters = resolveFilters();
   const profile = await buildProfile(userId);
   const ratings = getRatings(userId);
-  await buildAndCache({ userId, region, providerIds, genreId: undefined, profile, ratings, language, filters });
+  await runBuild({ userId, region, providerIds, genreId: undefined, profile, ratings, language, filters });
   let list = [];
   try { list = (await tmdbGenres('movie')).genres || []; }
   catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
   for (const g of list) {
     await breathe(); // let /health + live requests through between genres
-    try { await buildAndCache({ userId, region, providerIds, genreId: g.id, profile, ratings, language, filters }); }
+    try { await runBuild({ userId, region, providerIds, genreId: g.id, profile, ratings, language, filters }); }
     catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
   }
 }

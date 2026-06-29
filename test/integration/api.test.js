@@ -236,6 +236,27 @@ test('where-to-watch reports the user region so search links can target the righ
   assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty without a MotN key)');
 });
 
+test('where-to-watch is browser-cacheable for a week so the popup stops reloading availability', async () => {
+  const c = await client().login({ email: 'where-cache@example.com' });
+  const res = await c.raw('/api/where?id=201&media_type=movie');
+  assert.equal(res.status, 200);
+  const cc = res.headers.get('cache-control') || '';
+  assert.match(cc, /private/, 'per-user/region, so not shared-cacheable');
+  assert.match(cc, /max-age=604800/, 'cached for a week (7 * 86400)');
+});
+
+test('where-to-watch honours a valid region query param over the saved country (per-region cache key)', async () => {
+  const c = await client().login({ email: 'where-region@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { country: 'GB' } });
+  // An explicit region wins, so the browser cache keys per country and a country
+  // change fetches fresh instead of reusing another region's availability.
+  const us = await c.json('/api/where?id=201&media_type=movie&region=US');
+  assert.equal(us.data.region, 'US', 'the query region overrides the saved GB');
+  // A bogus region is ignored, falling back to the saved country (no empty pool).
+  const bad = await c.json('/api/where?id=201&media_type=movie&region=zzz');
+  assert.equal(bad.data.region, 'GB', 'an invalid region falls back to the saved country');
+});
+
 test('where-to-watch resolves IMDb person ids so the popup can link director/cast names', async () => {
   const c = await client().login({ email: 'where-credits@example.com' });
   const { data } = await c.json('/api/where?id=201&media_type=movie');

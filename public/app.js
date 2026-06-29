@@ -446,7 +446,7 @@ function wireServiceLinks(el, m, { dismissable = true } = {}) {
       ev.preventDefault();
       ev.stopPropagation();
       try {
-        const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
+        const w = await api(whereUrl(m));
         const url = matchServiceLink(w.deepLinks, { sid: Number(a.dataset.sid), sname: a.dataset.sname })
           || serviceSearchLink(a.dataset.sname, m.title, w.region);
         if (url) { location.href = url; return; }
@@ -685,12 +685,21 @@ function trailerSection(m) {
 // `dismissable` adds the "Not interested / seen it" button that drops the title
 // from Discover. Discover (and the onboarding queue) opt in; the Watchlist popup
 // passes false — dismissing a title you've deliberately saved makes no sense there.
+// The where-to-watch request for a title. Carries the user's region so the
+// response (browser-cached for a week — availability barely moves) keys per
+// country: changing country in Settings updates REGION, so the next lookup misses
+// the stale-region cache entry and fetches fresh rather than reusing another
+// country's availability.
+function whereUrl(m) {
+  const region = REGION ? `&region=${encodeURIComponent(REGION)}` : '';
+  return `/api/where?id=${m.tmdb_id}&media_type=movie${region}`;
+}
 async function openWhere(m, { dismissable = true } = {}) {
   const modal = $('#modal'), body = $('#modal-body');
   modal.classList.remove('hidden');
   body.innerHTML = `${movieHeader(m)}<p>${t('modal.loadingAvailability')}</p>`;
   try {
-    const w = await api(`/api/where?id=${m.tmdb_id}&media_type=movie`);
+    const w = await api(whereUrl(m));
     // Now that the title's IMDb person ids are known, the re-render below links
     // each director/cast name straight to imdb.com/name/… (see movieHeader).
     m.credits = w.credits || {};
@@ -879,7 +888,11 @@ async function loadSettings() {
   lang.onchange = async () => { await saveSetting('language', lang.value); location.reload(); };
   const sel = $('#country');
   sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === s.country ? 'selected' : ''}>${n}</option>`).join('');
-  sel.onchange = async () => { await saveSetting('country', sel.value); loadProviders(sel.value, s.providers); };
+  sel.onchange = async () => {
+    REGION = sel.value; // keep the where-to-watch region (and its cache key) in sync
+    await saveSetting('country', sel.value);
+    loadProviders(sel.value, s.providers);
+  };
   await loadProviders(s.country, s.providers);
 }
 // `onToggle` runs after each service is toggled. In Settings it persists the

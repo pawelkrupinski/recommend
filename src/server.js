@@ -291,7 +291,14 @@ async function api(req, res, url) {
     if (p === '/api/where' && req.method === 'GET') {
       const id = Number(url.searchParams.get('id'));
       const mt = url.searchParams.get('media_type') || 'movie';
-      const region = getUserSetting(uid, 'country', 'PL');
+      // Region drives which providers/deep links apply. Take it from the query
+      // when it's a sane country code (so the browser cache keys per country and a
+      // country change can't serve another region's availability), else the saved
+      // country. The underlying TMDB/JustWatch/MotN lookups are cached hard, and
+      // this response is browser-cacheable for a week (below), so reopening a
+      // title's popup doesn't reload availability over and over.
+      const q = (url.searchParams.get('region') || '').toUpperCase();
+      const region = /^[A-Z]{2}$/.test(q) ? q : getUserSetting(uid, 'country', 'PL');
       // Resolve the title's IMDb person ids (director + top cast) alongside the
       // provider lookup so the popup can link each name straight to IMDb.
       const [wp, credits] = await Promise.all([tmdb.watchProviders(id, mt), creditImdbIds(id, mt)]);
@@ -304,7 +311,10 @@ async function api(req, res, url) {
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
-      return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks, credits });
+      // Cache in the browser for a week (private — it's per-user/region). Availability
+      // barely moves, the sources are cached 15 days server-side, and the URL carries
+      // the region, so this is safe and stops the popup re-fetching on every open.
+      return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks, credits }, 'private, max-age=604800');
     }
 
     return json(req, res, 404, { error: 'not found' });

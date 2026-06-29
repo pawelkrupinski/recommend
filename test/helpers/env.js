@@ -18,7 +18,9 @@ export function readFixture(name) {
 // and a cleanup() that removes the db and its WAL sidecars.
 export function freshDbEnv() {
   const path = join(tmpdir(), `recommend-test-${process.pid}-${counter++}-${Date.now()}.db`);
+  const tmdbCachePath = path.replace(/\.db$/, '') + '.tmdb-cache.db';
   process.env.DB_PATH = path;
+  process.env.TMDB_CACHE_PATH = tmdbCachePath; // ephemeral TMDB cache (tmdb-cache.js)
   process.env.APPLICATION_SECRET = 'test-secret-do-not-use-in-prod';
   process.env.ADMIN_ALLOWLIST = '';
   process.env.TMDB_STUB = '1';
@@ -26,8 +28,10 @@ export function freshDbEnv() {
   return {
     path,
     cleanup() {
-      for (const suffix of ['', '-wal', '-shm']) {
-        try { rmSync(path + suffix); } catch { /* may not exist */ }
+      for (const base of [path, tmdbCachePath]) {
+        for (const suffix of ['', '-wal', '-shm']) {
+          try { rmSync(base + suffix); } catch { /* may not exist */ }
+        }
       }
     },
   };

@@ -1,6 +1,7 @@
 // TMDB client. Free API key from https://www.themoviedb.org/settings/api
 // Supports either a v3 API key (?api_key=) or a v4 read access token (Bearer).
-import { cacheGet, cacheSet, getSetting } from './db.js';
+import { getSetting } from './db.js';
+import { tmdbCacheGet, tmdbCacheSet } from './tmdb-cache.js';
 import { config } from './env.js';
 import { fetchWithTimeout } from './fetch.js';
 import { DAY } from './cache.js';
@@ -31,7 +32,7 @@ async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
   const url = `${BASE}${path}?${usp.toString()}`;
 
   const cacheKey = `tmdb:${url.replace(/api_key=[^&]+/, '')}`;
-  const cached = cacheGet(cacheKey, cacheMs);
+  const cached = tmdbCacheGet(cacheKey, cacheMs);
   if (cached) return cached;
 
   // Retry transient failures (network errors, 429 rate-limit, 5xx) with backoff.
@@ -50,7 +51,7 @@ async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
         throw new Error(`TMDB ${res.status} on ${path}: ${body.slice(0, 200)}`);
       }
       const json = await res.json();
-      cacheSet(cacheKey, json);
+      tmdbCacheSet(cacheKey, json);
       return json;
     } catch (e) {
       lastErr = e;

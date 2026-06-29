@@ -4,6 +4,7 @@ import { config, isAdminEmail } from './env.js';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createKvCache } from './kv-cache.js';
 
 // DB_PATH lets the host point us at a persistent disk (e.g. Render); default to
 // the in-repo data dir for local dev.
@@ -196,6 +197,20 @@ function addWatchlistCardColumn() {
   db.exec('ALTER TABLE watchlist ADD COLUMN card TEXT');
 }
 addWatchlistCardColumn();
+
+// ---- migration: evict TMDB bodies from the durable cache --------------------
+// TMDB responses used to live in this (Litestream-replicated) cache table and
+// grew it to ~1.7 GB. They now live in a separate ephemeral, size-capped cache
+// (tmdb-cache.js). Purge the legacy `tmdb:` rows once so the durable DB shrinks
+// back to its small, genuinely-durable footprint. Guarded by user_version so it
+// runs a single time; VACUUM (which actually reclaims the file space) is a
+// deliberate one-off run out-of-band, not on the boot path.
+function evictLegacyTmdbCache() {
+  if (db.prepare('PRAGMA user_version').get().user_version >= 1) return;
+  db.exec("DELETE FROM cache WHERE key LIKE 'tmdb:%'");
+  db.exec('PRAGMA user_version = 1');
+}
+evictLegacyTmdbCache();
 
 // ---- backfill: grandfather existing users past first-run onboarding --------
 // The streaming-services picker only gates genuinely new accounts. Mark every
@@ -437,18 +452,17 @@ export function removeFromWatchlist(userId, tmdb_id, media_type = 'movie') {
 }
 
 // ---- cache ----------------------------------------------------------------
-const _getCache = db.prepare('SELECT value, fetched_at FROM cache WHERE key = ?');
-const _setCache = db.prepare(
-  'INSERT INTO cache (key, value, fetched_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, fetched_at = excluded.fetched_at'
-);
+// The durable response cache (Trakt, MotN, IMDb/Metacritic ratings). TMDB no
+// longer lives here — its large, regenerable bodies moved to a separate
+// ephemeral, size-capped cache (tmdb-cache.js) so they can't bloat this
+// replicated DB. No row cap here: the remaining entries are small and a few are
+// quota-precious (MotN), so they're worth persisting in full.
+const _cache = createKvCache(db);
 export function cacheGet(key, maxAgeMs) {
-  const row = _getCache.get(key);
-  if (!row) return undefined;
-  if (maxAgeMs && Date.now() - row.fetched_at > maxAgeMs) return undefined;
-  return JSON.parse(row.value);
+  return _cache.get(key, maxAgeMs);
 }
 export function cacheSet(key, value) {
-  _setCache.run(key, JSON.stringify(value), Date.now());
+  _cache.set(key, value);
 }
 
 // ---- per-title tone tags (provenance store) -------------------------------

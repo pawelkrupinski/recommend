@@ -221,6 +221,11 @@ const POOL_SIZE = 200;
 // fetches (and latency) while still leaving ample headroom over POOL_SIZE after
 // the streamability gate drops most candidates.
 const CANDIDATE_CAP = 500;
+// How many candidate detail fetches run at once during a corpus build. The detail
+// fetch is the build's dominant cost (~95% of cold-cache wall time), so it must
+// fan out rather than await one title at a time; 8 keeps it well under TMDB's
+// limits (the convention's 5-10 band) while collapsing the fetch phase ~8x.
+const DETAIL_FETCH_CONCURRENCY = 8;
 // How many of each corpus's quality-ranked head get IMDb/Metacritic ratings +
 // tone feeders attached during the (background) build. Wide enough that the ~36
 // any profile actually shows — plus dismissal headroom — fall inside it, so a
@@ -277,29 +282,36 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // survivor's features/votes. Scoring happens later (rankCorpus) because the IDF
   // feature weights depend on the whole candidate corpus.
   const userSet = new Set(providerIds || []);
-  const survivors = [];
-  let processed = 0;
   const tDetails = performance.now();
-  for (const m of pool) {
-    if (++processed % YIELD_EVERY === 0) await breathe();
-    let full;
-    try { full = await details(m.id, 'movie', language); } catch { continue; }
+  // Fetch every candidate's details through a bounded-concurrency pool rather than
+  // a sequential await loop. The per-candidate detail fetch is the corpus build's
+  // dominant cost — ~95% of wall time on a cold cache (prod detailsMs ~30-57s) —
+  // and serial round-trips make it CANDIDATE_CAP deep. Each worker applies the hard
+  // filters + streamability gate inline (all synchronous) and writes a survivor
+  // into its candidate slot, so the corpus keeps the source priority order no
+  // matter which fetch lands first. mapPool isolates a failed fetch (one bad title
+  // never stalls the batch) and yields the loop at every await, so the build keeps
+  // the event loop breathing without the explicit breathe() the serial loop needed.
+  const slots = new Array(pool.length);
+  await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m, i) => {
+    const full = await details(m.id, 'movie', language);
     // When a genre is selected, keep only titles tagged with it (the seed/chart
     // sources aren't genre-constrained at source, so filter here too).
-    if (genreId && !(full.genres || []).some((g) => g.id === genreId)) continue;
+    if (genreId && !(full.genres || []).some((g) => g.id === genreId)) return;
     // Origin (continent/country/non-US) and indie filters — same hard-drop
     // model as the genre filter, applied uniformly to every candidate source.
-    if (!matchesOrigin(full, filters)) continue;
-    if (filters.indie && !isIndie(full)) continue;
+    if (!matchesOrigin(full, filters)) return;
+    if (filters.indie && !isIndie(full)) return;
     // Tone filter (the Discover "tone" control / a ?tag= deep link): hard-drop
     // titles that don't carry the chosen tone, same model as the genre filter.
-    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) continue;
+    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) return;
     // Drop titles not on a chosen service in the user's region; otherwise keep
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
-    if (!services.length) continue;
-    survivors.push({ full, services, collab: collab.get(m.id) || 0 });
-  }
+    if (!services.length) return;
+    slots[i] = { full, services, collab: collab.get(m.id) || 0 };
+  });
+  const survivors = slots.filter(Boolean);
   const detailsMs = performance.now() - tDetails;
 
   const globalMean = meanVoteAverage(survivors.map((s) => s.full));

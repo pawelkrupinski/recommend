@@ -1,6 +1,7 @@
 import { matchServiceLink, serviceSearchLink } from '/service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
+import { presentTones, filterByTone } from './watchlist-tones.js';
 import { newPicks } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
@@ -762,18 +763,42 @@ function queueCard(m, onResolve) {
 // Saved titles as poster cards: tap the poster for where-to-watch, "Remove" to
 // take it off the list. Doubles as the refresh of the cached id set so the
 // Discover + buttons stay accurate after edits here.
+// The saved titles last loaded, kept client-side so the tone filter and sort can
+// re-render without re-fetching; the active tone filter ('' = all tones).
+let watchlistItems = [];
+let watchlistTone = '';
 async function loadWatchlist() {
-  const { watchlist } = await api('/api/watchlist');
+  // Need the tone vocabulary for the dropdown's canonical order; cached after the
+  // first call (also primed when Discover opens).
+  const [{ watchlist }] = await Promise.all([api('/api/watchlist'), loadTones()]);
+  watchlistItems = watchlist;
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
-  setWatchlistCount(watchlist.length);
+  setWatchlistCount(watchlist.length); // total saved, independent of the tone filter
   // An explicit ?sort=rating in the URL (refresh/back-forward/shared link) wins;
   // otherwise fall back to the order the user last chose, remembered server-side
   // on ME so a bare /watchlist (e.g. the nav tab) restores it.
-  const sort = parseRoute().sort === 'rating' || ME?.watchlistSort === 'rating' ? 'rating' : 'added';
-  $('#watchlist-sort').value = sort;
-  const ordered = sortWatchlist(watchlist, sort);
+  $('#watchlist-sort').value = parseRoute().sort === 'rating' || ME?.watchlistSort === 'rating' ? 'rating' : 'added';
+  populateWatchlistTones();
+  renderWatchlist();
+}
+// Fill the tone dropdown with only the tones present on saved titles (canonical
+// order), hiding it when none carry a tone. Preserves the current selection if it
+// still applies, else falls back to "all" so a now-absent tone can't strand the list.
+function populateWatchlistTones() {
+  const present = presentTones(watchlistItems, tones.map((tn) => tn.slug));
+  if (watchlistTone && !present.some((tn) => tn.slug === watchlistTone)) watchlistTone = '';
+  const sel = $('#watchlist-tone');
+  sel.innerHTML = `<option value="">${t('watchlist.allTones')}</option>`
+    + present.map((tn) => `<option value="${esc(tn.slug)}">${esc(tn.label)}</option>`).join('');
+  sel.value = watchlistTone;
+  sel.classList.toggle('hidden', present.length === 0);
+}
+// Paint the grid from the cached items, applying the tone filter then the sort.
+function renderWatchlist() {
+  const sort = $('#watchlist-sort').value === 'rating' ? 'rating' : 'added';
+  const ordered = sortWatchlist(filterByTone(watchlistItems, watchlistTone), sort);
   const grid = $('#watchlist-grid');
-  grid.innerHTML = ordered.length ? '' : `<p class="empty">${t('watchlist.empty')}</p>`;
+  grid.innerHTML = ordered.length ? '' : `<p class="empty">${t(watchlistTone ? 'watchlist.emptyTone' : 'watchlist.empty')}</p>`;
   for (const w of ordered) grid.append(watchCard(w));
 }
 // Changing the sort rewrites the path's query (navigate() reloads the tab) and
@@ -784,12 +809,16 @@ $('#watchlist-sort').onchange = () => {
   saveSetting('watchlistSort', v);
   navigate(v === 'rating' ? '/watchlist?sort=rating' : '/watchlist');
 };
+// The tone filter is a pure client-side view over the already-loaded titles, so
+// it just re-renders — no refetch, no URL change.
+$('#watchlist-tone').onchange = () => { watchlistTone = $('#watchlist-tone').value; renderWatchlist(); };
 function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });
 }
 function watchCard(w) {
   const el = document.createElement('div');
   el.className = 'card';
+  el.dataset.id = w.tmdb_id;
   // Same card body as a Discover pick (the rich fields were captured when it was
   // saved), minus the score badge and rate widget; a Remove button stands in for
   // the rate row. Tapping the poster opens the same where-to-watch popup.
@@ -800,8 +829,12 @@ function watchCard(w) {
   el.querySelector('.watch-remove').onclick = async () => {
     await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
     watchlistIds.delete(w.tmdb_id);
-    setWatchlistCount(watchlistIds.size);
-    removeCard(el, t('watchlist.empty'));
+    watchlistItems = watchlistItems.filter((it) => it.tmdb_id !== w.tmdb_id);
+    setWatchlistCount(watchlistItems.length);
+    // Re-derive the tone dropdown (removing the last title of a tone drops it) and
+    // repaint, so the view stays consistent with the filter and remaining items.
+    populateWatchlistTones();
+    renderWatchlist();
   };
   return el;
 }

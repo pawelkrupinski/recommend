@@ -213,9 +213,14 @@ test('setWatchlistCard fills card fields without touching title/year/poster', ()
   assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1,
     'a card lacking a trailers key is still on the backfill work list');
 
-  // Once trailers are captured (even an empty array for a film with none), it's done.
+  // A card with trailers but no tones key (enriched before the tones feature) is
+  // still pending — the backfill must re-visit it to derive its tones.
   db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [] });
-  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 0, 'no longer needs backfill once trailers are set');
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1, 'a card lacking a tones key still needs backfill');
+
+  // Once both trailers and tones are captured (even empty arrays), it's done.
+  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [], tones: [] });
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 0, 'no longer needs backfill once trailers and tones are set');
 });
 
 test('cache honours maxAge expiry', () => {

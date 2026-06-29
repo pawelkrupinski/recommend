@@ -205,6 +205,29 @@ test('watchlist: backfill tops up trailers on a title enriched before trailers e
   assert.deepEqual(w.genres, ['Action'], 'the other card fields survive the top-up');
 });
 
+test('watchlist: backfill tops up tones on a title enriched before tones existed', async () => {
+  const { backfillWatchlistCards } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'tone-backfill@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // A row enriched before tones existed: full card fields incl. trailers, but no
+  // "tones" key (title 202 carries the heartfelt keyword in the stub).
+  await c.json('/api/watchlist', { method: 'POST', body: {
+    tmdb_id: 202, title: 'Stub Streamable Two', year: 2020, poster_path: '/p202.jpg',
+    vote_average: 7.5, runtime: 107, genres: ['Comedy'],
+    services: [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
+    overview: 'A pick.', director: 'Stub Director', cast: ['Stub Actor'],
+    trailers: [{ key: 'abc', name: 'Official Trailer' }],
+  } });
+  let { data } = await c.json('/api/watchlist');
+  assert.equal(data.watchlist[0].tones, undefined, 'a row enriched before the feature has no tones');
+
+  await backfillWatchlistCards(); // must re-visit the trailers-but-no-tones row
+
+  ({ data } = await c.json('/api/watchlist'));
+  assert.deepEqual(data.watchlist[0].tones, [{ slug: 'heartfelt', label: 'Heartfelt' }],
+    'the backfill fills tones derived from the title\'s keywords');
+});
+
 test('where-to-watch reports the user region so search links can target the right storefront', async () => {
   const c = await client().login({ email: 'where@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { country: 'GB' } });

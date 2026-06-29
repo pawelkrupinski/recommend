@@ -79,7 +79,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .bar .toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .bar .toggle input { cursor: pointer; accent-color: var(--accent); }
 /* The Discover dropdowns and the Watchlist sort share one dark style so they read as a single control set. */
-#genre-filter, #origin-filter, #tag-filter, #watchlist-sort { background: var(--panel2); color: inherit; border: 1px solid var(--line);
+#genre-filter, #origin-filter, #tag-filter, #watchlist-tone, #watchlist-sort { background: var(--panel2); color: inherit; border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 10px; font: inherit; }
 #tag-filter { width: 130px; }
 #tag-filter::placeholder { color: var(--muted); }
@@ -299,7 +299,7 @@ button.danger:disabled { opacity: .6; cursor: default; }
   #refresh { white-space: nowrap; }
 
   /* 16px keeps iOS from zooming when these are focused. */
-  .form input, .form select, #genre-filter, #origin-filter, #tag-filter, #watchlist-sort { font-size: 16px; }
+  .form input, .form select, #genre-filter, #origin-filter, #tag-filter, #watchlist-tone, #watchlist-sort { font-size: 16px; }
   .form { max-width: none; }
 
   /* Let Discover/onboarding cards size to their content. The desktop fixed

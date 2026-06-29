@@ -63,8 +63,11 @@ export const MESSAGES = {
     'modal.trailer': 'Trailer',
     // watchlist
     'watchlist.empty': 'Your watchlist is empty. Hit + on a Discover pick to save it for later.',
+    'watchlist.emptyTone': 'No saved titles with this tone.',
     'watchlist.count': '{n} saved titles',
     'watchlist.remove': 'Remove from watchlist',
+    'watchlist.toneTitle': 'Filter your watchlist by tone',
+    'watchlist.allTones': 'All tones',
     'watchlist.sortTitle': 'Sort your watchlist',
     'watchlist.sortAdded': 'Recently added',
     'watchlist.sortRating': 'Top rated',
@@ -143,8 +146,11 @@ export const MESSAGES = {
     'modal.trailer': 'Zwiastun',
     // watchlist
     'watchlist.empty': 'Twoja lista do obejrzenia jest pusta. Kliknij + na propozycji, aby zapisać ją na później.',
+    'watchlist.emptyTone': 'Brak zapisanych tytułów o tym nastroju.',
     'watchlist.count': 'Zapisane tytuły: {n}',
     'watchlist.remove': 'Usuń z listy',
+    'watchlist.toneTitle': 'Filtruj listę według nastroju',
+    'watchlist.allTones': 'Wszystkie nastroje',
     'watchlist.sortTitle': 'Sortuj listę',
     'watchlist.sortAdded': 'Ostatnio dodane',
     'watchlist.sortRating': 'Najwyżej oceniane',

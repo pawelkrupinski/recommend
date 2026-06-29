@@ -198,19 +198,12 @@ function addWatchlistCardColumn() {
 }
 addWatchlistCardColumn();
 
-// ---- migration: evict TMDB bodies from the durable cache --------------------
-// TMDB responses used to live in this (Litestream-replicated) cache table and
-// grew it to ~1.7 GB. They now live in a separate ephemeral, size-capped cache
-// (tmdb-cache.js). Purge the legacy `tmdb:` rows once so the durable DB shrinks
-// back to its small, genuinely-durable footprint. Guarded by user_version so it
-// runs a single time; VACUUM (which actually reclaims the file space) is a
-// deliberate one-off run out-of-band, not on the boot path.
-function evictLegacyTmdbCache() {
-  if (db.prepare('PRAGMA user_version').get().user_version >= 1) return;
-  db.exec("DELETE FROM cache WHERE key LIKE 'tmdb:%'");
-  db.exec('PRAGMA user_version = 1');
-}
-evictLegacyTmdbCache();
+// NOTE: purging the legacy `tmdb:` rows from this cache (they now live in the
+// separate ephemeral cache, tmdb-cache.js) is deliberately NOT done on the boot
+// path. Deleting ~24k large rows + VACUUM on the slow prod disk takes minutes
+// and runs *before* the server listens, which stalled boot into a health-check
+// loop. The one-time cleanup is an out-of-band maintenance op (scripts/) run
+// against the live, already-listening app instead.
 
 // ---- backfill: grandfather existing users past first-run onboarding --------
 // The streaming-services picker only gates genuinely new accounts. Mark every

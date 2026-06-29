@@ -20,14 +20,19 @@ primary_region = "arn"
 [http_service]
   internal_port = 9002
   force_https = true
-  # Scale to zero when idle (mirrors Render free-tier spin-down). First request
-  # after idle is slow while the machine wakes and Litestream restores the DB.
-  auto_stop_machines = "stop"
+  # Scale toward zero when idle, but SUSPEND rather than stop: a suspended
+  # machine saves its full RAM+disk state and resumes in ~1s without re-running
+  # the entrypoint, so waking does NOT pay the ~40s Litestream DB restore that a
+  # full stop+restart does (the SQLite file stays warm on the resumed disk).
+  # Idle cost is just the rootfs storage — still the cheapest practical setup.
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
 
   [[http_service.checks]]
-    grace_period = "30s"
+    # First boot (and any rare full stop) restores the DB from R2, which takes
+    # ~40s; keep the grace longer than that so the check doesn't flap on boot.
+    grace_period = "60s"
     interval = "15s"
     method = "get"
     path = "/health"

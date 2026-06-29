@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createKvCache } from './kv-cache.js';
+import { recordDbTime } from './perf.js';
 
 // DB_PATH lets the host point us at a persistent disk (e.g. Render); default to
 // the in-repo data dir for local dev.
@@ -12,6 +13,31 @@ const DB_PATH = process.env.DB_PATH || new URL('../data/recommend.db', import.me
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new DatabaseSync(DB_PATH);
+
+// Time every synchronous statement call (perf.js dbCounters) so a build can
+// report DB-time vs compute-time. Wrapping db.prepare here means even the
+// statements prepared at module load below inherit the timing; a Proxy preserves
+// every other statement method/property untouched. Cost is two performance.now()
+// reads per query — negligible beside the query, and it answers the live
+// question of whether the loop stalls are DB-bound or compute-bound.
+const _prepare = db.prepare.bind(db);
+db.prepare = (sql) => {
+  const stmt = _prepare(sql);
+  return new Proxy(stmt, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== 'function') return value;
+      if (prop === 'all' || prop === 'get' || prop === 'run') {
+        return (...args) => {
+          const started = performance.now();
+          try { return value.apply(target, args); }
+          finally { recordDbTime(performance.now() - started); }
+        };
+      }
+      return value.bind(target);
+    },
+  });
+};
 
 // WAL mode is required for Litestream's continuous replication (prod durability
 // on hosts without a persistent disk) and improves read/write concurrency.

@@ -19,6 +19,24 @@ import { log as defaultLog } from './log.js';
 // mean/percentile; render that as 0.0 so a quiet interval never logs "NaNms".
 const ms = (nanos) => (Number.isFinite(nanos) ? nanos / 1e6 : 0).toFixed(1);
 
+// ---- synchronous DB-time counter -------------------------------------------
+// node:sqlite is synchronous: every query runs ON the event loop, so its time
+// is part of any stall. db.js routes each prepared-statement call through
+// recordDbTime(); a build snapshots dbCounters() before/after to report how much
+// of its wall-time was spent inside the DB vs in JS compute. That ratio decides
+// whether a remote/async DB could help (DB-bound — at a per-query latency cost)
+// or only a worker thread / harder chunking can (compute-bound). The counter is
+// monotonic so concurrent builds each read a clean delta without a shared flag.
+let dbMsTotal = 0;
+let dbCallsTotal = 0;
+export function recordDbTime(durationMs) {
+  dbMsTotal += durationMs;
+  dbCallsTotal += 1;
+}
+export function dbCounters() {
+  return { ms: dbMsTotal, calls: dbCallsTotal };
+}
+
 // Start sampling. Returns a stop() that clears the timers and disables the
 // histogram — used by tests; production starts it once and lets it run.
 export function startPerfMonitor({

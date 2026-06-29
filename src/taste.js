@@ -17,6 +17,7 @@ import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
 import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
 import { log } from './log.js';
+import { dbCounters } from './perf.js';
 
 const CAST_DEPTH = 5; // how many top-billed actors to consider
 
@@ -239,7 +240,9 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   // shared place those rules live. `consumed` also tells the provider-scoped
   // Discover sources how deep to page — past titles already handled until they've
   // surfaced enough fresh ones. collab[id] = crowd co-watch hits, an additive bonus.
+  const tGather = performance.now();
   const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language, consumed });
+  const gatherMs = performance.now() - tGather;
 
   // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is
   // spent on candidates that can actually become picks rather than re-fetching
@@ -253,6 +256,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   const userSet = new Set(providerIds || []);
   const survivors = [];
   let processed = 0;
+  const tDetails = performance.now();
   for (const m of pool) {
     if (++processed % YIELD_EVERY === 0) await breathe();
     let full;
@@ -274,10 +278,13 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     survivors.push({ id: m.id, full, services, features: featuresOf(full), collab: collab.get(m.id) || 0 });
   }
 
+  const detailsMs = performance.now() - tDetails;
+
   // IDF over the corpus the user's rated films + these candidates form, so a
   // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
   // data-derived, not a hand-tuned family table. The profile vector and the
   // Bayesian quality prior's global mean both come from this same corpus.
+  const tScore = performance.now();
   const idf = buildIdf([...profile.ratedFeatureSets, ...survivors.map((s) => s.features)]);
   const profileVec = buildProfileVector(profile, idf);
   const globalMean = meanVoteAverage(survivors.map((s) => s.full));
@@ -322,7 +329,18 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
     profileGenreDist, idf,
   ).map((r) => r.card);
-  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
+  const result = ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
+  // The phase split inside the pool build: gather (source fan-out, mostly cached
+  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), score
+  // (the IDF + scoring + rerank pass — pure CPU, runs without a breathe()). A big
+  // scoreMs with a small dbMs upstream is the compute-bound signature.
+  const scoreMs = performance.now() - tScore;
+  log.info(
+    `[perf] pool phases user=${userId} gatherMs=${gatherMs.toFixed(0)} ` +
+    `detailsMs=${detailsMs.toFixed(0)} scoreMs=${scoreMs.toFixed(0)} ` +
+    `candidates=${pool.length} survivors=${survivors.length}`,
+  );
+  return result;
 }
 
 // ---- recommendation cache + prebuild --------------------------------------
@@ -361,14 +379,26 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
   filters = filters || resolveFilters();
+  const tPool = performance.now();
   const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters });
+  const poolMs = performance.now() - tPool;
   // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
   // serving is a pure cache read — these lookups hit the web on a cold cache.
+  const tRatings = performance.now();
   await attachRatings(pool.slice(0, ENRICH_COUNT));
+  const ratingsMs = performance.now() - tRatings;
   // Resolve the per-title tone feeders (IMDb/Letterboxd scrapes, local model) for
   // the same head and fold the results into each card's tones. TTL-skipped inside
   // resolveTones, so repeat builds across genres re-scrape nothing.
+  const tTone = performance.now();
   await resolveToneTags(pool.slice(0, ENRICH_COUNT));
+  const toneMs = performance.now() - tTone;
+  // Where the build's wall-time goes, split into the three phases — so a slow
+  // build points at the culprit (pool compute vs the two web-enrichment passes).
+  log.info(
+    `[perf] build phases user=${userId} genre=${genreId ?? 'all'} ` +
+    `poolMs=${poolMs.toFixed(0)} ratingsMs=${ratingsMs.toFixed(0)} toneMs=${toneMs.toFixed(0)}`,
+  );
   const value = { gen: currentGen(userId), profileSize: profile.count, pool };
   cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), value);
   return value;
@@ -381,6 +411,7 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 // (a genre the warm hasn't reached) or when force=true (Refresh).
 export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language, filters }) {
   const t0 = performance.now();
+  const db0 = dbCounters();
   filters = filters || resolveFilters();
   let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
   const built = !cached || force;
@@ -399,8 +430,15 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
     .slice(0, limit)
     .map((m) => ({ ...m }));
   // A synchronous (cache-served) build is the suspected loop-blocker; logging
-  // ms with built= lets prod tell a cheap cache hit from a full rebuild.
-  log.info(`[perf] recommend build user=${userId} ms=${(performance.now() - t0).toFixed(0)} items=${results.length} built=${built}`);
+  // ms with built= lets prod tell a cheap cache hit from a full rebuild, and
+  // dbMs/dbCalls (the share spent inside synchronous SQLite) tells whether a
+  // stall is DB-bound or compute-bound — the remote-DB-vs-worker-thread call.
+  const dbMs = dbCounters().ms - db0.ms;
+  const dbCalls = dbCounters().calls - db0.calls;
+  log.info(
+    `[perf] recommend build user=${userId} ms=${(performance.now() - t0).toFixed(0)} ` +
+    `dbMs=${dbMs.toFixed(0)} dbCalls=${dbCalls} items=${results.length} built=${built}`,
+  );
   return { profileSize: cached.profileSize, results };
 }
 

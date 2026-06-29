@@ -3,7 +3,7 @@
 // target, and the scoring knobs in effect. Backs the hidden /insights page.
 //
 // What's shown IS what scoring uses: this rebuilds the profile vector the same
-// way computePool does (idf over the rated corpus, then buildProfileVector), so
+// way rankCorpus does (idf over the rated corpus, then buildProfileVector), so
 // the page is a faithful window onto the model, not a parallel estimate.
 import { buildProfile } from './taste.js';
 import { buildIdf, buildProfileVector, genreDistribution, SCORING } from './scoring.js';

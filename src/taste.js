@@ -15,7 +15,7 @@ import { isTone, orderTones, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
-import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
+import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank, bayesianQuality } from './scoring.js';
 import { log } from './log.js';
 import { dbCounters } from './perf.js';
 
@@ -221,14 +221,26 @@ const POOL_SIZE = 200;
 // fetches (and latency) while still leaving ample headroom over POOL_SIZE after
 // the streamability gate drops most candidates.
 const CANDIDATE_CAP = 500;
-// How many of each pool's top titles get IMDb/Metacritic ratings attached during
-// the (background) build. Enough to cover the ~36 shown plus dismissal headroom,
-// so serving never has to make those slow web lookups itself.
+// How many of each corpus's quality-ranked head get IMDb/Metacritic ratings +
+// tone feeders attached during the (background) build. Wide enough that the ~36
+// any profile actually shows — plus dismissal headroom — fall inside it, so a
+// re-rank serves enriched cards without making those slow web lookups itself.
 const ENRICH_COUNT = 50;
 
-// Build the scored candidate pool for one genre (or all genres when genreId is
-// undefined). Heavy part — many TMDB calls — so its output gets cached.
-async function computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters = {} }) {
+// The recommendation build is split into two layers so a rating doesn't pay for
+// the whole thing. buildCorpus is the expensive, taste-independent layer (gather +
+// ~500 detail fetches + enrichment); it barely moves when a user rates one more
+// film — 12 of 15 candidate sources don't depend on the profile at all, and the
+// seed-based three only shift if the rating cracks the top-10 seeds. rankCorpus is
+// the cheap layer (IDF + scoring + rerank, ~100ms over the cached corpus). A rating
+// re-runs only rankCorpus; the corpus is rebuilt with fresh seeds in the background.
+
+// Build the candidate corpus for one genre (or all genres when genreId is
+// undefined): gather → fetch details → hard-filter → per-survivor scoring-ready
+// cards, with a wide head enriched (IMDb/Metacritic + tone feeders). The heavy
+// part — many TMDB calls — so its output is cached under a key WITHOUT the recGen
+// stamp (see corpusKey): a rating re-ranks it rather than rebuilding it.
+async function buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters = {} }) {
   // Titles the user has already handled — rated, dismissed, or saved to their
   // watchlist — must never be recommended. Movies only (the whole catalogue here),
   // keyed by bare tmdb id since that's the unit candidate sources and the cap work
@@ -261,9 +273,9 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   const candidateTones = getMovieToneSlugsBatch(pool.map((m) => m.id));
   const storedTonesFor = (id) => candidateTones.get(id) || [];
 
-  // First pass: fetch details, apply the hard filters + streamability gate, and
-  // collect each survivor's features/votes. We score in a second pass because the
-  // IDF feature weights depend on the whole candidate corpus.
+  // Fetch details, apply the hard filters + streamability gate, and collect each
+  // survivor's features/votes. Scoring happens later (rankCorpus) because the IDF
+  // feature weights depend on the whole candidate corpus.
   const userSet = new Set(providerIds || []);
   const survivors = [];
   let processed = 0;
@@ -286,67 +298,25 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
     if (!services.length) continue;
-    survivors.push({ id: m.id, full, services, features: featuresOf(full, storedTonesFor), collab: collab.get(m.id) || 0 });
+    survivors.push({ full, services, collab: collab.get(m.id) || 0 });
   }
-
   const detailsMs = performance.now() - tDetails;
 
-  // Score + re-rank the survivors into the served pool. Split into its own
-  // breathe()-yielding pass (rankCandidates) so this synchronous stretch — IDF,
-  // per-survivor card build, sort, MMR re-rank — no longer holds the event loop
-  // in one unbroken block while it runs. storedTonesFor carries the prefetched
-  // tone lookup so the card build stays batched (no per-survivor N+1).
-  const tScore = performance.now();
-  const result = await rankCandidates(survivors, profile, language, storedTonesFor);
-  // The phase split inside the pool build: gather (source fan-out, mostly cached
-  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), score
-  // (the IDF + scoring + rerank pass). A big scoreMs with a small dbMs upstream
-  // is the compute-bound signature.
-  const scoreMs = performance.now() - tScore;
-  log.info(
-    `[perf] pool phases user=${userId} gatherMs=${gatherMs.toFixed(0)} ` +
-    `detailsMs=${detailsMs.toFixed(0)} scoreMs=${scoreMs.toFixed(0)} ` +
-    `candidates=${pool.length} survivors=${survivors.length}`,
-  );
-  return result;
-}
-
-// Score every survivor and re-rank into the served pool. Split out of computePool
-// because it is the build's one remaining fully-synchronous loop: it builds a card
-// per survivor (up to CANDIDATE_CAP), then sorts and MMR-re-ranks them. With
-// node:sqlite synchronous and warm cache hits resolving without real I/O, that ran
-// as an unbroken block that held the event loop until the whole pool was scored —
-// starving every concurrent request (a watchlist save, /health) until it finished.
-// Yielding to the macrotask queue every YIELD_EVERY cards lets the loop service
-// live traffic between chunks; the output is identical, only the interleaving
-// changes. `survivors` carry their fetched detail + features + collab from
-// computePool's first pass; `profile` supplies the IDF corpus, taste vector and
-// calibration target; `language` picks trailers; `storedTonesFor` is the batched
-// tone lookup (so the card build never falls back to a per-survivor DB read).
-export async function rankCandidates(survivors, profile, language, storedTonesFor = getMovieToneSlugs) {
-  // IDF over the corpus the user's rated films + these candidates form, so a
-  // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
-  // data-derived, not a hand-tuned family table. The profile vector and the
-  // Bayesian quality prior's global mean both come from this same corpus.
-  const idf = buildIdf([...profile.ratedFeatureSets, ...survivors.map((s) => s.features)]);
-  const profileVec = buildProfileVector(profile, idf);
   const globalMean = meanVoteAverage(survivors.map((s) => s.full));
-
-  const scored = [];
-  let processed = 0;
+  // Scoring-ready cards: everything the ranking pass and the UI need, minus the
+  // score itself (recomputed per profile in rankCorpus). features/genreIds/
+  // voteCount/collab are scoring inputs that rankCorpus strips before serving.
+  // A breathe()-yielding loop because building a card per survivor (up to
+  // CANDIDATE_CAP) is otherwise an unbroken synchronous block — with node:sqlite
+  // synchronous and warm cache hits resolving without real I/O — that starves
+  // /health and live traffic. storedTonesFor keeps the tone reads batched.
+  const cards = [];
+  let built = 0;
   for (const s of survivors) {
-    if (++processed % YIELD_EVERY === 0) await breathe();
+    if (++built % YIELD_EVERY === 0) await breathe();
     const crew = s.full.credits?.crew || [];
-    // Confidence-weighted blend of personalised match and quality prior, with the
-    // discovery lift for acclaimed-but-obscure films folded in; the Trakt co-watch
-    // bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
-    const base = scoreCandidate({
-      profileVec, itemFeatures: s.features, idf,
-      voteAverage: s.full.vote_average, voteCount: s.full.vote_count, globalMean,
-    });
-    const collabBonus = COLLAB_WEIGHT * Math.tanh(s.collab / 2);
-    scored.push({
-      tmdb_id: s.id,
+    cards.push({
+      tmdb_id: s.full.id,
       imdb_id: s.full.external_ids?.imdb_id || null,
       title: s.full.title,
       year: Number((s.full.release_date || '').slice(0, 4)) || null,
@@ -354,43 +324,101 @@ export async function rankCandidates(survivors, profile, language, storedTonesFo
       overview: s.full.overview,
       poster_path: s.full.poster_path,
       vote_average: s.full.vote_average,
+      voteCount: s.full.vote_count,
       genres: (s.full.genres || []).map((g) => g.name),
       genreIds: (s.full.genres || []).map((g) => g.id),
       tones: tonesForMovie(s.full, 'movie', storedTonesFor),
-      features: s.features,
+      features: featuresOf(s.full, storedTonesFor),
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
       trailers: pickTrailers(s.full.videos, language),
       services: s.services,
-      score: Math.min(100, Math.round(base + collabBonus)),
+      collab: s.collab,
     });
+  }
+
+  // Enrich a wide head with IMDb/Metacritic ratings + tone feeders. Because the
+  // corpus outlives any one profile, the head is chosen by a taste-independent
+  // quality proxy (the Bayesian prior) rather than the personalised rank — so the
+  // cache holds across ratings. The tradeoff: a rare niche pick that out-scores
+  // this band on personal match alone may show without its badges until the next
+  // (background) corpus rebuild. attachRatings/resolveToneTags are TTL-skipped
+  // internally, so repeat corpus builds across genres re-fetch nothing.
+  const tEnrich = performance.now();
+  const enrichHead = [...cards]
+    .sort((a, b) => bayesianQuality(b.vote_average, b.voteCount, globalMean) - bayesianQuality(a.vote_average, a.voteCount, globalMean))
+    .slice(0, ENRICH_COUNT);
+  await attachRatings(enrichHead);
+  await resolveToneTags(enrichHead);
+  const enrichMs = performance.now() - tEnrich;
+
+  // Phase split for the corpus build: gather (source fan-out, mostly cached
+  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), enrich
+  // (the two web-enrichment passes over the quality head).
+  log.info(
+    `[perf] corpus phases user=${userId} genre=${genreId ?? 'all'} gatherMs=${gatherMs.toFixed(0)} ` +
+    `detailsMs=${detailsMs.toFixed(0)} enrichMs=${enrichMs.toFixed(0)} ` +
+    `candidates=${pool.length} survivors=${survivors.length}`,
+  );
+  return { cards, globalMean };
+}
+
+// Rank a cached corpus for one profile: IDF over the user's rated features + the
+// corpus, a profile vector, per-card score, then the genre-calibration/diversity
+// rerank. No I/O — this is the cheap pass a rating re-runs over the cached corpus,
+// in place of the whole buildCorpus. Still yields the event loop every YIELD_EVERY
+// scores: even alone it's a synchronous stretch over up to CANDIDATE_CAP cards
+// that would otherwise starve /health on the per-rating path.
+export async function rankCorpus({ cards, globalMean }, profile) {
+  // IDF over the corpus the user's rated films + these candidates form, so a
+  // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
+  // data-derived, not a hand-tuned family table.
+  const idf = buildIdf([...profile.ratedFeatureSets, ...cards.map((c) => c.features)]);
+  const profileVec = buildProfileVector(profile, idf);
+  const scored = [];
+  let processed = 0;
+  for (const c of cards) {
+    if (++processed % YIELD_EVERY === 0) await breathe();
+    // Confidence-weighted blend of personalised match and quality prior, with the
+    // discovery lift for acclaimed-but-obscure films folded in; the Trakt co-watch
+    // bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
+    const base = scoreCandidate({
+      profileVec, itemFeatures: c.features, idf,
+      voteAverage: c.vote_average, voteCount: c.voteCount, globalMean,
+    });
+    const collabBonus = COLLAB_WEIGHT * Math.tanh(c.collab / 2);
+    scored.push({ ...c, score: Math.min(100, Math.round(base + collabBonus)) });
   }
 
   // Order by relevance, then re-rank the served head for genre calibration (keep
   // the mix close to the user's history) and diversity (no near-duplicate
-  // neighbours). genreIds/features are scoring-only — strip before returning.
+  // neighbours). genreIds/features/voteCount/collab are scoring-only — strip them
+  // before returning, keeping the score.
   scored.sort((a, b) => b.score - a.score);
   const profileGenreDist = genreDistribution(profile.genreLists);
   const ranked = rerank(
     scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
     profileGenreDist, idf,
   ).map((r) => r.card);
-  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
+  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, voteCount, collab, ...card }) => card);
 }
 
 // ---- recommendation cache + prebuild --------------------------------------
-// Pools are precomputed per user for "all genres" + every genre and cached so
-// selecting a genre is instant. Each cached blob is stamped with that user's
-// recGen; bumping it (on any of their rating/dismiss/settings changes) marks
-// their pools stale without touching anyone else's.
-
-function poolKey(userId, region, providerIds, genreId, language, filters) {
+// Two caches share this key shape per (user, region, services, genre, language,
+// filters): `corpus:<tail>` holds the expensive taste-independent candidate corpus
+// (NOT recGen-stamped — a rating re-ranks it), and `recpool:<tail>` holds the
+// ranked, served pool stamped with the user's recGen so a rating/dismiss/settings
+// change marks it stale without touching anyone else's. Language is part of the
+// key so each language caches its own (localized) build; the filter signature
+// joins it so each origin/indie/tone combination caches apart.
+function keyTail(userId, region, providerIds, genreId, language, filters) {
   const provs = [...(providerIds || [])].map(Number).sort((a, b) => a - b).join('-');
-  // Language is part of the key so each language caches its own (localized)
-  // pool — switching language lazily builds the other rather than clobbering it.
-  // The filter signature joins it so each origin/indie combination caches apart.
-  return `recpool:${userId}:${region}:${provs}:${genreId || 'all'}:${language || 'en-US'}:${filterSig(filters)}`;
+  return `${userId}:${region}:${provs}:${genreId || 'all'}:${language || 'en-US'}:${filterSig(filters)}`;
 }
+const poolKey = (...args) => `recpool:${keyTail(...args)}`;
+// Exported so tests can locate a user's cached corpus entry — the seam they use to
+// prove a rating re-ranks the corpus in place rather than rebuilding it.
+export const corpusKey = (...args) => `corpus:${keyTail(...args)}`;
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 
 // How many tone resolutions run concurrently — small, so the scraper feeders stay
@@ -409,30 +437,26 @@ async function resolveToneTags(cards) {
   });
 }
 
-// Compute one pool and store it under the user's current generation.
+// Rebuild a user's corpus from scratch and rank it — the full, expensive build,
+// run on a cold cache, a forced Refresh, and the background prebuild (so frozen
+// seeds self-heal). Caches both layers: the corpus (reused across ratings) and the
+// ranked pool stamped with the current generation.
 async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
   filters = filters || resolveFilters();
-  const tPool = performance.now();
-  const pool = await computePool({ userId, region, providerIds, genreId, profile, ratings, language, filters });
-  const poolMs = performance.now() - tPool;
-  // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
-  // serving is a pure cache read — these lookups hit the web on a cold cache.
-  const tRatings = performance.now();
-  await attachRatings(pool.slice(0, ENRICH_COUNT));
-  const ratingsMs = performance.now() - tRatings;
-  // Resolve the per-title tone feeders (IMDb/Letterboxd scrapes, local model) for
-  // the same head and fold the results into each card's tones. TTL-skipped inside
-  // resolveTones, so repeat builds across genres re-scrape nothing.
-  const tTone = performance.now();
-  await resolveToneTags(pool.slice(0, ENRICH_COUNT));
-  const toneMs = performance.now() - tTone;
-  // Where the build's wall-time goes, split into the three phases — so a slow
-  // build points at the culprit (pool compute vs the two web-enrichment passes).
+  const tCorpus = performance.now();
+  const corpus = await buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters });
+  cacheSet(corpusKey(userId, region, providerIds, genreId, language, filters), corpus);
+  const corpusMs = performance.now() - tCorpus;
+  const tRank = performance.now();
+  const pool = await rankCorpus(corpus, profile);
+  const rankMs = performance.now() - tRank;
+  // Where the build's wall-time goes: corpus (gather + details + enrichment — the
+  // part a rating now skips) vs rank (the pure-CPU scoring pass it re-runs).
   log.info(
     `[perf] build phases user=${userId} genre=${genreId ?? 'all'} ` +
-    `poolMs=${poolMs.toFixed(0)} ratingsMs=${ratingsMs.toFixed(0)} toneMs=${toneMs.toFixed(0)}`,
+    `corpusMs=${corpusMs.toFixed(0)} rankMs=${rankMs.toFixed(0)}`,
   );
   const value = { gen: currentGen(userId), profileSize: profile.count, pool };
   cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), value);
@@ -441,19 +465,35 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 
 // Serve a user's recommendations: read the cached pool (already enriched during
 // its build), drop anything rated/dismissed since, then take the top `limit`.
-// Stale-while-revalidate: an out-of-date pool is served immediately with a
-// background rebuild scheduled; we only block when there's no cached pool at all
-// (a genre the warm hasn't reached) or when force=true (Refresh).
+// Three paths, cheapest first: a fresh cached pool is served as-is (`hit`); a pool
+// invalidated by a rating/dismiss/settings change is re-ranked over the still-valid
+// cached corpus (`reranked`, ~100ms, no external calls) while the corpus refreshes
+// in the background; only a missing corpus or a forced Refresh pays the full
+// gather+enrich rebuild (`built`).
 export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language, filters }) {
   const t0 = performance.now();
   const db0 = dbCounters();
   filters = filters || resolveFilters();
-  let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
-  const built = !cached || force;
-  if (built) {
-    cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
-  } else if (cached.gen !== currentGen(userId)) {
-    ensurePrebuild(userId); // refresh in the background; serve the stale pool now
+  let cached = force ? null : cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
+  let mode;
+  if (cached && cached.gen === currentGen(userId)) {
+    mode = 'hit';
+  } else {
+    const corpus = force ? null : cacheGet(corpusKey(userId, region, providerIds, genreId, language, filters));
+    if (!corpus) {
+      cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
+      mode = 'built';
+    } else {
+      // The ranking is stale but the corpus isn't — re-rank the cached candidates
+      // over the fresh profile (cheap, no I/O) and refresh the corpus's seeds +
+      // enrichment in the background.
+      const profile = await buildProfile(userId);
+      const pool = await rankCorpus(corpus, profile);
+      cached = { gen: currentGen(userId), profileSize: profile.count, pool };
+      cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), cached);
+      ensurePrebuild(userId);
+      mode = 'reranked';
+    }
   }
   const excluded = new Set([
     ...getRatings(userId).map((r) => `${r.media_type}:${r.tmdb_id}`),
@@ -464,15 +504,16 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
     .filter((m) => !excluded.has(`movie:${m.tmdb_id}`))
     .slice(0, limit)
     .map((m) => ({ ...m }));
-  // A synchronous (cache-served) build is the suspected loop-blocker; logging
-  // ms with built= lets prod tell a cheap cache hit from a full rebuild, and
-  // dbMs/dbCalls (the share spent inside synchronous SQLite) tells whether a
-  // stall is DB-bound or compute-bound — the remote-DB-vs-worker-thread call.
+  // A synchronous (cache-served) build is the suspected loop-blocker; logging ms
+  // with mode= lets prod tell a cheap cache hit (hit) from a re-rank (reranked)
+  // from a full rebuild (built), and dbMs/dbCalls (the share spent inside
+  // synchronous SQLite) tells whether a stall is DB-bound or compute-bound — the
+  // remote-DB-vs-worker-thread call.
   const dbMs = dbCounters().ms - db0.ms;
   const dbCalls = dbCounters().calls - db0.calls;
   log.info(
     `[perf] recommend build user=${userId} ms=${(performance.now() - t0).toFixed(0)} ` +
-    `dbMs=${dbMs.toFixed(0)} dbCalls=${dbCalls} items=${results.length} built=${built}`,
+    `dbMs=${dbMs.toFixed(0)} dbCalls=${dbCalls} items=${results.length} mode=${mode}`,
   );
   return { profileSize: cached.profileSize, results };
 }
@@ -562,7 +603,7 @@ export function warmRecommendations() {
 // ---- watchlist card enrichment --------------------------------------------
 // Re-derive the rich card fields for one already-saved title, server side, so a
 // title saved before save-time capture (or whose capture failed) renders exactly
-// like a fresh Discover pick — same fields computePool() produces, minus score
+// like a fresh Discover pick — same fields buildCorpus() produces, minus score
 // (a saved title has no recommendation rank). Hits TMDB details (cached) + the
 // IMDb/Metacritic scrape; no MotN quota is spent.
 export async function enrichWatchlistItem({ tmdb_id, region, providerIds, language }) {

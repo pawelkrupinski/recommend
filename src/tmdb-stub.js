@@ -150,7 +150,7 @@ export function stub(path, params = {}) {
     // The onboarding rate queue (acclaimed seed) is provider-less → POPULAR. The
     // recommender filters Discover by streaming provider: serve the canonical
     // titles plus the backfill pool, all on one page. The candidate sources walk
-    // pages until they've found enough fresh titles, and computePool's
+    // pages until they've found enough fresh titles, and buildCorpus's
     // streamability gate keeps only those on the *user's* services — so a
     // provider-8 user sees just the canonical set while a backfill-provider user
     // gets the large pool the refill draws from.

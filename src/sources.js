@@ -2,7 +2,7 @@
 //
 // A *candidate source* answers one question: "which titles might this user want
 // to see?" It does NOT score, filter by streamability, or shape cards — that all
-// lives centrally in taste.js (computePool), so every source shares one set of
+// lives centrally in taste.js (buildCorpus), so every source shares one set of
 // rules and a new source can't accidentally re-implement (and diverge on) them.
 // A source only knows how to fetch ids.
 //
@@ -18,7 +18,7 @@
 // an additive bonus; gatherCandidates sums it across every source and duplicate.
 //
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
-// switch to edit, no change to computePool.
+// switch to edit, no change to buildCorpus.
 import { discover, recommendations, similar, trending, details, genres as movieGenres, tmdbConfigured } from './tmdb.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
 import { letterboxdCandidates } from './letterboxd.js';
@@ -38,7 +38,7 @@ const seeds = (ratings) =>
 // hasn't already handled have been surfaced — or the source runs out
 // (page >= total_pages) or we hit `ceil`. Pure over its page-fetcher, so the
 // stop logic is unit-testable without TMDB. Returns bare { id, title };
-// computePool re-fetches full details for scoring, so sources need only the id.
+// buildCorpus re-fetches full details for scoring, so sources need only the id.
 //
 // Why "until enough fresh" instead of a fixed page count: fixed depth starved
 // power users. Once they'd rated/dismissed/shelved the popular head, the first
@@ -281,7 +281,7 @@ export const filmweb = {
 };
 
 // Registry, ordered most-relevant-first. gatherCandidates preserves this order,
-// and computePool caps the merged set (CANDIDATE_CAP) before the expensive
+// and buildCorpus caps the merged set (CANDIDATE_CAP) before the expensive
 // per-title detail fetch — so the highest-value sources fill the budget first and
 // the broad charts top it up. The provider-scoped Discover sweeps lead: they're
 // the candidates that survive the streamability gate, so spending the detail-fetch

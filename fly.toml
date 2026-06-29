@@ -1,0 +1,38 @@
+# Fly.io config for the "filmowo" app (https://filmowo.fly.dev).
+#
+# Cheapest viable setup: one shared-cpu-1x machine that auto-stops to zero when
+# idle, so you only pay while it's actually serving requests. The DB setup is
+# unchanged from Render — SQLite on the machine's ephemeral disk, made durable
+# by Litestream streaming to Cloudflare R2 and restoring on boot (see
+# litestream.yml + docker-entrypoint.sh). No Fly volume is provisioned on
+# purpose; durability lives in R2, which keeps this the cheapest option.
+app = "filmowo"
+primary_region = "arn"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  DB_PATH = "/data/recommend.db"
+  BASE_URL = "https://filmowo.fly.dev"
+
+[http_service]
+  internal_port = 9002
+  force_https = true
+  # Scale to zero when idle (mirrors Render free-tier spin-down). First request
+  # after idle is slow while the machine wakes and Litestream restores the DB.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "get"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

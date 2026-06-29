@@ -45,34 +45,25 @@ jobs:
           retention-days: 7
 
   # Deploy gate: only fires on a push to main, and only after BOTH test jobs
-  # succeed, so no untested commit ever ships. Triggers a deploy through the
-  # Render API. Render's own deploy-on-push is disabled in render.yaml, making
-  # this the only path to production.
+  # succeed, so no untested commit ever ships. Builds and deploys the Docker
+  # image to Fly.io (app "filmowo"). This is the only path to production.
   # Secrets (repo → Settings → Secrets → Actions):
-  #   RENDER_API_KEY     — a Render API key (rnd_…)
-  #   RENDER_SERVICE_ID  — the service id, e.g. srv-…
+  #   FLY_API_TOKEN — an app-scoped Fly deploy token (`fly tokens create deploy -a filmowo`)
   deploy:
-    name: Deploy to Render
+    name: Deploy to Fly
     needs: [unit, e2e]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render deploy
+      - uses: actions/checkout@v5
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy to Fly
         env:
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
         run: |
-          if [ -z "$RENDER_API_KEY" ] || [ -z "$RENDER_SERVICE_ID" ]; then
-            echo "::warning::RENDER_API_KEY / RENDER_SERVICE_ID not set — skipping deploy."
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::warning::FLY_API_TOKEN not set — skipping deploy."
             exit 0
           fi
-          echo "Tests passed — triggering Render deploy for $RENDER_SERVICE_ID…"
-          code=$(curl -fsS -o /dev/null -w '%{http_code}' \
-            -X POST "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
-            -H "Authorization: Bearer $RENDER_API_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{"clearCache":"do_not_clear"}')
-          echo "Render API responded $code"
-          # Render returns 202 (Accepted) on a successful deploy create; accept any 2xx.
-          case "$code" in 2??) ;; *) echo "::error::Render deploy request failed ($code)"; exit 1;; esac
-          echo "Render deploy triggered."
+          echo "Tests passed — deploying filmowo to Fly…"
+          flyctl deploy --remote-only --ha=false

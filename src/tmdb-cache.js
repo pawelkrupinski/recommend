@@ -22,14 +22,23 @@ const TMDB_CACHE_PATH =
   process.env.TMDB_CACHE_PATH || DB_PATH.replace(/\.db$/, '') + '.tmdb-cache.db';
 const MAX_ROWS = Number(process.env.TMDB_CACHE_MAX_ROWS) || 5000;
 
-mkdirSync(dirname(TMDB_CACHE_PATH), { recursive: true });
-const tmdbDb = new DatabaseSync(TMDB_CACHE_PATH);
-tmdbDb.exec('PRAGMA journal_mode = WAL');
-tmdbDb.exec('PRAGMA busy_timeout = 5000');
+// Open the cache DB LAZILY on first use, not at import. Importing tmdb.js (and
+// thus this module) from pure-logic code must not spin up a SQLite file as a
+// side effect — that made concurrent test processes collide on the shared
+// default path ("database is locked"). With TMDB_STUB=1 the client short-
+// circuits before the cache, so tests never open it at all.
+let store;
+function cache() {
+  if (store) return store;
+  mkdirSync(dirname(TMDB_CACHE_PATH), { recursive: true });
+  const db = new DatabaseSync(TMDB_CACHE_PATH);
+  // busy_timeout BEFORE the WAL switch so a concurrent opener waits for the lock
+  // rather than throwing "database is locked".
+  db.exec('PRAGMA busy_timeout = 5000');
+  db.exec('PRAGMA journal_mode = WAL');
+  store = createKvCache(db, { maxRows: MAX_ROWS });
+  return store;
+}
 
-const cache = createKvCache(tmdbDb, { maxRows: MAX_ROWS });
-
-export const tmdbCacheGet = (key, maxAgeMs) => cache.get(key, maxAgeMs);
-export const tmdbCacheSet = (key, value) => cache.set(key, value);
-// Exposed for tests / maintenance (row count, forced eviction).
-export const tmdbCache = cache;
+export const tmdbCacheGet = (key, maxAgeMs) => cache().get(key, maxAgeMs);
+export const tmdbCacheSet = (key, value) => cache().set(key, value);

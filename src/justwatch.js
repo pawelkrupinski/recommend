@@ -18,7 +18,7 @@ import { readThrough, DAY } from './cache.js';
 import { appLink } from './deeplinks.js';
 
 const ENDPOINT = 'https://apis.justwatch.com/graphql';
-const TTL = 15 * DAY; // deep links rarely change
+const TTL = 30 * DAY; // deep links rarely change; cache long to limit scraping
 
 export const name = 'justwatch';
 

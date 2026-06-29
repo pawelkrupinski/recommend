@@ -309,10 +309,15 @@ async function api(req, res, url) {
       // card's service icon — keyed by TMDB id — can find its link without
       // name-matching.
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
+      // Keep only options that carry a real per-service deep link. JustWatch/MotN
+      // supply those; the free TMDB source (availability.js) returns link-less
+      // options purely to assert availability and spare MotN's quota — those render
+      // via `flatrate` below (logos + per-service search links), not as deep links.
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
+        .filter((o) => o.link)
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
       // Cache in the browser for a week (private — it's per-user/region). Availability
-      // barely moves, the sources are cached 15 days server-side, and the URL carries
+      // barely moves, the sources are cached 30 days server-side, and the URL carries
       // the region, so this is safe and stops the popup re-fetching on every open.
       return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks, credits }, 'private, max-age=604800');
     }

@@ -183,7 +183,7 @@ export function stub(path, params = {}) {
   const wp = path.match(/^\/movie\/(\d+)\/watch\/providers$/);
   if (wp) {
     return { results: { [REGION]: { link: 'https://example.test/watch',
-      flatrate: [{ provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } } };
+      flatrate: [{ provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } } };
   }
   const det = path.match(/^\/movie\/(\d+)$/);
   if (det) return details(Number(det[1]), params.language);

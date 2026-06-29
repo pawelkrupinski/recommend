@@ -1,14 +1,15 @@
 // Unit tests for the streaming-availability seam (src/availability.js): JustWatch
-// leads, MotN backs it up, and a source that's off / empty / throwing falls
-// through to the next without taking the answer down.
+// leads, the free TMDB source backs it up, MotN is the last resort, and a source
+// that's off / empty / throwing falls through to the next without taking the
+// answer down.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
-// availability.js -> justwatch/motn -> db.js opens SQLite at import; point at a
-// throwaway db first.
+// availability.js -> justwatch/tmdb/motn -> db.js opens SQLite at import; point at
+// a throwaway db first.
 freshDbEnv();
-const { streamingOptions } = await import('../../src/availability.js');
+const { streamingOptions, SOURCES } = await import('../../src/availability.js');
 
 const source = (name, configured, fn) => ({
   name,
@@ -53,6 +54,23 @@ test('a throwing source is logged and skipped, not fatal', async () => {
   ];
   const out = await streamingOptions(1, 'movie', 'PL', 'pl', sources);
   assert.deepEqual(out.map((o) => o.service), ['Netflix']);
+});
+
+test('the real source order puts the free sources before the paid MotN', () => {
+  assert.deepEqual(SOURCES.map((s) => s.name), ['justwatch', 'tmdb', 'motn']);
+});
+
+test('a TMDB provider hit short-circuits MotN, sparing its quota', async () => {
+  let motnCalled = false;
+  const sources = [
+    source('jw', true, async () => []), // scraper came up empty
+    // TMDB asserts availability but carries no per-service deep link.
+    source('tmdb', true, async () => [{ service: 'Netflix', type: 'subscription', link: null }]),
+    source('motn', true, async () => { motnCalled = true; return opt('Netflix'); }),
+  ];
+  const out = await streamingOptions(1, 'movie', 'PL', 'pl', sources);
+  assert.equal(motnCalled, false, 'MotN is not reached once TMDB reports availability');
+  assert.equal(out.length, 1);
 });
 
 test('returns [] when every source is off or empty', async () => {

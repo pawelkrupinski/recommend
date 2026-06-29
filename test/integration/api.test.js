@@ -233,7 +233,19 @@ test('where-to-watch reports the user region so search links can target the righ
   await c.json('/api/settings', { method: 'POST', body: { country: 'GB' } });
   const { data } = await c.json('/api/where?id=201&media_type=movie');
   assert.equal(data.region, 'GB', "the user's country drives the where lookup and Apple storefront");
-  assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty without a MotN key)');
+  assert.ok(Array.isArray(data.deepLinks), 'deep links are present (empty when no source has GB data in tests)');
+});
+
+test('where-to-watch surfaces TMDB availability via flatrate and keeps link-less options out of deepLinks', async () => {
+  const c = await client().login({ email: 'where-tmdb@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { country: 'PL' } });
+  // PL has stub provider data, so the free TMDB source reports the title as
+  // streamable on Netflix Test — sparing a MotN call. TMDB carries no per-service
+  // deep link, so that option must NOT leak into deepLinks (it'd render as a broken
+  // link); it surfaces through flatrate instead (logos + per-service search links).
+  const { data } = await c.json('/api/where?id=201&media_type=movie');
+  assert.deepEqual(data.deepLinks, [], 'a link-less TMDB option is filtered out of deepLinks');
+  assert.ok(data.flatrate.some((f) => f.name === 'Netflix Test'), 'TMDB providers still surface via flatrate');
 });
 
 test('where-to-watch is browser-cacheable for a week so the popup stops reloading availability', async () => {

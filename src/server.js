@@ -13,6 +13,7 @@ import {
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds } from './taste.js';
+import { toneList } from './tones.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
@@ -261,6 +262,13 @@ async function api(req, res, url) {
       return json(req, res, 200, { genres }, 'private, max-age=86400');
     }
 
+    // ---- tone tags (for the Discover tone filter + popup chips) -------
+    // The mood/feel vocabulary (heartfelt, deadpan…); a fixed code-defined list,
+    // so the browser can hold it for a day like the genre list.
+    if (p === '/api/tones' && req.method === 'GET') {
+      return json(req, res, 200, { tones: toneList() }, 'private, max-age=86400');
+    }
+
     // ---- recommendations ---------------------------------------------
     if (p === '/api/recommend' && req.method === 'GET') {
       const region = getUserSetting(uid, 'country', 'PL');
@@ -273,6 +281,7 @@ async function api(req, res, url) {
         origin: url.searchParams.get('origin') || '',
         excludeUs: url.searchParams.get('excludeUs') === '1',
         indie: url.searchParams.get('indie') === '1',
+        tone: url.searchParams.get('tag') || '',
       });
       const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language, filters });
       return json(req, res, 200, out);

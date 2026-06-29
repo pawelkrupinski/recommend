@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { userServices, matchesOrigin, isIndie, filterSig } = await import('../../src/taste.js');
+const { userServices, matchesOrigin, isIndie, filterSig, resolveFilters } = await import('../../src/taste.js');
 
 // Build a TMDB-detail-shaped movie with the fields the origin/indie filters read.
 const movieFrom = (countries, companyIds = []) => ({
@@ -50,6 +50,20 @@ test('filterSig is stable regardless of allowed-set order and varies by toggle',
   assert.notEqual(a, filterSig({ allowed: new Set(['FR', 'DE']), excludeUs: true, indie: false }));
   assert.notEqual(a, filterSig({ allowed: new Set(['FR', 'DE']), excludeUs: false, indie: true }));
   assert.notEqual(a, filterSig({ allowed: new Set(['FR']), excludeUs: false, indie: false }));
+});
+
+test('filterSig varies by tone so each tone caches its own pool', () => {
+  const base = filterSig({ allowed: new Set(), excludeUs: false, indie: false });
+  const heartfelt = filterSig({ allowed: new Set(), excludeUs: false, indie: false, tone: 'heartfelt' });
+  const deadpan = filterSig({ allowed: new Set(), excludeUs: false, indie: false, tone: 'deadpan' });
+  assert.notEqual(base, heartfelt, 'a tone changes the signature');
+  assert.notEqual(heartfelt, deadpan, 'different tones get different signatures');
+});
+
+test('resolveFilters keeps a known tone and drops an unknown one to ""', () => {
+  assert.equal(resolveFilters({ tone: 'heartfelt' }).tone, 'heartfelt');
+  assert.equal(resolveFilters({ tone: 'bogus-tone' }).tone, '', 'unknown tone is ignored, not filtered on');
+  assert.equal(resolveFilters({}).tone, '', 'no tone by default');
 });
 
 const full = (results) => ({ 'watch/providers': { results } });

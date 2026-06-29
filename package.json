@@ -15,6 +15,8 @@
     "test:integration": "node --test --test-force-exit \"test/integration/**/*.test.js\"",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium",
+    "harvest:tones": "node --env-file=.env.local scripts/harvest-tmdb-tones.js",
+    "harvest:netflix-tones": "node --env-file=.env.local scripts/harvest-netflix-tones.js",
     "service:install": "bash service/recommend-service.sh install",
     "service:uninstall": "bash service/recommend-service.sh uninstall",
     "service:restart": "bash service/recommend-service.sh restart",

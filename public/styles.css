@@ -79,8 +79,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .bar .toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .bar .toggle input { cursor: pointer; accent-color: var(--accent); }
 /* The Discover dropdowns and the Watchlist sort share one dark style so they read as a single control set. */
-#genre-filter, #origin-filter, #watchlist-sort { background: var(--panel2); color: inherit; border: 1px solid var(--line);
+#genre-filter, #origin-filter, #tag-filter, #watchlist-sort { background: var(--panel2); color: inherit; border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 10px; font: inherit; }
+#tag-filter { width: 130px; }
+#tag-filter::placeholder { color: var(--muted); }
 .hint { color: var(--muted); }
 .sub { color: var(--muted); font-size: 12px; }
 button {
@@ -248,6 +250,11 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .credit .lbl { color: var(--muted); margin-right: 6px; }
 .credit a.imdb-name { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--muted); }
 .credit a.imdb-name:hover { color: var(--accent); border-bottom-color: var(--accent); }
+/* Tone chips in the detail popup — each links to Discover filtered to that tone. */
+.tone-tags { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.tone-tags a.tone-tag { display: inline-block; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; color: var(--fg); text-decoration: none; }
+.tone-tags a.tone-tag:hover { border-color: var(--accent); color: var(--accent); }
 /* ---- responsive ---------------------------------------------------------- */
 
 /* Large desktops: a wider canvas and slightly larger posters for the extra room. */
@@ -287,11 +294,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
   /* Discover toolbar: info on its own line, filter + refresh share the next. */
   .bar { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .bar #discover-info { flex-basis: 100%; margin-right: 0; }
-  #genre-filter, #origin-filter { flex: 1; }
+  #genre-filter, #origin-filter, #tag-filter { flex: 1; }
+  #tag-filter { width: auto; min-width: 110px; }
   #refresh { white-space: nowrap; }
 
   /* 16px keeps iOS from zooming when these are focused. */
-  .form input, .form select, #genre-filter, #origin-filter, #watchlist-sort { font-size: 16px; }
+  .form input, .form select, #genre-filter, #origin-filter, #tag-filter, #watchlist-sort { font-size: 16px; }
   .form { max-width: none; }
 
   /* Let Discover/onboarding cards size to their content. The desktop fixed

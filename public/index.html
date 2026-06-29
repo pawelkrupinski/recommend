@@ -84,6 +84,10 @@
           <select id="origin-filter" data-i18n-title="discover.originTitle" title="Filter picks by where the film is from">
             <option value="" data-i18n="origin.any">Any origin</option>
           </select>
+          <input id="tag-filter" list="tone-options" autocomplete="off"
+            data-i18n-title="discover.toneTitle" data-i18n-placeholder="discover.tonePlaceholder"
+            title="Filter picks by tone" placeholder="Any tone" />
+          <datalist id="tone-options"></datalist>
           <label class="toggle"><input type="checkbox" id="exclude-us" /> <span data-i18n="filter.excludeUs">Non-US</span></label>
           <label class="toggle"><input type="checkbox" id="indie" /> <span data-i18n="filter.indie">Indie only</span></label>
           <button id="refresh" data-i18n="discover.refresh">↻ Refresh picks</button>

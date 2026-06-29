@@ -398,6 +398,36 @@ test('origin query param narrows the pool by continent or country', async () => 
   assert.deepEqual(idsOf((await c.json('/api/recommend?origin=c:NA&excludeUs=1')).data), new Set(), 'North America minus US is empty');
 });
 
+test('GET /api/tones lists the tone-tag vocabulary', async () => {
+  const c = await client().login({ email: 'tones-ref@example.com' });
+  const { status, data } = await c.json('/api/tones');
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(data.tones), 'returns a tones array');
+  const heartfelt = data.tones.find((t) => t.slug === 'heartfelt');
+  assert.deepEqual(heartfelt, { slug: 'heartfelt', label: 'Heartfelt' }, 'each tone is {slug,label}');
+  assert.ok(data.tones.some((t) => t.slug === 'deadpan'), 'deadpan present');
+});
+
+test('tag query param narrows recommendations to titles carrying that tone', async () => {
+  const c = await client().login({ email: 'tone-filter@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // Only stub title 202 carries TMDB keyword 319357 → the "heartfelt" tone.
+  const ids = idsOf((await c.json('/api/recommend?tag=heartfelt')).data);
+  assert.deepEqual(ids, new Set([202]), 'only the heartfelt title remains');
+  // Each surviving pick reports its tones so the popup can render chips.
+  const { data } = await c.json('/api/recommend?tag=heartfelt');
+  const pick = data.results.find((m) => m.tmdb_id === 202);
+  assert.deepEqual(pick.tones, [{ slug: 'heartfelt', label: 'Heartfelt' }],
+    'the pick carries its tone tags');
+});
+
+test('an unknown tag is ignored rather than emptying the pool', async () => {
+  const c = await client().login({ email: 'tone-bogus@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  const ids = idsOf((await c.json('/api/recommend?tag=not-a-real-tone')).data);
+  assert.ok(ids.has(201) && ids.has(202) && ids.has(203), 'a bogus tone filters nothing');
+});
+
 test('GET /api/origins lists continents with their countries', async () => {
   const c = await client().login({ email: 'origins-ref@example.com' });
   const { status, data } = await c.json('/api/origins');

@@ -98,6 +98,7 @@ function parseRoute() {
     tab: TAB_NAMES.includes(tab) ? tab : 'discover',
     genre: params.get('genre') || '',
     origin: params.get('origin') || '',
+    tag: params.get('tag') || '',
     excludeUs: params.get('excludeUs') === '1',
     indie: params.get('indie') === '1',
     sort: params.get('sort') || '',
@@ -168,20 +169,46 @@ async function loadOrigins() {
     }
   } catch { originsLoaded = false; /* allow a retry next open */ }
 }
-// The Discover filters (genre, origin, the two toggles) live in the URL query so
-// a choice survives refresh/back-forward; navigate() then drives the reload.
-// Switching reads the prebuilt cache where possible; only "Refresh picks" forces
-// a fresh rebuild. Every control rewrites the path's query from the full set.
+// The tone vocabulary (heartfelt, deadpan…) backing the type-into filter, fetched
+// once. Each option's value is its display label so the box reads naturally; we
+// map the typed text back to a slug for the query. slug ⇄ label both ways.
+let tones = [];
+let tonesLoaded = false;
+async function loadTones() {
+  if (tonesLoaded) return;
+  tonesLoaded = true;
+  try {
+    tones = (await api('/api/tones')).tones;
+    const dl = $('#tone-options');
+    dl.innerHTML = '';
+    for (const tn of tones) dl.append(new Option(tn.label, tn.label));
+  } catch { tonesLoaded = false; tones = []; /* allow a retry next open */ }
+}
+// Resolve whatever's typed in the tone box to a known slug (label or slug match,
+// case-insensitive) — '' when it matches no tone, so a half-typed word filters
+// nothing rather than building an empty pool. And the inverse, for restoring the
+// box from a ?tag= slug in the URL.
+const toneSlugFromText = (v) => {
+  const q = String(v || '').trim().toLowerCase();
+  return tones.find((tn) => tn.label.toLowerCase() === q || tn.slug.toLowerCase() === q)?.slug || '';
+};
+const toneLabelOf = (slug) => tones.find((tn) => tn.slug === slug)?.label || '';
+
+// The Discover filters (genre, origin, tone, the two toggles) live in the URL
+// query so a choice survives refresh/back-forward; navigate() then drives the
+// reload. Switching reads the prebuilt cache where possible; only "Refresh picks"
+// forces a fresh rebuild. Every control rewrites the path's query from the full set.
 function syncDiscoverFilters() {
   const params = new URLSearchParams();
   const g = $('#genre-filter').value; if (g) params.set('genre', g);
   const o = $('#origin-filter').value; if (o) params.set('origin', o);
+  const tag = toneSlugFromText($('#tag-filter').value); if (tag) params.set('tag', tag);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
   const qs = params.toString();
   navigate(qs ? `/discover?${qs}` : '/discover');
 }
-for (const id of ['#genre-filter', '#origin-filter', '#exclude-us', '#indie']) {
+for (const id of ['#genre-filter', '#origin-filter', '#tag-filter', '#exclude-us', '#indie']) {
   $(id).onchange = syncDiscoverFilters;
 }
 
@@ -207,7 +234,7 @@ let swapping = false;        // guard so the background recs build/swap kicks of
 // The filter controls and Refresh button only make sense for the picks grid;
 // hide them during the onboarding rate queue.
 function showRecsControls(show) {
-  for (const id of ['#genre-filter', '#origin-filter', '#exclude-us', '#indie', '#refresh']) {
+  for (const id of ['#genre-filter', '#origin-filter', '#tag-filter', '#exclude-us', '#indie', '#refresh']) {
     $(id).classList.toggle('hidden', !show);
   }
   // The toggles' labels wrap the checkboxes — hide the whole label, not just the box.
@@ -215,7 +242,7 @@ function showRecsControls(show) {
 }
 
 async function loadDiscover(force = false) {
-  await Promise.all([loadGenres(), loadOrigins()]);
+  await Promise.all([loadGenres(), loadOrigins(), loadTones()]);
   // How many films has the user rated? Below the goal we onboard; at/above it (or
   // on a forced Refresh) we show the real picks.
   let count = RATE_GOAL;
@@ -302,6 +329,8 @@ function discoverParams({ refresh = false } = {}) {
   if (genre) params.set('genre', genre);
   const origin = $('#origin-filter').value;
   if (origin) params.set('origin', origin);
+  const tag = toneSlugFromText($('#tag-filter').value);
+  if (tag) params.set('tag', tag);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
   if (refresh) params.set('refresh', '1');
@@ -318,6 +347,7 @@ async function loadRecs(force = false) {
     const h = parseRoute();
     $('#genre-filter').value = h.genre;
     $('#origin-filter').value = h.origin;
+    $('#tag-filter').value = h.tag ? toneLabelOf(h.tag) : '';
     $('#exclude-us').checked = h.excludeUs;
     $('#indie').checked = h.indie;
     const genre = $('#genre-filter').value;
@@ -611,9 +641,21 @@ function movieHeader(m) {
         <h2>${esc(m.title)} <span class="sub">${m.year || ''}${runtime(m.runtime) ? ` · ${runtime(m.runtime)}` : ''}</span></h2>
         ${ratingBadges(m)}
         ${director}${cast}
+        ${toneTags(m)}
         <p class="sub">${esc(m.overview || '')}</p>
       </div>
     </div>${trailerSection(m)}`;
+}
+// The film's tone tags as chips, each a link to Discover filtered to that tone
+// (/discover?tag=<slug>). Real anchors so they ctrl/middle-click into a new tab;
+// a plain click is upgraded to in-app navigation (see the #modal-body handler).
+// Empty string when the title carries no tones, so the layout is unchanged.
+function toneTags(m) {
+  const list = m.tones || [];
+  if (!list.length) return '';
+  const chip = (tn) =>
+    `<a class="tone-tag" href="/discover?tag=${encodeURIComponent(tn.slug)}">${esc(tn.label)}</a>`;
+  return `<p class="tone-tags">${list.map(chip).join('')}</p>`;
 }
 // YouTube trailers for the title (already language-resolved server-side; see
 // pickTrailers). Each is a link that opens the trailer on YouTube in a new tab.
@@ -674,6 +716,16 @@ async function openWhere(m, { dismissable = true } = {}) {
     }
   } catch (e) { body.innerHTML += `<p>⚠ ${e.message}</p>`; }
 }
+// A plain left-click on a tone chip filters Discover to that tone in-app: close
+// the modal and SPA-navigate to /discover?tag=…. A modifier/middle click falls
+// through to the real href so it opens that filtered view in a new tab.
+$('#modal-body').addEventListener('click', (e) => {
+  const a = e.target.closest('a.tone-tag');
+  if (!a || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  e.preventDefault();
+  $('#modal').classList.add('hidden');
+  navigate(a.getAttribute('href'));
+});
 // Dismiss the detail modal by tapping the backdrop, the ✕ button, or pressing Escape.
 $('#modal').onclick = (e) => { if (e.target.id === 'modal') e.currentTarget.classList.add('hidden'); };
 $('#modal-close').onclick = () => $('#modal').classList.add('hidden');

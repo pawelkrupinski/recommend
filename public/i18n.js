@@ -39,6 +39,8 @@ export const MESSAGES = {
     'discover.refresh': '↻ Refresh picks',
     'discover.filterTitle': 'Filter picks by genre',
     'discover.originTitle': 'Filter picks by where the film is from',
+    'discover.toneTitle': 'Filter picks by tone',
+    'discover.tonePlaceholder': 'Any tone',
     'genre.all': 'All genres',
     'origin.any': 'Any origin',
     'origin.allOf': 'All of {name}',
@@ -117,6 +119,8 @@ export const MESSAGES = {
     'discover.refresh': '↻ Odśwież propozycje',
     'discover.filterTitle': 'Filtruj propozycje według gatunku',
     'discover.originTitle': 'Filtruj propozycje według kraju pochodzenia filmu',
+    'discover.toneTitle': 'Filtruj propozycje według nastroju',
+    'discover.tonePlaceholder': 'Dowolny nastrój',
     'genre.all': 'Wszystkie gatunki',
     'origin.any': 'Dowolne pochodzenie',
     'origin.allOf': 'Cały region: {name}',
@@ -188,10 +192,11 @@ export function t(key, vars) {
 }
 
 // Translate every tagged node under `root`: text via [data-i18n], and the
-// title / aria-label attributes via their data-i18n-* variants.
+// title / placeholder / aria-label attributes via their data-i18n-* variants.
 export function applyStatic(root = document) {
   for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n);
   for (const el of root.querySelectorAll('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
   for (const el of root.querySelectorAll('[data-i18n-aria-label]'))
     el.setAttribute('aria-label', t(el.dataset.i18nAriaLabel));
 }

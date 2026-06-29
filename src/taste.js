@@ -11,6 +11,7 @@ import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
+import { toneSlugs, tonesForMovie, isTone } from './tones.js';
 import { boundedRunner } from './concurrency.js';
 import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
 import { log } from './log.js';
@@ -52,6 +53,9 @@ function featuresOf(movie) {
   const f = [];
   for (const g of movie.genres || []) f.push(`genre:${g.id}`);
   for (const k of movie.keywords?.keywords || []) f.push(`keyword:${k.id}`);
+  // Tone tags (heartfelt, deadpan…) derived from keywords + Netflix membership,
+  // scored like any other feature so the profile learns a user's mood affinities.
+  for (const s of toneSlugs(movie)) f.push(`tone:${s}`);
   const crew = movie.credits?.crew || [];
   for (const d of crew.filter((c) => c.job === 'Director')) f.push(`director:${d.id}`);
   for (const a of (movie.credits?.cast || []).slice(0, CAST_DEPTH)) f.push(`cast:${a.id}`);
@@ -147,15 +151,17 @@ export function isIndie(movie) {
 // genre filter), passed as query params — not saved preferences. `origin` is
 // the single picker's type-tagged value ('c:<continent>' | 'k:<country>' | '');
 // see geo.js allowedOriginFromValue. Defaults (no args) mean "no filtering".
-export function resolveFilters({ origin = '', excludeUs = false, indie = false } = {}) {
-  return { allowed: allowedOriginFromValue(origin), excludeUs: !!excludeUs, indie: !!indie };
+export function resolveFilters({ origin = '', excludeUs = false, indie = false, tone = '' } = {}) {
+  // An unknown tone is dropped to '' (no filter) so a stale/typo'd ?tag= can't
+  // build an empty pool — same lenient stance the other controls take.
+  return { allowed: allowedOriginFromValue(origin), excludeUs: !!excludeUs, indie: !!indie, tone: isTone(tone) ? tone : '' };
 }
 
 // Stable signature of a filter set for the pool cache key, so each distinct
 // origin/indie combination caches its own pool (like region and providers do).
-export function filterSig({ allowed, excludeUs, indie } = {}) {
+export function filterSig({ allowed, excludeUs, indie, tone } = {}) {
   const origins = [...(allowed || [])].sort().join(',');
-  return `${excludeUs ? 'nous' : ''}.${indie ? 'indie' : ''}.${origins || 'any'}`;
+  return `${excludeUs ? 'nous' : ''}.${indie ? 'indie' : ''}.${tone ? `t-${tone}` : ''}.${origins || 'any'}`;
 }
 
 // The user's chosen services that, in their region, stream this title — each as
@@ -241,6 +247,9 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     // model as the genre filter, applied uniformly to every candidate source.
     if (!matchesOrigin(full, filters)) continue;
     if (filters.indie && !isIndie(full)) continue;
+    // Tone filter (the Discover "tone" control / a ?tag= deep link): hard-drop
+    // titles that don't carry the chosen tone, same model as the genre filter.
+    if (filters.tone && !toneSlugs(full).includes(filters.tone)) continue;
     // Drop titles not on a chosen service in the user's region; otherwise keep
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
@@ -277,6 +286,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       vote_average: s.full.vote_average,
       genres: (s.full.genres || []).map((g) => g.name),
       genreIds: (s.full.genres || []).map((g) => g.id),
+      tones: tonesForMovie(s.full),
       features: s.features,
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
@@ -450,6 +460,7 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
     overview: full.overview || null,
     vote_average: full.vote_average ?? null,
     genres: (full.genres || []).map((g) => g.name),
+    tones: tonesForMovie(full),
     director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
     cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
     trailers: pickTrailers(full.videos, language),

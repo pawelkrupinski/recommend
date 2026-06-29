@@ -362,7 +362,7 @@ export function getNotSeen(userId) {
 // excluded — it's a per-build recommendation rank a saved title has no place in.
 // The same shape is produced by the Discover card (captured at save time) and by
 // enrichWatchlistItem (backfill), so both write through this one whitelist.
-const CARD_FIELDS = ['vote_average', 'runtime', 'genres', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
+const CARD_FIELDS = ['vote_average', 'runtime', 'genres', 'tones', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
 function pickCard(src) {
   const card = {};
   for (const k of CARD_FIELDS) if (src[k] != null) card[k] = src[k];

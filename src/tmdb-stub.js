@@ -112,7 +112,11 @@ function details(id, language) {
     genres: [{ id: genreId, name: GENRES.find((g) => g.id === genreId)?.name || 'Action' }],
     production_countries: [{ iso_3166_1: country, name: country }],
     production_companies: [{ id: companyId, name: `Company ${companyId}` }],
-    keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }] },
+    // Title 202 carries TMDB keyword 319357 ("heartwarming"), which the tone map
+    // resolves to the "heartfelt" tone — so the tone filter / chips have exactly
+    // one matching fixture to assert against (the others carry only the inert stub
+    // keyword and so have no tone).
+    keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }, ...(id === 202 ? [{ id: 319357, name: 'heartwarming' }] : [])] },
     credits: {
       crew: [{ id: 500, job: 'Director', name: 'Stub Director' }],
       cast: [{ id: 600, name: 'Stub Actor' }],

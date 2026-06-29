@@ -176,9 +176,9 @@ async function loadOrigins() {
     }
   } catch { originsLoaded = false; /* allow a retry next open */ }
 }
-// The tone vocabulary (heartfelt, deadpan…) backing the type-into filter, fetched
-// once. Each option's value is its display label so the box reads naturally; we
-// map the typed text back to a slug for the query. slug ⇄ label both ways.
+// The tone vocabulary (heartfelt, deadpan…) backing the Discover tone dropdown,
+// fetched once. Each option's value is the tone slug — the value sent as ?tag= —
+// and its text the display label.
 let tones = [];
 let tonesLoaded = false;
 async function loadTones() {
@@ -186,20 +186,10 @@ async function loadTones() {
   tonesLoaded = true;
   try {
     tones = (await api('/api/tones')).tones;
-    const dl = $('#tone-options');
-    dl.innerHTML = '';
-    for (const tn of tones) dl.append(new Option(tn.label, tn.label));
+    const sel = $('#tag-filter');
+    for (const tn of tones) sel.append(new Option(tn.label, tn.slug));
   } catch { tonesLoaded = false; tones = []; /* allow a retry next open */ }
 }
-// Resolve whatever's typed in the tone box to a known slug (label or slug match,
-// case-insensitive) — '' when it matches no tone, so a half-typed word filters
-// nothing rather than building an empty pool. And the inverse, for restoring the
-// box from a ?tag= slug in the URL.
-const toneSlugFromText = (v) => {
-  const q = String(v || '').trim().toLowerCase();
-  return tones.find((tn) => tn.label.toLowerCase() === q || tn.slug.toLowerCase() === q)?.slug || '';
-};
-const toneLabelOf = (slug) => tones.find((tn) => tn.slug === slug)?.label || '';
 
 // The Discover filters (genre, origin, tone, the two toggles) live in the URL
 // query so a choice survives refresh/back-forward; navigate() then drives the
@@ -209,7 +199,7 @@ function syncDiscoverFilters() {
   const params = new URLSearchParams();
   const g = $('#genre-filter').value; if (g) params.set('genre', g);
   const o = $('#origin-filter').value; if (o) params.set('origin', o);
-  const tag = toneSlugFromText($('#tag-filter').value); if (tag) params.set('tag', tag);
+  const tag = $('#tag-filter').value; if (tag) params.set('tag', tag);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
   const qs = params.toString();
@@ -336,7 +326,7 @@ function discoverParams({ refresh = false } = {}) {
   if (genre) params.set('genre', genre);
   const origin = $('#origin-filter').value;
   if (origin) params.set('origin', origin);
-  const tag = toneSlugFromText($('#tag-filter').value);
+  const tag = $('#tag-filter').value;
   if (tag) params.set('tag', tag);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
@@ -354,7 +344,7 @@ async function loadRecs(force = false) {
     const h = parseRoute();
     $('#genre-filter').value = h.genre;
     $('#origin-filter').value = h.origin;
-    $('#tag-filter').value = h.tag ? toneLabelOf(h.tag) : '';
+    $('#tag-filter').value = h.tag || '';
     $('#exclude-us').checked = h.excludeUs;
     $('#indie').checked = h.indie;
     const genre = $('#genre-filter').value;

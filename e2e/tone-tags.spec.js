@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { login, uniqEmail, enterPicks } from './helpers.js';
 
 // Tone tags ("heartfelt", "deadpan"…) layer mood onto the structured genres.
-// The Discover bar gains a type-into tone filter, and the detail popup shows a
+// The Discover bar gains a tone dropdown, and the detail popup shows a
 // title's tones as chips that link to Discover filtered to that tone. Of the
 // stub picks (201/202/203/301) only 202 ("Stub Streamable Two") carries the
 // keyword that resolves to the "heartfelt" tone (see tmdb-stub.js).
@@ -15,21 +15,19 @@ test('the tone filter narrows the picks live and survives a reload', async ({ pa
   const tone = page.locator('#tag-filter');
   await expect(tone).toBeVisible();
 
-  // Type a tone and commit it (blur fires the change that rewrites the URL).
-  await tone.fill('Heartfelt');
-  await tone.blur();
+  // Pick a tone from the dropdown (change fires, rewriting the URL).
+  await tone.selectOption('heartfelt');
   await expect(page).toHaveURL(/tag=heartfelt/);
   await expect(page.locator('#recs .card')).toHaveCount(1, { timeout: 20_000 });
   await expect(page.locator('#recs .card')).toContainText('Stub Streamable Two');
 
-  // The choice lives in the URL, so a reload restores both the box and the filter.
+  // The choice lives in the URL, so a reload restores both the dropdown and the filter.
   await page.reload();
-  await expect(page.locator('#tag-filter')).toHaveValue('Heartfelt');
+  await expect(page.locator('#tag-filter')).toHaveValue('heartfelt');
   await expect(page.locator('#recs .card')).toHaveCount(1, { timeout: 20_000 });
 
-  // Clearing the box returns to the full set of picks.
-  await page.locator('#tag-filter').fill('');
-  await page.locator('#tag-filter').blur();
+  // Back to "Any tone" returns to the full set of picks.
+  await page.locator('#tag-filter').selectOption('');
   await expect(page).toHaveURL(/\/discover(\?|$)/);
   await expect(page.locator('#recs .card')).toHaveCount(4, { timeout: 20_000 });
 });
@@ -49,7 +47,7 @@ test('the detail popup shows tone chips that link to the filtered Discover view'
   await expect(page.locator('#modal')).toBeHidden();
   await expect(page).toHaveURL(/tag=heartfelt/);
   await expect(page.locator('#recs .card')).toHaveCount(1, { timeout: 20_000 });
-  await expect(page.locator('#tag-filter')).toHaveValue('Heartfelt');
+  await expect(page.locator('#tag-filter')).toHaveValue('heartfelt');
 });
 
 test('the tone filter shares the dark filter-bar styling', async ({ page }) => {

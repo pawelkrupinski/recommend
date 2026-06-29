@@ -20,7 +20,15 @@ import { createKvCache } from './kv-cache.js';
 const DB_PATH = process.env.DB_PATH || new URL('../data/recommend.db', import.meta.url).pathname;
 const TMDB_CACHE_PATH =
   process.env.TMDB_CACHE_PATH || DB_PATH.replace(/\.db$/, '') + '.tmdb-cache.db';
-const MAX_ROWS = Number(process.env.TMDB_CACHE_MAX_ROWS) || 5000;
+// Row cap for the ephemeral TMDB cache. The cache is global (keyed by request
+// URL), so it's shared across every user's build — a popular title fetched for
+// one corpus is reused by the next. 10k newest detail/list bodies (~100 KB each,
+// ~1 GB on the ephemeral disk) keeps the working set of a handful of users' pools
+// warm so cold/genre builds re-fetch little; only hot rows page into the 512 MB
+// host's RAM, and a missing row costs one ~100 ms re-fetch, not correctness.
+// Env-overridable so prod can retune without a deploy. Exported so a test can
+// prove the cap holds a realistic multi-user working set without eviction.
+export const TMDB_CACHE_MAX_ROWS = Number(process.env.TMDB_CACHE_MAX_ROWS) || 10000;
 
 // Open the cache DB LAZILY on first use, not at import. Importing tmdb.js (and
 // thus this module) from pure-logic code must not spin up a SQLite file as a
@@ -36,7 +44,7 @@ function cache() {
   // rather than throwing "database is locked".
   db.exec('PRAGMA busy_timeout = 5000');
   db.exec('PRAGMA journal_mode = WAL');
-  store = createKvCache(db, { maxRows: MAX_ROWS });
+  store = createKvCache(db, { maxRows: TMDB_CACHE_MAX_ROWS });
   return store;
 }
 

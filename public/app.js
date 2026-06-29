@@ -16,8 +16,21 @@ const $ = (s, el = document) => el.querySelector(s);
 // silently double-submitted.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const TRANSIENT_STATUS = new Set([502, 503, 504]);
+// The writes the server treats as invalidating a user's recommendation pools —
+// it bumps their recGen on exactly these (see server.js), so any cached picks we
+// hold afterwards are stale. Mirroring that list here lets Discover reuse its
+// cached grid across navigation (picks are deterministic) yet still rebuild the
+// moment the user does something that could change them. Method-specific:
+// removing from the watchlist or marking "not seen" doesn't bump recGen, so it
+// isn't here.
+const INVALIDATING_WRITES = [
+  ['POST', '/api/ratings'], ['DELETE', '/api/ratings'],
+  ['POST', '/api/dismiss'], ['POST', '/api/watchlist'], ['POST', '/api/settings'],
+];
+let picksStale = true; // no picks cached yet → the first Discover load must fetch
 const api = async (path, opts) => {
-  const idempotent = !opts?.method || opts.method.toUpperCase() === 'GET';
+  const method = (opts?.method || 'GET').toUpperCase();
+  const idempotent = method === 'GET';
   for (let attempt = 0; ; attempt++) {
     const canRetry = idempotent && attempt < 8;
     let res;
@@ -33,7 +46,10 @@ const api = async (path, opts) => {
       continue;
     }
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
-    return res.json();
+    const data = await res.json();
+    const route = path.split('?')[0];
+    if (INVALIDATING_WRITES.some(([m, p]) => m === method && p === route)) picksStale = true;
+    return data;
   }
 };
 const poster = (p) => (p ? `${IMG}/w342${p}` : 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"/%3E');
@@ -314,6 +330,10 @@ async function maybeSwap() {
     discoverMode = 'recs';
     showRecsControls(true);
     renderRecs(results, profileSize, '');
+    // The swap fetched the unfiltered (all-genres) pool with no controls set, so
+    // this grid IS the default Discover view — register it so a tab-back reuses it.
+    renderedPicksKey = discoverParams();
+    picksStale = false;
   } catch { swapping = false; }
 }
 
@@ -334,26 +354,39 @@ function discoverParams({ refresh = false } = {}) {
   return params.toString();
 }
 
+// The view (filters minus the refresh flag) whose picks are currently in the
+// grid, so a no-op revisit can recognise it. Picks are deterministic — the same
+// view with unchanged ratings rebuilds to the identical grid — so when this
+// matches and nothing the user did since could have changed them (picksStale),
+// loadRecs reuses the grid instead of clearing and refetching /api/recommend.
+let renderedPicksKey = null;
+
 async function loadRecs(force = false) {
   const info = $('#discover-info'), grid = $('#recs');
+  // Restore the filters from the URL (options exist now that loadGenres /
+  // loadOrigins ran) so a refresh or back/forward repaints the same view.
+  const h = parseRoute();
+  $('#genre-filter').value = h.genre;
+  $('#origin-filter').value = h.origin;
+  $('#tag-filter').value = h.tag || '';
+  $('#exclude-us').checked = h.excludeUs;
+  $('#indie').checked = h.indie;
+  const genre = $('#genre-filter').value;
+  const key = discoverParams();
+  // Same view, no rating/dismiss/watchlist/settings change since, grid intact →
+  // the rebuild would be byte-identical. Skip it: no clear, no spinner, no fetch.
+  if (!force && !picksStale && renderedPicksKey === key && grid.children.length) return;
   info.textContent = t('discover.building');
   grid.innerHTML = '';
   try {
-    // Restore the filters from the URL (options exist now that loadGenres /
-    // loadOrigins ran) so a refresh or back/forward repaints the same view.
-    const h = parseRoute();
-    $('#genre-filter').value = h.genre;
-    $('#origin-filter').value = h.origin;
-    $('#tag-filter').value = h.tag || '';
-    $('#exclude-us').checked = h.excludeUs;
-    $('#indie').checked = h.indie;
-    const genre = $('#genre-filter').value;
     const qs = discoverParams({ refresh: force });
     const [{ results, profileSize }] = await Promise.all([
       api('/api/recommend' + (qs ? `?${qs}` : '')),
       loadWatchlistIds(),
     ]);
     renderRecs(results, profileSize, genre);
+    renderedPicksKey = key;
+    picksStale = false;
   } catch (e) {
     info.textContent = '';
     grid.innerHTML = `<p class="empty">⚠ ${e.message}</p>`;

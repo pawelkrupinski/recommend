@@ -11,7 +11,7 @@ import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
-import { isTone, orderTones } from './tones.js';
+import { isTone, orderTones, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
@@ -51,19 +51,29 @@ const MAJOR_STUDIO_IDS = new Set([
 // so candidates Trakt never mentions aren't penalised; saturates ~COLLAB_WEIGHT.
 const COLLAB_WEIGHT = 15;
 
-function featuresOf(movie) {
-  const f = [];
-  for (const g of movie.genres || []) f.push(`genre:${g.id}`);
-  for (const k of movie.keywords?.keywords || []) f.push(`keyword:${k.id}`);
+// Each feature an item carries, as [id, label]: `id` is the scoring key
+// (genre:28, keyword:9663…), `label` its human name for the insights page. The
+// id format lives only here so featuresOf (hot scoring path) and the insights
+// labels stay in lock-step.
+function featureEntries(movie) {
+  const e = [];
+  for (const g of movie.genres || []) e.push([`genre:${g.id}`, g.name]);
+  for (const k of movie.keywords?.keywords || []) e.push([`keyword:${k.id}`, k.name]);
   // Tone tags (heartfelt, deadpan…) derived from keywords + Netflix membership,
   // scored like any other feature so the profile learns a user's mood affinities.
-  for (const s of toneSlugs(movie)) f.push(`tone:${s}`);
+  for (const s of toneSlugs(movie)) e.push([`tone:${s}`, toneLabel(s)]);
   const crew = movie.credits?.crew || [];
-  for (const d of crew.filter((c) => c.job === 'Director')) f.push(`director:${d.id}`);
-  for (const a of (movie.credits?.cast || []).slice(0, CAST_DEPTH)) f.push(`cast:${a.id}`);
+  for (const d of crew.filter((c) => c.job === 'Director')) e.push([`director:${d.id}`, d.name]);
+  for (const a of (movie.credits?.cast || []).slice(0, CAST_DEPTH)) e.push([`cast:${a.id}`, a.name]);
   const yr = Number((movie.release_date || '').slice(0, 4));
-  if (yr) f.push(`decade:${Math.floor(yr / 10) * 10}`);
-  return f;
+  if (yr) { const d = Math.floor(yr / 10) * 10; e.push([`decade:${d}`, `${d}s`]); }
+  return e;
+}
+
+// Just the feature ids — what scoring works in. (featureEntries also carries the
+// human labels the insights page needs.)
+function featuresOf(movie) {
+  return featureEntries(movie).map(([id]) => id);
 }
 
 // node:sqlite is fully synchronous and warm TMDB cache hits resolve without real
@@ -88,7 +98,10 @@ const EMPTY_PROFILE = () => ({
 // films' feature sets and genre lists so the pool builder can derive IDF weights
 // and the calibration target. No weighting/squashing happens here — that's
 // scoring.js, which needs the candidate corpus to compute IDF.
-export async function buildProfile(userId) {
+// Pass a `labels` Map to also capture each feature's human label (id → name) as
+// the films are walked — the insights page needs it; the hot scoring path omits
+// it and pays nothing.
+export async function buildProfile(userId, { labels } = {}) {
   const ratings = getRatings(userId).filter((r) => r.media_type === 'movie');
   if (!ratings.length) return EMPTY_PROFILE();
 
@@ -102,7 +115,9 @@ export async function buildProfile(userId) {
     let movie;
     try { movie = await details(r.tmdb_id, 'movie'); } catch { continue; }
     const delta = r.rating - mean; // liked-vs-typical signal
-    const feats = featuresOf(movie);
+    const entries = featureEntries(movie);
+    if (labels) for (const [id, label] of entries) labels.set(id, label);
+    const feats = entries.map(([id]) => id);
     ratedFeatureSets.push(feats);
     genreLists.push((movie.genres || []).map((g) => g.id));
     for (const feat of feats) {

@@ -67,6 +67,9 @@ export const crosswalks = {
 export const isTone = (slug) => LABELS.has(slug);
 // The vocabulary for the client (filter datalist) — slug + display label.
 export const toneList = () => TONES.map(({ slug, label }) => ({ slug, label }));
+// Human display label for a tone slug (the insights page labels learned tones);
+// falls back to the slug for anything outside the vocabulary.
+export const toneLabel = (slug) => LABELS.get(slug) || slug;
 
 // Generalise raw tags into canonical slugs via a crosswalk: look each raw key up,
 // keep only slugs that are in the vocabulary, dedupe. The shared primitive every

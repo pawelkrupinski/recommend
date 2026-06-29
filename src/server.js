@@ -13,6 +13,7 @@ import {
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds } from './taste.js';
+import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
@@ -287,6 +288,14 @@ async function api(req, res, url) {
       return json(req, res, 200, out);
     }
 
+    // ---- learned taste profile (the hidden /insights page) ------------
+    // A read-only window onto what the recommender has inferred for THIS user:
+    // their per-feature weights, genre calibration target and the scoring knobs.
+    // Per-user (their own data), so no extra gate beyond the session.
+    if (p === '/api/insights' && req.method === 'GET') {
+      return json(req, res, 200, await learnedProfile(uid));
+    }
+
     // ---- where to watch (TMDB providers + availability deep links) ----
     if (p === '/api/where' && req.method === 'GET') {
       const id = Number(url.searchParams.get('id'));
@@ -342,6 +351,9 @@ const server = createServer(async (req, res) => {
     if (url.pathname.startsWith('/api/')) return api(req, res, url);
     // Clean URL for the privacy policy (linked from the app and the Meta dashboard).
     if (url.pathname === '/privacy') url.pathname = '/privacy.html';
+    // Clean URL for the hidden "what the algorithm learned" page. Not linked from
+    // the nav — reachable only by typing /insights — but served like any page.
+    else if (url.pathname === '/insights') url.pathname = '/insights.html';
     // Client-routed tabs are real paths (/discover, /watchlist…), not #hashes, so
     // serve the SPA shell for each — a refresh, shared link or ctrl-clicked nav
     // link lands here and the app boots straight into that tab. '/' already maps

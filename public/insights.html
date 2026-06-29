@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Hidden debug/insights page: not linked from the app, and kept out of
+       search results since it only ever shows the viewer their own data. -->
+  <meta name="robots" content="noindex">
+  <title>What the algorithm learned — recommend</title>
+  <style>
+    :root {
+      --bg: #0e1116; --panel: #171b22; --panel2: #1f242d; --line: #2a3038;
+      --fg: #e6e9ef; --muted: #8b94a3; --accent: #f5c518; --good: #4ade80;
+      --bad: #f87171; --link: #5aa2ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--fg); padding: 28px 18px 90px;
+    }
+    main { max-width: 860px; margin: 0 auto; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header { border-bottom: 1px solid var(--line); padding-bottom: 18px; margin-bottom: 26px; }
+    .brand { font-size: 14px; font-weight: 700; color: var(--muted); }
+    h1 { font-size: 24px; margin-top: 6px; }
+    .lede { color: var(--muted); margin-top: 8px; max-width: 60ch; }
+    h2 { font-size: 16px; margin: 34px 0 14px; color: var(--fg); }
+    h2 .sub { font-weight: 400; color: var(--muted); font-size: 13px; margin-left: 6px; }
+
+    /* summary stat row */
+    .stats { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 22px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+            padding: 14px 18px; min-width: 130px; }
+    .stat .n { font-size: 22px; font-weight: 700; color: var(--accent); }
+    .stat .k { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .cat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+           padding: 16px 18px; margin-bottom: 16px; }
+    .cat h3 { font-size: 15px; margin-bottom: 12px; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
+    @media (max-width: 620px) { .cols { grid-template-columns: 1fr; } }
+    .col-head { font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+                color: var(--muted); margin-bottom: 6px; }
+    .col-head.neg { color: var(--bad); }
+    .col-head.pos { color: var(--good); }
+
+    /* one feature: name + weight bar */
+    .feat { display: grid; grid-template-columns: 1fr auto; align-items: center;
+            gap: 8px; padding: 3px 0; }
+    .feat .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .feat .bar { position: relative; height: 8px; border-radius: 4px; background: var(--panel2);
+                 grid-column: 1 / -1; }
+    .feat .bar > span { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; }
+    .feat.pos .bar > span { background: var(--good); }
+    .feat.neg .bar > span { background: var(--bad); }
+    .feat .w { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+    .feat .name small { color: var(--muted); font-weight: 400; }
+
+    /* genre calibration bars */
+    .genre { display: grid; grid-template-columns: 130px 1fr 46px; align-items: center;
+             gap: 10px; padding: 3px 0; }
+    .genre .track { height: 10px; border-radius: 5px; background: var(--panel2); }
+    .genre .track > span { display: block; height: 100%; border-radius: 5px; background: var(--accent); }
+    .genre .pct { text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+    /* scoring constants */
+    table.knobs { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.knobs td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+    table.knobs td.k { color: var(--muted); }
+    table.knobs td.v { text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+
+    .empty { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+             padding: 30px; text-align: center; color: var(--muted); margin-top: 24px; }
+    .err { color: var(--bad); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">🎬 recommend</div>
+      <h1>What the algorithm learned about you</h1>
+      <p class="lede">A read-only window onto your taste profile — the per-feature weights,
+        genre calibration target and scoring knobs the recommender uses to rank picks.
+        <a href="/discover">← Back to the app</a></p>
+    </header>
+    <div id="content">Loading…</div>
+  </main>
+
+  <script type="module">
+    const $ = (s) => document.querySelector(s);
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // A signed weight → a bar whose width is the magnitude relative to the
+    // strongest feature in either direction, so the longest bar reads as "100%".
+    function featRow(f, max, sign) {
+      const width = max ? Math.round((Math.abs(f.weight) / max) * 100) : 0;
+      const seen = f.count === 1 ? '1 film' : `${f.count} films`;
+      return `<div class="feat ${sign}">
+        <div class="name">${esc(f.label)} <small>· ${seen}</small></div>
+        <div class="w">${f.weight > 0 ? '+' : ''}${f.weight}</div>
+        <div class="bar"><span style="width:${width}%"></span></div>
+      </div>`;
+    }
+
+    function category(cat) {
+      const max = Math.max(0, ...cat.liked.map((f) => Math.abs(f.weight)), ...cat.disliked.map((f) => Math.abs(f.weight)));
+      const col = (items, sign, head) => `<div>
+        <div class="col-head ${sign}">${head}</div>
+        ${items.length ? items.map((f) => featRow(f, max, sign)).join('') : '<div class="w">—</div>'}
+      </div>`;
+      return `<div class="cat">
+        <h3>${esc(cat.label)}</h3>
+        <div class="cols">
+          ${col(cat.liked, 'pos', 'Leans toward')}
+          ${col(cat.disliked, 'neg', 'Leans against')}
+        </div>
+      </div>`;
+    }
+
+    function render(d) {
+      if (!d.ratedCount) {
+        return `<div class="empty">Nothing learned yet — <a href="/discover">rate some films</a>
+          and this page will fill with what the algorithm infers about your taste.</div>`;
+      }
+      const stats = `<div class="stats">
+        <div class="stat"><div class="n">${d.ratedCount}</div><div class="k">films rated</div></div>
+        <div class="stat"><div class="n">${d.meanRating}</div><div class="k">your mean rating</div></div>
+        <div class="stat"><div class="n">${d.distinctFeatures}</div><div class="k">learned signals</div></div>
+      </div>`;
+
+      const gmax = Math.max(0, ...d.genres.map((g) => g.prob));
+      const genres = d.genres.length ? `<h2>Genre calibration <span class="sub">the mix your picks are steered toward</span></h2>
+        ${d.genres.map((g) => `<div class="genre">
+          <div class="name">${esc(g.label)}</div>
+          <div class="track"><span style="width:${gmax ? Math.round((g.prob / gmax) * 100) : 0}%"></span></div>
+          <div class="pct">${Math.round(g.prob * 100)}%</div>
+        </div>`).join('')}` : '';
+
+      const feats = `<h2>Feature weights <span class="sub">what nudges a pick up or down</span></h2>
+        ${d.features.map(category).join('')}`;
+
+      const knobs = `<h2>Scoring knobs <span class="sub">the model's tunable constants</span></h2>
+        <div class="cat"><table class="knobs">
+          ${Object.entries(d.scoring).map(([k, v]) => `<tr><td class="k">${esc(k)}</td><td class="v">${esc(v)}</td></tr>`).join('')}
+        </table></div>`;
+
+      return stats + genres + feats + knobs;
+    }
+
+    try {
+      const res = await fetch('/api/insights', { headers: { accept: 'application/json' } });
+      if (!res.ok) throw new Error(res.statusText);
+      $('#content').innerHTML = render(await res.json());
+    } catch (e) {
+      $('#content').innerHTML = `<div class="empty err">Couldn't load your profile: ${esc(e.message)}</div>`;
+    }
+  </script>
+</body>
+</html>

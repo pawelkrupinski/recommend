@@ -538,6 +538,38 @@ test('delete account erases the user and ends the session', async () => {
   assert.deepEqual(ratings.data.ratings, [], 'the deleted account left no data behind');
 });
 
+test('GET /api/insights summarizes what the recommender learned for this user', async () => {
+  const c = await client().login({ email: 'insights@example.com' });
+  // No ratings yet → nothing learned.
+  let r = await c.json('/api/insights');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.ratedCount, 0, 'a user with no ratings has learned nothing');
+  assert.deepEqual(r.data.features, []);
+
+  // Rate two stub titles in opposite directions so the profile has signed
+  // weights (201 = Action, liked; 202 = Comedy, disliked).
+  await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 201, rating: 9, title: 'Liked' } });
+  await c.json('/api/ratings', { method: 'POST', body: { tmdb_id: 202, rating: 5, title: 'Disliked' } });
+
+  r = await c.json('/api/insights');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.ratedCount, 2);
+  assert.equal(r.data.meanRating, 7, 'mean of 9 and 5');
+  assert.ok(r.data.distinctFeatures > 0, 'learned at least one signal');
+  assert.ok(r.data.features.length > 0, 'grouped feature weights present');
+  assert.ok(r.data.genres.some((g) => g.label === 'Action'), 'genre calibration is labelled');
+  assert.equal(r.data.scoring.BETA_NEG, 0.5, 'the scoring knobs are exposed');
+});
+
+test('GET /insights serves the hidden page shell', async () => {
+  const c = await client().login({ email: 'insights-page@example.com' });
+  const res = await c.raw('/insights');
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /text\/html/);
+  const html = await res.text();
+  assert.match(html, /What the algorithm learned/);
+});
+
 test('onboarded=0 dev-login leaves the user needing onboarding', async () => {
   const c = await client().login({ email: 'fresh@example.com', onboarded: false });
   const { data } = await c.json('/api/me');

@@ -291,16 +291,51 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
 
   const detailsMs = performance.now() - tDetails;
 
+  // Score + re-rank the survivors into the served pool. Split into its own
+  // breathe()-yielding pass (rankCandidates) so this synchronous stretch — IDF,
+  // per-survivor card build, sort, MMR re-rank — no longer holds the event loop
+  // in one unbroken block while it runs. storedTonesFor carries the prefetched
+  // tone lookup so the card build stays batched (no per-survivor N+1).
+  const tScore = performance.now();
+  const result = await rankCandidates(survivors, profile, language, storedTonesFor);
+  // The phase split inside the pool build: gather (source fan-out, mostly cached
+  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), score
+  // (the IDF + scoring + rerank pass). A big scoreMs with a small dbMs upstream
+  // is the compute-bound signature.
+  const scoreMs = performance.now() - tScore;
+  log.info(
+    `[perf] pool phases user=${userId} gatherMs=${gatherMs.toFixed(0)} ` +
+    `detailsMs=${detailsMs.toFixed(0)} scoreMs=${scoreMs.toFixed(0)} ` +
+    `candidates=${pool.length} survivors=${survivors.length}`,
+  );
+  return result;
+}
+
+// Score every survivor and re-rank into the served pool. Split out of computePool
+// because it is the build's one remaining fully-synchronous loop: it builds a card
+// per survivor (up to CANDIDATE_CAP), then sorts and MMR-re-ranks them. With
+// node:sqlite synchronous and warm cache hits resolving without real I/O, that ran
+// as an unbroken block that held the event loop until the whole pool was scored —
+// starving every concurrent request (a watchlist save, /health) until it finished.
+// Yielding to the macrotask queue every YIELD_EVERY cards lets the loop service
+// live traffic between chunks; the output is identical, only the interleaving
+// changes. `survivors` carry their fetched detail + features + collab from
+// computePool's first pass; `profile` supplies the IDF corpus, taste vector and
+// calibration target; `language` picks trailers; `storedTonesFor` is the batched
+// tone lookup (so the card build never falls back to a per-survivor DB read).
+export async function rankCandidates(survivors, profile, language, storedTonesFor = getMovieToneSlugs) {
   // IDF over the corpus the user's rated films + these candidates form, so a
   // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
   // data-derived, not a hand-tuned family table. The profile vector and the
   // Bayesian quality prior's global mean both come from this same corpus.
-  const tScore = performance.now();
   const idf = buildIdf([...profile.ratedFeatureSets, ...survivors.map((s) => s.features)]);
   const profileVec = buildProfileVector(profile, idf);
   const globalMean = meanVoteAverage(survivors.map((s) => s.full));
 
-  const scored = survivors.map((s) => {
+  const scored = [];
+  let processed = 0;
+  for (const s of survivors) {
+    if (++processed % YIELD_EVERY === 0) await breathe();
     const crew = s.full.credits?.crew || [];
     // Confidence-weighted blend of personalised match and quality prior, with the
     // discovery lift for acclaimed-but-obscure films folded in; the Trakt co-watch
@@ -310,7 +345,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       voteAverage: s.full.vote_average, voteCount: s.full.vote_count, globalMean,
     });
     const collabBonus = COLLAB_WEIGHT * Math.tanh(s.collab / 2);
-    return {
+    scored.push({
       tmdb_id: s.id,
       imdb_id: s.full.external_ids?.imdb_id || null,
       title: s.full.title,
@@ -328,8 +363,8 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       trailers: pickTrailers(s.full.videos, language),
       services: s.services,
       score: Math.min(100, Math.round(base + collabBonus)),
-    };
-  });
+    });
+  }
 
   // Order by relevance, then re-rank the served head for genre calibration (keep
   // the mix close to the user's history) and diversity (no near-duplicate
@@ -340,18 +375,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
     profileGenreDist, idf,
   ).map((r) => r.card);
-  const result = ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
-  // The phase split inside the pool build: gather (source fan-out, mostly cached
-  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), score
-  // (the IDF + scoring + rerank pass — pure CPU, runs without a breathe()). A big
-  // scoreMs with a small dbMs upstream is the compute-bound signature.
-  const scoreMs = performance.now() - tScore;
-  log.info(
-    `[perf] pool phases user=${userId} gatherMs=${gatherMs.toFixed(0)} ` +
-    `detailsMs=${detailsMs.toFixed(0)} scoreMs=${scoreMs.toFixed(0)} ` +
-    `candidates=${pool.length} survivors=${survivors.length}`,
-  );
-  return result;
+  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, ...card }) => card);
 }
 
 // ---- recommendation cache + prebuild --------------------------------------

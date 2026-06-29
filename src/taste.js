@@ -4,7 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
+import { details, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -570,27 +570,29 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
   return { profileSize: cached.profileSize, results };
 }
 
-// Precompute one user's "all genres" pool plus one per TMDB genre, reusing a
-// single taste profile across them. Sequential to stay gentle on TMDB.
+// Precompute one user's unfiltered "all genres" pool — the Discover landing view,
+// the only pool we warm ahead of time. Per-genre pools build lazily the first time
+// a user actually selects that genre (recommend()'s cold-build path), then cache.
+//
+// Eagerly warming every TMDB genre used to fan ~17 sequential builds per user
+// through the single build worker; on the shared-cpu-1x host that monopolised the
+// one core for minutes (with a couple of users' prebuilds overlapping it pinned
+// detailsMs/rankMs into the tens of seconds), so a foreground "give me my picks"
+// request queued behind it — and it inflated the capped TMDB detail cache's
+// working set ~17x, thrashing it. Most of those genre pools were never viewed.
+// Warming just the landing pool keeps the worker free for the build users wait on
+// and shrinks the cache working set to what's actually browsed.
 export async function prebuildRecommendations(userId) {
   if (!tmdbConfigured()) return;
   const region = getUserSetting(userId, 'country', 'PL');
   const providerIds = (getUserSetting(userId, 'providers', []) || []).map(Number);
   const language = tmdbLang(getUserSetting(userId, 'language', DEFAULT_LANGUAGE));
-  // Prebuild warms the unfiltered pools (all genres + per genre); origin/indie
-  // filters are applied on demand at serve time from the Discover controls.
+  // origin/indie/tone filters are applied on demand at serve time from the
+  // Discover controls, so the prebuilt pool is the unfiltered default.
   const filters = resolveFilters();
   const profile = await buildProfile(userId);
   const ratings = getRatings(userId);
   await runBuild({ userId, region, providerIds, genreId: undefined, profile, ratings, language, filters });
-  let list = [];
-  try { list = (await tmdbGenres('movie')).genres || []; }
-  catch (e) { log.warn(`prebuild: genre list fetch failed for user ${userId}:`, e.message); return; }
-  for (const g of list) {
-    await breathe(); // let /health + live requests through between genres
-    try { await runBuild({ userId, region, providerIds, genreId: g.id, profile, ratings, language, filters }); }
-    catch (e) { log.warn(`prebuild genre ${g.name} failed for user ${userId}:`, e.message); }
-  }
 }
 
 // Debounced background prebuild, keyed per user so one user's burst of ratings
@@ -610,9 +612,9 @@ const prebuildRunner = boundedRunner(MAX_CONCURRENT_PREBUILDS, async (userId) =>
   if (pendingDirty.has(userId)) schedulePrebuild(userId, 1000);
 });
 // Tests run against a single-process server and assert on the deterministic
-// on-demand build that /api/recommend does. Background prebuilds (all-genres +
-// one pool per genre) would otherwise pile up on that one process and starve
-// those foreground builds, making render timings race. Off in e2e, on in prod.
+// on-demand build that /api/recommend does. A background prebuild (the all-genres
+// landing pool) would otherwise pile up on that one process and starve those
+// foreground builds, making render timings race. Off in e2e, on in prod.
 const PREBUILD_DISABLED = process.env.DISABLE_REC_PREBUILD === '1';
 function schedulePrebuild(userId, delay = 4000) {
   if (PREBUILD_DISABLED) return;

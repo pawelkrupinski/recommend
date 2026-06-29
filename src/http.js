@@ -5,7 +5,7 @@
 // is read + compressed once per process (assets re-load on deploy / `node --watch`).
 import { gzipSync, brotliCompressSync, constants as Z } from 'node:zlib';
 import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, access } from 'node:fs/promises';
 import { extname } from 'node:path';
 
 // Below this, compression framing overhead outweighs the saving — send raw.
@@ -138,29 +138,47 @@ async function load(absPath, ext) {
   };
 }
 
-// Nothing here is fingerprinted (index.html references a bare /app.js, /styles.css),
-// so every asset must revalidate on each load — otherwise a returning user keeps a
-// stale app.js for up to the max-age window while the fresh index.html loads against
-// it, and the two disagree (e.g. a new tab the old JS doesn't know how to render).
-// max-age=0 + the ETag conditional-GET makes the common case a cheap 304, and a
-// changed asset is served fresh immediately. Cloudflare passes these through
-// (cf-cache-status: DYNAMIC), so this is the only cache layer that matters.
-const cacheControlFor = () => 'public, max-age=0, must-revalidate';
+// Fingerprinted assets (the build's public/dist/app.<hash>.js & styles.<hash>.css)
+// carry their content hash in the URL, so a changed file is a *new* URL — the old
+// one can be cached forever. `immutable` tells the browser not to even revalidate
+// within the freshness window. The dist/ shell (index.html) is the exception: it
+// names the current hashes, so it must always revalidate to pick up a new deploy.
+//
+// Everything else is un-fingerprinted (raw public/, served in dev or as the
+// fallback shell), so it must revalidate on each load — otherwise a returning user
+// keeps a stale app.js for up to the max-age window while the fresh index.html
+// loads against it, and the two disagree. max-age=0 + the ETag conditional-GET
+// makes the common case a cheap 304, and a changed asset is served fresh
+// immediately. Cloudflare passes these through (cf-cache-status: DYNAMIC).
+const REVALIDATE = 'public, max-age=0, must-revalidate';
+const IMMUTABLE = 'public, max-age=31536000, immutable';
+const isFingerprinted = (rel) => rel.startsWith('dist/') && rel !== 'dist/index.html';
+const cacheControlFor = (rel) => (isFingerprinted(rel) ? IMMUTABLE : REVALIDATE);
 
-// Serve a file from PUBLIC with negotiation + caching. Returns false (404) if the
-// file is missing so the caller can fall through. `dir` must end in a slash.
-export async function serveStatic(req, res, dir, pathname) {
-  const rel = pathname === '/' ? 'index.html' : pathname.slice(1);
-  const ext = extname(rel);
+// The shell (index.html) is served from the build's public/dist/ when it exists —
+// that copy references the hashed asset URLs. In dev (no build) we fall back to the
+// raw public/index.html, which references bare /app.js & /styles.css. Resolved once
+// per directory; the process is short-lived relative to deploys.
+const shellRel = new Map();
+async function resolveShell(dir) {
+  if (!shellRel.has(dir)) {
+    shellRel.set(dir, await access(dir + 'dist/index.html').then(() => 'dist/index.html', () => 'index.html'));
+  }
+  return shellRel.get(dir);
+}
+
+// Serve one resolved file (rel) with negotiation + caching. Returns false when
+// it can't be read, so the caller can fall through (404 or a fallback shell).
+async function serveFile(req, res, dir, rel) {
   try {
     let entry = cache.get(rel);
-    if (!entry) cache.set(rel, (entry = await load(dir + rel, ext)));
+    if (!entry) cache.set(rel, (entry = await load(dir + rel, extname(rel))));
 
     const headers = {
       'content-type': entry.type,
       etag: entry.etag,
       vary: 'Accept-Encoding',
-      'cache-control': cacheControlFor(),
+      'cache-control': cacheControlFor(rel),
     };
     if (matches(req.headers['if-none-match'], entry.etag)) {
       res.writeHead(304, headers);
@@ -179,4 +197,17 @@ export async function serveStatic(req, res, dir, pathname) {
   } catch {
     return false;
   }
+}
+
+// Serve a file from PUBLIC with negotiation + caching. Returns false (404) if the
+// file is missing so the caller can fall through. `dir` must end in a slash.
+export async function serveStatic(req, res, dir, pathname) {
+  let rel = pathname === '/' ? 'index.html' : pathname.slice(1);
+  if (rel === 'index.html') rel = await resolveShell(dir);
+  if (await serveFile(req, res, dir, rel)) return true;
+  // The dist/ shell can momentarily vanish during a rebuild (or be missing if a
+  // memoized resolution went stale) — fall back to the raw template rather than
+  // 404 the homepage.
+  if (rel === 'dist/index.html' && !res.headersSent) return serveFile(req, res, dir, 'index.html');
+  return false;
 }

@@ -24,7 +24,11 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
   webServer: {
-    command: 'node src/server.js',
+    // Build the fingerprinted bundle first, then serve it — so e2e exercises the
+    // minified production assets (the import graph collapsed into one module),
+    // not the raw dev files. Catches any bundling/minification breakage in a real
+    // browser, which is exactly what ships.
+    command: 'npm run build && node src/server.js',
     url: `http://127.0.0.1:${PORT}/health`,
     reuseExistingServer: false,
     timeout: 30_000,

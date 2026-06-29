@@ -1,11 +1,15 @@
 # Fly.io config for the "filmowo" app (https://filmowo.fly.dev).
 #
-# Cheapest viable setup: one shared-cpu-1x machine that auto-stops to zero when
-# idle, so you only pay while it's actually serving requests. The DB setup is
-# unchanged from Render — SQLite on the machine's ephemeral disk, made durable
-# by Litestream streaming to Cloudflare R2 and restoring on boot (see
-# litestream.yml + docker-entrypoint.sh). No Fly volume is provisioned on
-# purpose; durability lives in R2, which keeps this the cheapest option.
+# Near-cheapest setup: one always-on shared-cpu-1x machine (~$2/mo). We keep one
+# machine running rather than scaling to zero so Fly's hosted Grafana
+# (fly-metrics.net) has something to scrape — it only collects metrics from
+# RUNNING machines, so a scale-to-zero app leaves the default platform
+# dashboards (CPU/RAM/network) empty. Staying warm also means wakes never pay
+# the ~40-60s Litestream DB restore cold start. The DB setup is unchanged from
+# Render — SQLite on the machine's ephemeral disk, made durable by Litestream
+# streaming to Cloudflare R2 and restoring on boot (see litestream.yml +
+# docker-entrypoint.sh). No Fly volume is provisioned on purpose; durability
+# lives in R2.
 app = "filmowo"
 primary_region = "arn"
 
@@ -20,14 +24,15 @@ primary_region = "arn"
 [http_service]
   internal_port = 9002
   force_https = true
-  # Scale toward zero when idle, but SUSPEND rather than stop: a suspended
-  # machine saves its full RAM+disk state and resumes in ~1s without re-running
-  # the entrypoint, so waking does NOT pay the ~40s Litestream DB restore that a
-  # full stop+restart does (the SQLite file stays warm on the resumed disk).
-  # Idle cost is just the rootfs storage — still the cheapest practical setup.
+  # Keep one machine always running (min_machines_running = 1) so Fly keeps
+  # scraping platform metrics into Grafana and the app stays warm. auto_stop is
+  # left as "suspend" so any EXTRA machines spun up under load suspend (saving
+  # full RAM+disk state, resuming in ~1s) rather than fully stopping; the
+  # primary machine never drops below the minimum, so it never pays the
+  # ~40-60s Litestream DB restore that a full stop+restart would.
   auto_stop_machines = "suspend"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [[http_service.checks]]
     # First boot (and any rare full stop) restores the DB from R2, which takes

@@ -380,9 +380,11 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
 // background rebuild scheduled; we only block when there's no cached pool at all
 // (a genre the warm hasn't reached) or when force=true (Refresh).
 export async function recommend({ userId, region, providerIds, genreId, limit = 30, force = false, language, filters }) {
+  const t0 = performance.now();
   filters = filters || resolveFilters();
   let cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
-  if (!cached || force) {
+  const built = !cached || force;
+  if (built) {
     cached = await buildAndCache({ userId, region, providerIds, genreId, language, filters });
   } else if (cached.gen !== currentGen(userId)) {
     ensurePrebuild(userId); // refresh in the background; serve the stale pool now
@@ -396,6 +398,9 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
     .filter((m) => !excluded.has(`movie:${m.tmdb_id}`))
     .slice(0, limit)
     .map((m) => ({ ...m }));
+  // A synchronous (cache-served) build is the suspected loop-blocker; logging
+  // ms with built= lets prod tell a cheap cache hit from a full rebuild.
+  log.info(`[perf] recommend build user=${userId} ms=${(performance.now() - t0).toFixed(0)} items=${results.length} built=${built}`);
   return { profileSize: cached.profileSize, results };
 }
 
@@ -538,6 +543,8 @@ export async function creditImdbIds(tmdbId, mediaType = 'movie') {
 // and live traffic aren't starved (see the breathe() rationale).
 export async function backfillWatchlistCards() {
   if (!tmdbConfigured()) return;
+  const t0 = performance.now();
+  let enriched = 0;
   for (const u of listUsers()) {
     const rows = watchlistNeedingEnrichment(u.id);
     if (!rows.length) continue;
@@ -549,7 +556,11 @@ export async function backfillWatchlistCards() {
       try {
         const item = await enrichWatchlistItem({ tmdb_id: r.tmdb_id, region, providerIds, language });
         setWatchlistCard(u.id, r.tmdb_id, r.media_type, item);
+        enriched++;
       } catch (e) { log.warn(`watchlist backfill failed for user ${u.id}/${r.tmdb_id}:`, e.message); }
     }
   }
+  // One line per boot-time pass: how long the enrichment ran and how much it
+  // touched, so a slow backfill is visible against first-byte spikes in the log.
+  log.info(`[perf] watchlist backfill done ms=${(performance.now() - t0).toFixed(0)} items=${enriched}`);
 }

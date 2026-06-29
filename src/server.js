@@ -20,6 +20,7 @@ import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
 import { CONTINENTS } from './geo.js';
 import { log } from './log.js';
+import { startPerfMonitor } from './perf.js';
 
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
@@ -399,6 +400,10 @@ if (isMain) {
     log.error('server error:', err);
     process.exit(1);
   });
+
+  // Sample event-loop lag and flag stalls so the Fly logs reveal whether slow
+  // first-byte times are the shared CPU blocking under synchronous work.
+  startPerfMonitor();
 
   server.listen(PORT, () => {
     log.info(`🎬  recommend running →  http://localhost:${PORT}`);

@@ -154,7 +154,9 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rb {
   font-size: 11px; font-weight: 700; line-height: 1; padding: 3px 6px;
   border-radius: 5px; border: 1px solid var(--line); white-space: nowrap;
+  text-decoration: none; cursor: pointer;
 }
+@media (hover: hover) { a.rb:hover { filter: brightness(1.1); } }
 .rb.imdb { color: #000; background: var(--accent); border-color: var(--accent); }
 .rb.mc { color: #fff; }
 .rb.mc.good { background: #00a868; border-color: #00a868; }

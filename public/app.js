@@ -41,14 +41,20 @@ const poster = (p) => (p ? `${IMG}/w342${p}` : 'data:image/svg+xml,%3Csvg xmlns=
 // Minutes → "1h 47m" / "47m". Empty string when runtime is missing or zero.
 const runtime = (min) => (min ? `${min >= 60 ? `${Math.floor(min / 60)}h ` : ''}${min % 60}m`.trim() : '');
 
-// IMDb (0–10) + Metacritic (0–100) badges. MC uses its own green/yellow/red
-// tiers (≥61 good, 40–60 mixed, ≤39 bad). Each badge only shows when present.
+// IMDb (0–10) + Metacritic (0–100) badges, each a link out to its source. MC uses
+// its own green/yellow/red tiers (≥61 good, 40–60 mixed, ≤39 bad). Each badge only
+// shows when present. The IMDb badge deep-links to the title page when we know its
+// id; both fall back to an on-site title search keyed on the film's name.
 const mcTier = (n) => (n >= 61 ? 'good' : n >= 40 ? 'mixed' : 'bad');
+const imdbTitleHref = (m) => (m.imdb_id
+  ? `https://www.imdb.com/title/${m.imdb_id}/`
+  : `https://www.imdb.com/find/?s=tt&q=${encodeURIComponent(m.title || '')}`);
+const metacriticHref = (m) => `https://www.metacritic.com/search/${encodeURIComponent(m.title || '')}/`;
 function ratingBadges(m) {
   const imdb = m.imdbRating != null
-    ? `<span class="rb imdb" title="IMDb rating">IMDb ${m.imdbRating.toFixed(1)}</span>` : '';
+    ? `<a class="rb imdb" href="${imdbTitleHref(m)}" target="_blank" rel="noopener" title="View on IMDb">IMDb ${m.imdbRating.toFixed(1)}</a>` : '';
   const mc = m.metascore != null
-    ? `<span class="rb mc ${mcTier(m.metascore)}" title="Metacritic Metascore">MC ${m.metascore}</span>` : '';
+    ? `<a class="rb mc ${mcTier(m.metascore)}" href="${metacriticHref(m)}" target="_blank" rel="noopener" title="View on Metacritic">MC ${m.metascore}</a>` : '';
   return imdb || mc ? `<div class="ratings">${imdb}${mc}</div>` : '';
 }
 

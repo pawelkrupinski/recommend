@@ -168,6 +168,7 @@ test('watchlist persists rich card fields and returns them flattened', () => {
   const u = newUser();
   db.addToWatchlist({
     user_id: u.id, tmdb_id: 603, title: 'The Matrix', year: 1999, poster_path: '/m.jpg',
+    imdb_id: 'tt0133093',
     vote_average: 8.2, runtime: 136, genres: ['Action', 'Sci-Fi'],
     services: [{ id: 8, name: 'Netflix', logo: '/n.png' }],
     imdbRating: 8.7, metascore: 73, overview: 'A hacker learns the truth.',
@@ -176,6 +177,7 @@ test('watchlist persists rich card fields and returns them flattened', () => {
   });
   const [w] = db.getWatchlist(u.id);
   assert.equal(w.title, 'The Matrix');
+  assert.equal(w.imdb_id, 'tt0133093', 'imdb_id persists so the badge can deep-link to the title page');
   assert.equal(w.vote_average, 8.2);
   assert.equal(w.runtime, 136);
   assert.deepEqual(w.genres, ['Action', 'Sci-Fi']);

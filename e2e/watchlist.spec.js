@@ -115,6 +115,31 @@ test('the Watchlist remembers the last chosen sort on a fresh visit (no URL quer
   await expect(titles).toHaveText(['High', 'Mid', 'Low']);
 });
 
+test('the IMDb and Metacritic badges are links out to their sources', async ({ page }) => {
+  await login(page, uniqEmail('rating-badge-links'));
+
+  // Save two titles: one carrying its IMDb id (deep-links to the title page) and
+  // one without (falls back to an IMDb title search). Both carry a Metascore.
+  await page.evaluate(async () => {
+    const save = (b) => fetch('/api/watchlist', { method: 'POST',
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) });
+    await save({ tmdb_id: 603, title: 'The Matrix', year: 1999, imdb_id: 'tt0133093', imdbRating: 8.7, metascore: 73 });
+    await save({ tmdb_id: 999, title: 'No Id Film', year: 2020, imdbRating: 6.1, metascore: 55 });
+  });
+
+  await page.goto('/watchlist');
+  const withId = page.locator('#watchlist-grid .card', { hasText: 'The Matrix' });
+  const noId = page.locator('#watchlist-grid .card', { hasText: 'No Id Film' });
+
+  // Both badges render as real anchors (ctrl/middle-clickable into a new tab).
+  await expect(withId.locator('a.rb.imdb')).toHaveAttribute('href', 'https://www.imdb.com/title/tt0133093/');
+  await expect(withId.locator('a.rb.mc')).toHaveAttribute('href', /metacritic\.com\/search\/The%20Matrix/);
+  await expect(withId.locator('a.rb.imdb')).toHaveAttribute('target', '_blank');
+
+  // Without an IMDb id the badge falls back to an on-site title search.
+  await expect(noId.locator('a.rb.imdb')).toHaveAttribute('href', /imdb\.com\/find\/\?s=tt&q=No%20Id%20Film/);
+});
+
 test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
   await login(page, uniqEmail('watch-hide'));
   await enterPicks(page);

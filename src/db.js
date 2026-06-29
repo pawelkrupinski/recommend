@@ -545,6 +545,27 @@ const _getMovieToneSlugs = db.prepare(
 export function getMovieToneSlugs(tmdb_id, media_type = 'movie') {
   return _getMovieToneSlugs.all(tmdb_id, media_type).map((r) => r.slug);
 }
+// The batched form: stored tone slugs for a SET of titles in one query, as
+// Map<tmdb_id, slug[]>. A build resolves tones for up to CANDIDATE_CAP titles,
+// so calling getMovieToneSlugs() per title was a 500+-query N+1 (the measured
+// loop-stall culprit); this collapses it to one IN-scan the PK already covers.
+// ids absent from the returned map simply have no stored tones. The IN-list fits
+// SQLite's variable cap (32766) comfortably for any realistic pool.
+export function getMovieToneSlugsBatch(ids, media_type = 'movie') {
+  const map = new Map();
+  if (!ids.length) return map;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT DISTINCT tmdb_id, slug FROM movie_tones
+     WHERE media_type = ? AND slug != '_none' AND tmdb_id IN (${placeholders})`,
+  ).all(media_type, ...ids);
+  for (const { tmdb_id, slug } of rows) {
+    const list = map.get(tmdb_id);
+    if (list) list.push(slug);
+    else map.set(tmdb_id, [slug]);
+  }
+  return map;
+}
 const _movieToneSourceAge = db.prepare(
   'SELECT MAX(updated_at) AS at FROM movie_tones WHERE tmdb_id = ? AND media_type = ? AND source = ?'
 );

@@ -6,7 +6,7 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
-  watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs } from './db.js';
+  watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
@@ -56,13 +56,13 @@ const COLLAB_WEIGHT = 15;
 // (genre:28, keyword:9663…), `label` its human name for the insights page. The
 // id format lives only here so featuresOf (hot scoring path) and the insights
 // labels stay in lock-step.
-function featureEntries(movie) {
+function featureEntries(movie, storedTonesFor = getMovieToneSlugs) {
   const e = [];
   for (const g of movie.genres || []) e.push([`genre:${g.id}`, g.name]);
   for (const k of movie.keywords?.keywords || []) e.push([`keyword:${k.id}`, k.name]);
   // Tone tags (heartfelt, deadpan…) derived from keywords + Netflix membership,
   // scored like any other feature so the profile learns a user's mood affinities.
-  for (const s of toneSlugs(movie)) e.push([`tone:${s}`, toneLabel(s)]);
+  for (const s of toneSlugs(movie, 'movie', storedTonesFor)) e.push([`tone:${s}`, toneLabel(s)]);
   const crew = movie.credits?.crew || [];
   for (const d of crew.filter((c) => c.job === 'Director')) e.push([`director:${d.id}`, d.name]);
   for (const a of (movie.credits?.cast || []).slice(0, CAST_DEPTH)) e.push([`cast:${a.id}`, a.name]);
@@ -73,8 +73,8 @@ function featureEntries(movie) {
 
 // Just the feature ids — what scoring works in. (featureEntries also carries the
 // human labels the insights page needs.)
-function featuresOf(movie) {
-  return featureEntries(movie).map(([id]) => id);
+function featuresOf(movie, storedTonesFor = getMovieToneSlugs) {
+  return featureEntries(movie, storedTonesFor).map(([id]) => id);
 }
 
 // node:sqlite is fully synchronous and warm TMDB cache hits resolve without real
@@ -106,6 +106,11 @@ export async function buildProfile(userId, { labels } = {}) {
   const ratings = getRatings(userId).filter((r) => r.media_type === 'movie');
   if (!ratings.length) return EMPTY_PROFILE();
 
+  // Resolve every rated title's stored tones in one query, like the candidate
+  // pool, so featureEntries below isn't a per-rating N+1.
+  const ratedTones = getMovieToneSlugsBatch(ratings.map((r) => r.tmdb_id));
+  const storedTonesFor = (id) => ratedTones.get(id) || [];
+
   const mean = ratings.reduce((s, r) => s + r.rating, 0) / ratings.length;
   const pos = new Map(), neg = new Map(), counts = new Map();
   const ratedFeatureSets = [], genreLists = [];
@@ -116,7 +121,7 @@ export async function buildProfile(userId, { labels } = {}) {
     let movie;
     try { movie = await details(r.tmdb_id, 'movie'); } catch { continue; }
     const delta = r.rating - mean; // liked-vs-typical signal
-    const entries = featureEntries(movie);
+    const entries = featureEntries(movie, storedTonesFor);
     if (labels) for (const [id, label] of entries) labels.set(id, label);
     const feats = entries.map(([id]) => id);
     ratedFeatureSets.push(feats);
@@ -250,6 +255,12 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
   // preserves it, so the strongest fresh sources fill the budget first.
   const pool = [...candidates.values()].filter((m) => !consumed.has(m.id)).slice(0, CANDIDATE_CAP);
 
+  // Prefetch every candidate's stored tones in ONE query, then read them from the
+  // map below (filter, features, scoring). Per-title getMovieToneSlugs() here was
+  // a CANDIDATE_CAP-sized N+1 — the measured ~11s of synchronous DB per build.
+  const candidateTones = getMovieToneSlugsBatch(pool.map((m) => m.id));
+  const storedTonesFor = (id) => candidateTones.get(id) || [];
+
   // First pass: fetch details, apply the hard filters + streamability gate, and
   // collect each survivor's features/votes. We score in a second pass because the
   // IDF feature weights depend on the whole candidate corpus.
@@ -270,12 +281,12 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
     if (filters.indie && !isIndie(full)) continue;
     // Tone filter (the Discover "tone" control / a ?tag= deep link): hard-drop
     // titles that don't carry the chosen tone, same model as the genre filter.
-    if (filters.tone && !toneSlugs(full).includes(filters.tone)) continue;
+    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) continue;
     // Drop titles not on a chosen service in the user's region; otherwise keep
     // the matched services so the card can show (and deep-link) each one.
     const services = userServices(full, region, userSet);
     if (!services.length) continue;
-    survivors.push({ id: m.id, full, services, features: featuresOf(full), collab: collab.get(m.id) || 0 });
+    survivors.push({ id: m.id, full, services, features: featuresOf(full, storedTonesFor), collab: collab.get(m.id) || 0 });
   }
 
   const detailsMs = performance.now() - tDetails;
@@ -310,7 +321,7 @@ async function computePool({ userId, region, providerIds, genreId, profile, rati
       vote_average: s.full.vote_average,
       genres: (s.full.genres || []).map((g) => g.name),
       genreIds: (s.full.genres || []).map((g) => g.id),
-      tones: tonesForMovie(s.full),
+      tones: tonesForMovie(s.full, 'movie', storedTonesFor),
       features: s.features,
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),

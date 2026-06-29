@@ -5,6 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tokenize, classify, modelReady } from '../../src/tone-model.js';
+import { isTone } from '../../src/tones.js';
 
 const MODEL = {
   bias: { deadpan: -1, heartfelt: -1, gritty: -1 },
@@ -45,7 +46,10 @@ test('classify ignores model weights for slugs outside the vocabulary', () => {
   assert.deepEqual(classify('awkward', { model: bad }), [], 'unknown slug never surfaces');
 });
 
-test('the committed (untrained) model reports not-ready and classifies to nothing', () => {
-  assert.equal(modelReady(), false, 'no weights shipped yet → not ready');
-  assert.deepEqual(classify('awkward sardonic family love'), [], 'untrained model tags nothing');
+test('the committed (trained) model classifies real synopses into valid vocabulary', () => {
+  assert.equal(modelReady(), true, 'a trained model ships (weights present)');
+  assert.deepEqual(classify(''), [], 'empty text → no tones');
+  const romance = classify('a sweeping romance about love, marriage and a wedding');
+  assert.ok(romance.includes('romantic'), 'a clearly romantic synopsis predicts romantic');
+  assert.ok(romance.every(isTone) && romance.length <= 4, 'predictions are valid slugs, capped');
 });

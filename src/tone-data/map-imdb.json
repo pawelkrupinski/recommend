@@ -1,1 +1,551 @@
-{}
+{
+  "absurd": [
+    "quirky"
+  ],
+  "absurdist": [
+    "quirky"
+  ],
+  "absurdist-comedy": [
+    "quirky"
+  ],
+  "acid-trip": [
+    "mind-bending"
+  ],
+  "adult-comedy": [
+    "irreverent"
+  ],
+  "adult-humor": [
+    "irreverent"
+  ],
+  "anxiety": [
+    "suspenseful"
+  ],
+  "b-movie": [
+    "campy"
+  ],
+  "biting-satire": [
+    "satirical"
+  ],
+  "bittersweet": [
+    "heartfelt",
+    "melancholic"
+  ],
+  "black-comedy": [
+    "dark"
+  ],
+  "black-humor": [
+    "dark"
+  ],
+  "black-satire": [
+    "dark",
+    "satirical"
+  ],
+  "bleak": [
+    "dark",
+    "melancholic"
+  ],
+  "blue-comedy": [
+    "irreverent"
+  ],
+  "breaking-the-fourth-wall": [
+    "quirky",
+    "satirical"
+  ],
+  "brutal": [
+    "gritty"
+  ],
+  "camp": [
+    "campy"
+  ],
+  "campy": [
+    "campy"
+  ],
+  "cerebral": [
+    "cerebral"
+  ],
+  "cheesy": [
+    "campy"
+  ],
+  "clean-comedy": [
+    "wholesome"
+  ],
+  "cozy": [
+    "cozy"
+  ],
+  "crude-humor": [
+    "irreverent"
+  ],
+  "dark": [
+    "dark"
+  ],
+  "dark-comedy": [
+    "dark"
+  ],
+  "dark-humor": [
+    "dark"
+  ],
+  "dark-satire": [
+    "dark",
+    "satirical"
+  ],
+  "dark-themes": [
+    "dark"
+  ],
+  "deadpan": [
+    "deadpan"
+  ],
+  "deadpan-comedy": [
+    "deadpan"
+  ],
+  "deadpan-humor": [
+    "deadpan"
+  ],
+  "despairing": [
+    "melancholic"
+  ],
+  "disturbing": [
+    "dark"
+  ],
+  "domestic-drama": [
+    "cozy"
+  ],
+  "dread": [
+    "suspenseful"
+  ],
+  "dreamlike": [
+    "mind-bending"
+  ],
+  "dry-comedy": [
+    "deadpan"
+  ],
+  "dry-humor": [
+    "deadpan"
+  ],
+  "dry-wit": [
+    "deadpan"
+  ],
+  "eccentric": [
+    "quirky"
+  ],
+  "edge-of-your-seat": [
+    "suspenseful"
+  ],
+  "elegiac": [
+    "melancholic"
+  ],
+  "emotional": [
+    "heartfelt"
+  ],
+  "everyday-life": [
+    "cozy"
+  ],
+  "existential": [
+    "cerebral",
+    "melancholic"
+  ],
+  "existentialism": [
+    "cerebral",
+    "melancholic"
+  ],
+  "exploitation": [
+    "campy"
+  ],
+  "family-friendly": [
+    "wholesome"
+  ],
+  "feel-good": [
+    "feel-good"
+  ],
+  "feel-good-film": [
+    "feel-good"
+  ],
+  "feel-good-movie": [
+    "feel-good"
+  ],
+  "film-noir": [
+    "gritty"
+  ],
+  "fish-out-of-water": [
+    "quirky"
+  ],
+  "flashback-within-a-flashback": [
+    "mind-bending"
+  ],
+  "foreboding": [
+    "suspenseful"
+  ],
+  "gore": [
+    "dark"
+  ],
+  "gothic": [
+    "dark"
+  ],
+  "gritty": [
+    "gritty"
+  ],
+  "gross-out": [
+    "irreverent"
+  ],
+  "gross-out-comedy": [
+    "irreverent"
+  ],
+  "hard-boiled": [
+    "gritty"
+  ],
+  "heartening": [
+    "feel-good",
+    "wholesome"
+  ],
+  "heartwarming": [
+    "heartfelt"
+  ],
+  "high-brow": [
+    "cerebral"
+  ],
+  "idyllic": [
+    "cozy"
+  ],
+  "inspirational": [
+    "feel-good"
+  ],
+  "intellectual": [
+    "cerebral"
+  ],
+  "introspective": [
+    "cerebral"
+  ],
+  "irreverent": [
+    "irreverent"
+  ],
+  "kitschy": [
+    "campy"
+  ],
+  "kooky": [
+    "quirky"
+  ],
+  "lampoon": [
+    "satirical"
+  ],
+  "life-affirming": [
+    "feel-good"
+  ],
+  "longing": [
+    "melancholic"
+  ],
+  "love-story": [
+    "romantic"
+  ],
+  "love-triangle": [
+    "romantic"
+  ],
+  "low-stakes": [
+    "cozy"
+  ],
+  "macabre": [
+    "dark"
+  ],
+  "madcap": [
+    "quirky"
+  ],
+  "madcap-comedy": [
+    "quirky"
+  ],
+  "melancholic": [
+    "melancholic"
+  ],
+  "melancholy": [
+    "melancholic"
+  ],
+  "meta-humor": [
+    "satirical",
+    "quirky"
+  ],
+  "metaphysical": [
+    "cerebral",
+    "mind-bending"
+  ],
+  "mind-bending": [
+    "mind-bending"
+  ],
+  "mockumentary": [
+    "satirical",
+    "quirky"
+  ],
+  "morbid": [
+    "dark"
+  ],
+  "morbid-humor": [
+    "dark"
+  ],
+  "mournful": [
+    "melancholic"
+  ],
+  "moving": [
+    "heartfelt"
+  ],
+  "multiple-time-frames": [
+    "mind-bending"
+  ],
+  "nail-biting": [
+    "suspenseful"
+  ],
+  "neo-noir": [
+    "gritty"
+  ],
+  "nerve-wracking": [
+    "suspenseful"
+  ],
+  "nihilistic": [
+    "dark"
+  ],
+  "noir": [
+    "gritty"
+  ],
+  "noir-comedy": [
+    "dark",
+    "quirky"
+  ],
+  "nonlinear": [
+    "mind-bending"
+  ],
+  "nonlinear-narrative": [
+    "mind-bending"
+  ],
+  "nonlinear-timeline": [
+    "mind-bending"
+  ],
+  "nostalgia": [
+    "melancholic"
+  ],
+  "nostalgic": [
+    "melancholic"
+  ],
+  "offbeat": [
+    "quirky"
+  ],
+  "offensive-humor": [
+    "irreverent"
+  ],
+  "optimistic": [
+    "feel-good"
+  ],
+  "over-the-top": [
+    "campy"
+  ],
+  "paranoia": [
+    "suspenseful"
+  ],
+  "parody": [
+    "satirical"
+  ],
+  "philosophical": [
+    "cerebral"
+  ],
+  "pitch-black-comedy": [
+    "dark"
+  ],
+  "plot-twist": [
+    "mind-bending"
+  ],
+  "poignant": [
+    "heartfelt"
+  ],
+  "political-satire": [
+    "satirical"
+  ],
+  "psychological-thriller": [
+    "suspenseful"
+  ],
+  "pulp": [
+    "campy"
+  ],
+  "quirky": [
+    "quirky"
+  ],
+  "quirky-humor": [
+    "quirky"
+  ],
+  "raunchy": [
+    "irreverent"
+  ],
+  "raunchy-comedy": [
+    "irreverent"
+  ],
+  "raunchy-humor": [
+    "irreverent"
+  ],
+  "raw": [
+    "gritty"
+  ],
+  "reality-bending": [
+    "mind-bending"
+  ],
+  "romance": [
+    "romantic"
+  ],
+  "romantic": [
+    "romantic"
+  ],
+  "romantic-comedy": [
+    "romantic",
+    "quirky"
+  ],
+  "romantic-drama": [
+    "romantic"
+  ],
+  "satire": [
+    "satirical"
+  ],
+  "satirical": [
+    "satirical"
+  ],
+  "schlocky": [
+    "campy"
+  ],
+  "screwball": [
+    "quirky"
+  ],
+  "screwball-comedy": [
+    "quirky"
+  ],
+  "self-deprecating-humor": [
+    "deadpan"
+  ],
+  "send-up": [
+    "satirical"
+  ],
+  "sentimental": [
+    "heartfelt"
+  ],
+  "shock-humor": [
+    "irreverent"
+  ],
+  "sinister": [
+    "dark"
+  ],
+  "slice-of-life": [
+    "cozy"
+  ],
+  "small-town": [
+    "cozy"
+  ],
+  "social-commentary": [
+    "satirical"
+  ],
+  "social-satire": [
+    "satirical"
+  ],
+  "somber": [
+    "melancholic"
+  ],
+  "spoof": [
+    "satirical"
+  ],
+  "star-crossed-lovers": [
+    "romantic"
+  ],
+  "straight-faced-comedy": [
+    "deadpan"
+  ],
+  "surreal": [
+    "mind-bending"
+  ],
+  "surrealism": [
+    "mind-bending"
+  ],
+  "suspense": [
+    "suspenseful"
+  ],
+  "tear-jerker": [
+    "heartfelt"
+  ],
+  "tearjerker": [
+    "heartfelt"
+  ],
+  "tense": [
+    "suspenseful"
+  ],
+  "tension": [
+    "suspenseful"
+  ],
+  "thought-provoking": [
+    "cerebral"
+  ],
+  "thrilling": [
+    "suspenseful"
+  ],
+  "tongue-in-cheek": [
+    "quirky",
+    "satirical"
+  ],
+  "touching": [
+    "heartfelt"
+  ],
+  "trashy": [
+    "campy"
+  ],
+  "triumphant": [
+    "feel-good"
+  ],
+  "twist-ending": [
+    "mind-bending"
+  ],
+  "underdog-story": [
+    "feel-good",
+    "heartfelt"
+  ],
+  "understated-comedy": [
+    "deadpan"
+  ],
+  "understated-humor": [
+    "deadpan"
+  ],
+  "unflinching": [
+    "gritty"
+  ],
+  "unreliable-narrator": [
+    "mind-bending"
+  ],
+  "upbeat": [
+    "feel-good"
+  ],
+  "uplifting": [
+    "feel-good"
+  ],
+  "uplifting-ending": [
+    "feel-good"
+  ],
+  "vulgar": [
+    "irreverent"
+  ],
+  "vulgar-comedy": [
+    "irreverent"
+  ],
+  "vulgar-humor": [
+    "irreverent"
+  ],
+  "wacky": [
+    "quirky"
+  ],
+  "whimsical": [
+    "quirky"
+  ],
+  "wholesome": [
+    "wholesome"
+  ],
+  "will-they-wont-they": [
+    "romantic"
+  ],
+  "wistful": [
+    "melancholic"
+  ],
+  "wistfulness": [
+    "melancholic"
+  ],
+  "wry-humor": [
+    "deadpan"
+  ],
+  "zany": [
+    "quirky"
+  ]
+}

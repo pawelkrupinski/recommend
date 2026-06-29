@@ -19,6 +19,19 @@ export const db = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA busy_timeout = 5000');
 
+// Performance tuning — all safe under WAL on this Litestream-replicated,
+// regenerable DB (a crash can at worst lose the last few committed txns, which
+// the replica restores).
+//   synchronous = NORMAL — fsync only at WAL checkpoints, not on every commit;
+//     the binding write cost on the slow shared-CPU Fly disk.
+//   cache_size  = -64000 — 64 MB page cache (negative value = KiB) so hot
+//     pages/indices stay in memory instead of re-reading from disk.
+//   mmap_size   = 30000000 — ~30 MB memory-mapped reads, skipping read()
+//     syscalls for the hot region.
+db.exec('PRAGMA synchronous = NORMAL');
+db.exec('PRAGMA cache_size = -64000');
+db.exec('PRAGMA mmap_size = 30000000');
+
 // ---- schema ---------------------------------------------------------------
 // Per-user tables carry user_id in their primary key. Fresh installs get these
 // straight away; existing single-user DBs are upgraded by migrate() below.
@@ -118,6 +131,25 @@ db.exec(`
     PRIMARY KEY (tmdb_id, media_type, source, slug)
   );
 `);
+
+// ---- indices --------------------------------------------------------------
+// Cover the hot "most-recent-first per user" reads and the cache eviction sweep
+// so the planner walks an index in order instead of full-scanning + building a
+// TEMP B-TREE to sort (event-loop time on the shared CPU). Column ORDER matches
+// each query's ORDER BY direction exactly so the index is actually chosen:
+//   - watchlist / ratings: ORDER BY <ts> DESC after a user_id filter.
+//   - cache eviction (kv-cache.js): ORDER BY fetched_at DESC, key — so the
+//     index is (fetched_at DESC, key) and the sweep scans it as a covering
+//     index with no temp b-tree.
+// movie_tones needs no extra index: its primary key already prefixes every
+// lookup (tmdb_id, media_type[, source]), so those SEARCH via the autoindex.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_watchlist_user_added ON watchlist(user_id, added_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_ratings_user_rated   ON ratings(user_id, rated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_cache_fetched_key    ON cache(fetched_at DESC, key);
+`);
+// Give the planner row-count stats so it picks the new indices. Once at load.
+db.exec('ANALYZE');
 
 // ---- migration: single-user → multi-user ----------------------------------
 // A v1 DB has ratings/dismissed/not_seen WITHOUT a user_id column (the CREATE IF

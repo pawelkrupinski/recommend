@@ -6,13 +6,15 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, genres as tmdbGenres, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
-  watchlistNeedingEnrichment, setWatchlistCard } from './db.js';
+  watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
-import { toneSlugs, tonesForMovie, isTone } from './tones.js';
-import { boundedRunner } from './concurrency.js';
+import { isTone, orderTones } from './tones.js';
+import { toneSlugs, tonesForMovie } from './tone-store.js';
+import { resolveTones } from './tone-sources.js';
+import { boundedRunner, mapPool } from './concurrency.js';
 import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
 import { log } from './log.js';
 
@@ -323,6 +325,22 @@ function poolKey(userId, region, providerIds, genreId, language, filters) {
 }
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 
+// How many tone resolutions run concurrently — small, so the scraper feeders stay
+// well under IMDb/Letterboxd limits (the model feeder is local/instant).
+const TONE_RESOLVE_CONCURRENCY = 5;
+// Resolve the per-title tone feeders for a batch of cards, then fold the freshly
+// stored slugs into each card's `tones` so the just-built pool reflects them
+// immediately (later builds pick them up via tonesForMovie). resolveTones is
+// TTL-skipped + per-source isolated, so this is cheap on warm titles and never
+// fails a build. A no-op when no feeder is configured (no proxy, untrained model).
+async function resolveToneTags(cards) {
+  await mapPool(cards, TONE_RESOLVE_CONCURRENCY, async (card) => {
+    await resolveTones(card);
+    const slugs = new Set([...(card.tones || []).map((t) => t.slug), ...getMovieToneSlugs(card.tmdb_id)]);
+    card.tones = orderTones([...slugs]);
+  });
+}
+
 // Compute one pool and store it under the user's current generation.
 async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
   profile = profile || (await buildProfile(userId));
@@ -332,6 +350,10 @@ async function buildAndCache({ userId, region, providerIds, genreId, profile, ra
   // Enrich the top of the pool with IMDb/Metacritic ratings here (background) so
   // serving is a pure cache read — these lookups hit the web on a cold cache.
   await attachRatings(pool.slice(0, ENRICH_COUNT));
+  // Resolve the per-title tone feeders (IMDb/Letterboxd scrapes, local model) for
+  // the same head and fold the results into each card's tones. TTL-skipped inside
+  // resolveTones, so repeat builds across genres re-scrape nothing.
+  await resolveToneTags(pool.slice(0, ENRICH_COUNT));
   const value = { gen: currentGen(userId), profileSize: profile.count, pool };
   cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), value);
   return value;
@@ -453,6 +475,10 @@ export function warmRecommendations() {
 export async function enrichWatchlistItem({ tmdb_id, region, providerIds, language }) {
   const full = await details(tmdb_id, 'movie', language);
   const crew = full.credits?.crew || [];
+  // Resolve the per-title tone feeders for this saved title (TTL-skipped) so its
+  // tones match a Discover pick's, then read them back (live ∪ stored) below.
+  await resolveTones({ tmdb_id, imdb_id: full.external_ids?.imdb_id || null, title: full.title,
+    year: Number((full.release_date || '').slice(0, 4)) || null, overview: full.overview });
   const item = {
     imdb_id: full.external_ids?.imdb_id || null, // attachRatings needs this; not stored
     title: full.title,                           // ditto (metacritic lookup keys on title)

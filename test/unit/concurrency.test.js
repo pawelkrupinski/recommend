@@ -4,9 +4,35 @@
 // in flight and inspect concurrency.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { boundedRunner } from '../../src/concurrency.js';
+import { boundedRunner, mapPool } from '../../src/concurrency.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test('mapPool runs every item, never more than `limit` at once', async () => {
+  let live = 0, maxLive = 0;
+  const done = [];
+  await mapPool([1, 2, 3, 4, 5, 6, 7], 3, async (n) => {
+    live++; maxLive = Math.max(maxLive, live);
+    await tick();
+    done.push(n);
+    live--;
+  });
+  assert.equal(maxLive, 3, 'concurrency capped at the limit');
+  assert.deepEqual(done.sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7], 'every item ran');
+});
+
+test('mapPool isolates a throwing item — the batch still completes', async () => {
+  const done = [];
+  await mapPool([1, 2, 3], 2, async (n) => {
+    if (n === 2) throw new Error('boom');
+    done.push(n);
+  });
+  assert.deepEqual(done.sort((a, b) => a - b), [1, 3], 'the other items still ran');
+});
+
+test('mapPool over an empty list resolves immediately', async () => {
+  await mapPool([], 4, async () => { throw new Error('should not run'); });
+});
 
 test('never runs more than `limit` jobs at once; the rest queue (FIFO)', async () => {
   const finishers = [];        // resolve fns for in-flight jobs, in start order

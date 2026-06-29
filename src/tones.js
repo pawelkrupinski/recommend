@@ -1,13 +1,20 @@
-// Tone tags — the mood/feel vocabulary ("heartfelt", "deadpan", …) layered on
-// top of TMDB's structured genres. A title's tones are *derived*, not stored:
-//   1. from its TMDB keywords (already on the /movie detail we fetch) via a
-//      keyword-id → tone map harvested from TMDB (scripts/harvest-tmdb-tones.js),
-//   2. from Netflix microgenre membership via a tmdb-id → tone map scraped from
-//      Netflix (scripts/harvest-netflix-tones.js).
-// Both maps are committed JSON under src/data so derivation needs no extra
-// network call and no DB table — it rides on the TMDB detail computePool already
-// has. The harvesters only *expand* the seed maps; the seeds keep the feature
-// (and its tests) working before/independently of a harvest run.
+// Tone vocabulary + the cross-service crosswalk (pure; no DB, no network — so it
+// unit-tests without a database).
+//
+// One canonical vocabulary (TONES) sits above every source. Each source speaks
+// its own dialect — TMDB keyword ids, IMDb keyword strings, Letterboxd nanogenre
+// names, Netflix microgenre membership — and a per-source *crosswalk* maps those
+// raw tags onto canonical slugs. So TMDB keyword 212569, IMDb "deadpan-humor",
+// Letterboxd "Deadpan, Dry, Sardonic" and the local model all collapse to `deadpan`.
+//
+// Crosswalk files live under src/tone-data as map-<service>.json. Two shapes:
+//   - vocabulary maps (raw tag → [slug]): map-tmdb (keyword id), map-imdb
+//     (keyword string), map-letterboxd (nanogenre name);
+//   - membership maps (tmdb id → [slug]): map-netflix.
+// The harvest scripts only *expand* these; the committed seeds keep tones working
+// before/independently of a harvest, and the loaders degrade to {} when a file is
+// absent. The DB-backed aggregation (live ∪ stored per-title sources) is in
+// tone-store.js; the feeders that fill the store are in tone-sources.js.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -17,12 +24,12 @@ import { dirname, join } from 'node:path';
 const dataDir = join(dirname(fileURLToPath(import.meta.url)), 'tone-data');
 function loadMap(name) {
   try { return JSON.parse(readFileSync(join(dataDir, name), 'utf8')); }
-  catch { return {}; } // a missing/empty harvest file just means "no tones from this source"
+  catch { return {}; } // a missing/empty map just means "no tones from this source"
 }
 
 // The canonical vocabulary. `slug` is the URL/feature token (?tag=, tone:<slug>);
 // `label` is what the filter and the popup chips show. Order here is the order
-// chips render in. Extend by adding a row + harvesting ids/membership for it.
+// chips render in. Extend by adding a row + a crosswalk entry across the sources.
 export const TONES = [
   { slug: 'heartfelt', label: 'Heartfelt' },
   { slug: 'feel-good', label: 'Feel-good' },
@@ -43,8 +50,17 @@ export const TONES = [
 ];
 
 const LABELS = new Map(TONES.map((t) => [t.slug, t.label]));
-const KEYWORD_TONES = loadMap('tone-keywords.json'); // { "<tmdbKeywordId>": ["slug", …] }
-const NETFLIX_TONES = loadMap('tone-netflix.json');   // { "<tmdbId>": ["slug", …] }
+const TMDB_KEYWORD_MAP = loadMap('map-tmdb.json');   // { "<tmdbKeywordId>": ["slug", …] }
+const NETFLIX_MEMBERSHIP = loadMap('map-netflix.json'); // { "<tmdbId>": ["slug", …] }
+
+// Per-source crosswalks the scraper/model feeders use to generalise their raw
+// tags into canonical slugs (see tone-sources.js). Exposed as data so a feeder
+// stays a thin scrape + one mapRawTags() call.
+export const crosswalks = {
+  tmdb: TMDB_KEYWORD_MAP,
+  imdb: loadMap('map-imdb.json'),             // { "<imdb keyword>": ["slug", …] }
+  letterboxd: loadMap('map-letterboxd.json'), // { "<nanogenre name>": ["slug", …] }
+};
 
 // A known tone slug? Guards the ?tag= filter so an unknown value is ignored
 // (no pool built for it) rather than silently returning an empty grid.
@@ -52,21 +68,27 @@ export const isTone = (slug) => LABELS.has(slug);
 // The vocabulary for the client (filter datalist) — slug + display label.
 export const toneList = () => TONES.map(({ slug, label }) => ({ slug, label }));
 
-// Every tone slug a movie carries: the union of keyword-derived and Netflix
-// membership tones, deduped. `full` is a TMDB /movie detail (id + appended
-// keywords). The maps are injectable so unit tests don't depend on the harvest.
-export function toneSlugs(full, { keywordMap = KEYWORD_TONES, netflixMap = NETFLIX_TONES } = {}) {
+// Generalise raw tags into canonical slugs via a crosswalk: look each raw key up,
+// keep only slugs that are in the vocabulary, dedupe. The shared primitive every
+// feeder uses. `rawKeys` are whatever the source speaks (keyword ids, normalised
+// keyword strings, nanogenre names); the source normalises before calling.
+export function mapRawTags(crosswalk, rawKeys) {
   const slugs = new Set();
-  for (const k of full?.keywords?.keywords || []) {
-    for (const s of keywordMap[k.id] || []) if (LABELS.has(s)) slugs.add(s);
-  }
-  for (const s of netflixMap[full?.id] || []) if (LABELS.has(s)) slugs.add(s);
+  for (const key of rawKeys || []) for (const s of (crosswalk || {})[key] || []) if (LABELS.has(s)) slugs.add(s);
   return [...slugs];
 }
 
-// The movie's tones as { slug, label } in canonical TONES order — what the
-// Discover/Watchlist card carries so the popup can render chips.
-export function tonesForMovie(full, opts) {
-  const have = new Set(toneSlugs(full, opts));
+// Tones derivable with zero I/O from a TMDB /movie detail we already hold: its
+// keywords (via the TMDB crosswalk) plus Netflix membership (by tmdb id). The
+// always-available layer the stored per-title sources add to.
+export function liveToneSlugs(full) {
+  const slugs = new Set(mapRawTags(TMDB_KEYWORD_MAP, (full?.keywords?.keywords || []).map((k) => k.id)));
+  for (const s of NETFLIX_MEMBERSHIP[full?.id] || []) if (LABELS.has(s)) slugs.add(s);
+  return [...slugs];
+}
+
+// Order a bag of slugs into the canonical [{slug,label}] the card/popup render.
+export function orderTones(slugs) {
+  const have = new Set(slugs);
   return TONES.filter((t) => have.has(t.slug)).map(({ slug, label }) => ({ slug, label }));
 }

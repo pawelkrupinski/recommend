@@ -451,6 +451,22 @@ test('an unknown tag is ignored rather than emptying the pool', async () => {
   assert.ok(ids.has(201) && ids.has(202) && ids.has(203), 'a bogus tone filters nothing');
 });
 
+test('a feeder-stored tone surfaces through recommendations (provenance store → cards + filter)', async () => {
+  const { setMovieToneSource } = await import('../../src/db.js');
+  // Title 203 carries no live (TMDB-keyword) tone; a feeder resolves it to "gritty".
+  setMovieToneSource(203, 'movie', 'model', ['gritty']);
+  const c = await client().login({ email: 'tone-stored@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+
+  const all = (await c.json('/api/recommend?refresh=1')).data.results;
+  const pick = all.find((m) => m.tmdb_id === 203);
+  assert.ok(pick.tones.some((t) => t.slug === 'gritty'), 'the stored tone rides on the card');
+
+  // And the tag filter narrows to it, exactly like a live tone.
+  const ids = idsOf((await c.json('/api/recommend?tag=gritty')).data);
+  assert.deepEqual(ids, new Set([203]), 'only the gritty title remains');
+});
+
 test('GET /api/origins lists continents with their countries', async () => {
   const c = await client().login({ email: 'origins-ref@example.com' });
   const { status, data } = await c.json('/api/origins');

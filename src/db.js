@@ -100,6 +100,22 @@ db.exec(`
     value      TEXT,
     fetched_at INTEGER
   );
+
+  -- Per-title tone tags ("heartfelt", "deadpan"…), one row per (title, source,
+  -- slug). A film's mood vocabulary accumulates across feeders (IMDb keywords,
+  -- Letterboxd nanogenres, the local model) with provenance: each source owns its
+  -- rows, so one can be re-derived or audited without disturbing the others, and a
+  -- title's tones are the union across sources. Global (a tone is a property of the
+  -- title, not the user). TMDB-keyword tones aren't stored here — they're derived
+  -- live from the cached /movie detail. See tone-store.js / tone-sources.js.
+  CREATE TABLE IF NOT EXISTS movie_tones (
+    tmdb_id    INTEGER NOT NULL,
+    media_type TEXT    NOT NULL DEFAULT 'movie',
+    source     TEXT    NOT NULL,
+    slug       TEXT    NOT NULL,
+    updated_at INTEGER,
+    PRIMARY KEY (tmdb_id, media_type, source, slug)
+  );
 `);
 
 // ---- migration: single-user → multi-user ----------------------------------
@@ -433,4 +449,42 @@ export function cacheGet(key, maxAgeMs) {
 }
 export function cacheSet(key, value) {
   _setCache.run(key, JSON.stringify(value), Date.now());
+}
+
+// ---- per-title tone tags (provenance store) -------------------------------
+// Each feeder (imdb, letterboxd, model) owns its rows for a title; a re-resolve
+// replaces just that source's set, leaving the others intact. A title's tones are
+// the union of slugs across sources. See tone-store.js (read/aggregate) and
+// tone-sources.js (resolve/write).
+
+// Sentinel recorded when a source resolved a title but found no tones — so the TTL
+// knows the title was checked (and won't re-scrape it every build) even at zero.
+// Excluded from reads, so it never surfaces as a tone.
+const NO_TONES = '_none';
+const _delMovieToneSource = db.prepare('DELETE FROM movie_tones WHERE tmdb_id = ? AND media_type = ? AND source = ?');
+const _insMovieTone = db.prepare(
+  'INSERT OR REPLACE INTO movie_tones (tmdb_id, media_type, source, slug, updated_at) VALUES (?, ?, ?, ?, ?)'
+);
+// Replace one source's tones for a title with `slugs` (empty = resolved, none).
+export function setMovieToneSource(tmdb_id, media_type, source, slugs) {
+  _delMovieToneSource.run(tmdb_id, media_type, source);
+  const now = Date.now();
+  for (const slug of slugs.length ? slugs : [NO_TONES]) {
+    _insMovieTone.run(tmdb_id, media_type, source, slug, now);
+  }
+}
+const _getMovieToneSlugs = db.prepare(
+  "SELECT DISTINCT slug FROM movie_tones WHERE tmdb_id = ? AND media_type = ? AND slug != '_none'"
+);
+// Distinct real tone slugs stored for a title across every source.
+export function getMovieToneSlugs(tmdb_id, media_type = 'movie') {
+  return _getMovieToneSlugs.all(tmdb_id, media_type).map((r) => r.slug);
+}
+const _movieToneSourceAge = db.prepare(
+  'SELECT MAX(updated_at) AS at FROM movie_tones WHERE tmdb_id = ? AND media_type = ? AND source = ?'
+);
+// When `source` last resolved this title (ms epoch), or 0 if never — the TTL skip
+// that keeps the enrichment pass from re-hitting IMDb/Letterboxd for fresh titles.
+export function movieToneResolvedAt(tmdb_id, media_type, source) {
+  return _movieToneSourceAge.get(tmdb_id, media_type, source)?.at || 0;
 }

@@ -7,6 +7,21 @@
 // without a cap they'd all start at once and stampede the upstreams (observed as
 // cold-start "fetch failed" on the discover sources). This bounds that fan-out
 // to a handful of users in flight at a time; the rest wait their turn.
+// Run `fn(item, i)` over every item with at most `limit` in flight, resolving once
+// all settle (results discarded — collect inside `fn` if needed). A throwing item
+// is isolated so one bad job can't reject the batch. Used for the per-title tone
+// resolution that fans out to scrapers during a build, kept to a small pool so it
+// stays well under the upstreams' limits.
+export async function mapPool(items, limit, fn) {
+  const queue = [...items.entries()];
+  const worker = async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) {
+      try { await fn(next[1], next[0]); } catch { /* isolate: one failure never stalls the pool */ }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+}
+
 export function boundedRunner(limit, run) {
   const active = new Set(); // keys currently running
   const queue = [];         // keys waiting for a slot (FIFO)

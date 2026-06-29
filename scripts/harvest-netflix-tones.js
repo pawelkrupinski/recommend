@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Harvest Netflix microgenre ("altgenre") per-title membership and map it to our
- * tone-tag slugs, merging into src/tone-data/tone-netflix.json (keyed by TMDB movie
+ * tone-tag slugs, merging into src/tone-data/map-netflix.json (keyed by TMDB movie
  * id → array of tone slugs). This lets a film Netflix files under e.g. "Deadpan
  * Comedies" carry our `deadpan` tone even when TMDB keywords miss it.
  *
@@ -44,7 +44,7 @@ import { dirname, join } from 'node:path';
 import { proxiedText } from '../src/fetch.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = join(__dirname, '../src/tone-data/tone-netflix.json');
+const OUTPUT_PATH = join(__dirname, '../src/tone-data/map-netflix.json');
 
 const API_KEY = process.env.TMDB_API_KEY;
 const CONCURRENCY = 5;          // workers against TMDB
@@ -257,7 +257,7 @@ async function main() {
   console.log(`Output: ${sortedKeys.length} tmdb ids (${newIds} new, ${newMappings} new slug mappings on existing ids)`);
   if (sortedKeys.length === 0) {
     console.log('No per-title tonal-microgenre membership is publicly scrapeable; wrote empty map {}.');
-    console.log('Feature degrades to TMDB-keyword tones (src/tone-data/tone-keywords.json).');
+    console.log('Feature degrades to TMDB-keyword tones (src/tone-data/map-tmdb.json).');
   }
 }
 

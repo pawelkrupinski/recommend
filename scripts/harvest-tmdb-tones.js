@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Harvest TMDB keyword IDs for each tone-tag slug and merge into
- * src/tone-data/tone-keywords.json.
+ * src/tone-data/map-tmdb.json.
  *
  * Usage:
  *   node --env-file=.env.local scripts/harvest-tmdb-tones.js
@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUTPUT_PATH = join(__dirname, '../src/tone-data/tone-keywords.json');
+const OUTPUT_PATH = join(__dirname, '../src/tone-data/map-tmdb.json');
 
 // Tone slug → search terms to submit to TMDB keyword search.
 const TONES = {

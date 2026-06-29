@@ -1,4 +1,4 @@
-import { matchServiceLink, serviceSearchLink } from '/service-match.js';
+import { matchServiceLink, serviceSearchLink } from './service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
 import { presentTones, filterByTone } from './watchlist-tones.js';

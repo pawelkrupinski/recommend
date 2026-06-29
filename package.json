@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "build": "node scripts/build-assets.js",
     "test": "node --test --test-force-exit \"test/unit/**/*.test.js\" \"test/integration/**/*.test.js\"",
     "test:unit": "node --test --test-force-exit \"test/unit/**/*.test.js\"",
     "test:integration": "node --test --test-force-exit \"test/integration/**/*.test.js\"",
@@ -25,7 +26,8 @@
     "service:logs": "bash service/recommend-service.sh logs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1"
+    "@playwright/test": "^1.61.1",
+    "esbuild": "^0.28.1"
   },
   "dependencies": {
     "undici": "^8.5.0"

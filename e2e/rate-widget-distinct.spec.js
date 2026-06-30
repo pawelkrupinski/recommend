@@ -34,16 +34,16 @@ test('the rating stars and dismiss button have distinct backgrounds', async ({ p
     };
   });
 
-  const BG = 'rgb(14, 17, 22)';        // --bg, the recessed tone
-  const PANEL2 = 'rgb(31, 36, 45)';    // --panel2, the old default button tone
+  const GOLD = 'rgba(245, 197, 24, 0.12)'; // accent-tinted stars tray
+  const RED = 'rgba(248, 113, 113, 0.14)'; // --bad-tinted dismiss bar
   const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
-  // The stars now have a tray: a non-transparent --bg background with a border.
-  expect(s.trayBg).toBe(BG);
+  // The stars sit in a gold-tinted tray with a border.
+  expect(s.trayBg).toBe(GOLD);
   expect(s.trayBorder).not.toBe('0px');
   // Each star carries its own cell background (was transparent).
   expect(s.starBg).not.toBe(TRANSPARENT);
-  // The dismiss button is recessed to --bg, distinct from the default panel tone.
-  expect(s.skipBg).toBe(BG);
-  expect(s.skipBg).not.toBe(PANEL2);
+  // The dismiss button is red-tinted — a distinct colour from the gold tray.
+  expect(s.skipBg).toBe(RED);
+  expect(s.skipBg).not.toBe(s.trayBg);
 });

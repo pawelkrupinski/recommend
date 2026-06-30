@@ -174,11 +174,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 /* rate widget — the ten stars span the full card width as two even rows of five,
    sized for thumb taps. The hover "n / 10" readout sits on its own line below so
    it never eats into the stars' width (and stays out of the way on touch). */
-/* Recess the rating control into its own darker tray so it reads as a distinct
-   widget rather than loose glyphs on the card. */
+/* Recess the rating control into its own gold-tinted tray so it reads as a
+   distinct, colour-coded widget rather than loose glyphs on the card. */
 .rate-stars {
   display: flex; flex-direction: column; margin: 0 10px 8px; padding: 8px;
-  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  background: rgba(245, 197, 24, 0.12); border: 1px solid rgba(245, 197, 24, 0.38);
+  border-radius: 8px;
 }
 /* touch-action: pan-y lets a horizontal finger drag across the stars preview a
    rating (see wireStars), while a vertical drag still scrolls the page; the JS
@@ -189,25 +190,26 @@ button.danger:disabled { opacity: .6; cursor: default; }
   touch-action: pan-y; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
-/* Each star sits in its own raised cell on the tray, so the ten tap targets are
-   individually legible and the filled run is obvious. */
+/* The gold tray is the stars' backdrop; unlit stars sit on dark cells so they
+   stay legible against it, and the filled run lights up gold. */
 .stars span {
-  cursor: pointer; color: #444; font-size: 18px; line-height: 1;
-  text-align: center; padding: 6px 0; border-radius: 4px; background: var(--panel2);
+  cursor: pointer; color: #6b6b6b; font-size: 18px; line-height: 1;
+  text-align: center; padding: 6px 0; border-radius: 4px; background: rgba(0, 0, 0, 0.28);
 }
-.stars span.on { color: var(--accent); background: rgba(245, 197, 24, 0.14); }
+.stars span.on { color: var(--accent); background: rgba(245, 197, 24, 0.30); }
 .rating-num {
   align-self: flex-end; min-height: 1.25em; margin-top: 2px;
   font-size: 13px; font-weight: 600; color: var(--accent);
   font-variant-numeric: tabular-nums; pointer-events: none;
 }
-/* The dismiss action gets its own full-width recessed bar with muted text and a
-   red hover, so it's clearly distinct from the gold rating above it. */
+/* The dismiss action gets its own full-width red-tinted bar, colour-coding it as
+   the negative action and keeping it clearly distinct from the gold rating. */
 .card .skip {
   display: block; width: calc(100% - 20px); margin: 0 10px 10px;
-  font-size: 12px; padding: 7px 8px; background: var(--bg); color: var(--muted);
+  font-size: 12px; padding: 7px 8px;
+  background: rgba(248, 113, 113, 0.14); border-color: rgba(248, 113, 113, 0.5); color: var(--bad);
 }
-.card .skip:hover { border-color: var(--bad); color: var(--bad); }
+.card .skip:hover { background: var(--bad); border-color: var(--bad); color: var(--bg); }
 
 /* Discover + Watchlist cards: keep every card identical height so the action
    button ("Not interested" / "Haven't seen" on the onboarding queue, "Remove" on

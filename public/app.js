@@ -873,10 +873,15 @@ let watchlistItems = [];
 let watchlistTone = '';
 let watchlistGenre = '';
 async function loadWatchlist() {
-  // Need the tone vocabulary (dropdown order) and the genre vocabulary (labels +
-  // the cross-language name→id consolidation map); both cached after the first
-  // call (also primed when Discover opens).
-  const [{ watchlist }] = await Promise.all([api('/api/watchlist'), loadTones(), loadGenres()]);
+  // The watchlist response carries its own genre vocabulary — labels (`genres`)
+  // and the cross-language name→id consolidation map (`byName`) — because it's
+  // never cached, so the map can't be served stale the way the day-cached
+  // /api/genres can (a pre-`byName` copy there left the dropdown un-consolidated,
+  // every language variant its own option). We still need the tone vocabulary for
+  // the tone dropdown's canonical order.
+  const [{ watchlist, genres = [], byName = {} }] = await Promise.all([api('/api/watchlist'), loadTones()]);
+  genreList = genres;
+  genreByName = byName;
   watchlistItems = watchlist;
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
   setWatchlistCount(watchlist.length); // total saved, independent of the tone filter

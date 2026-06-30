@@ -590,3 +590,16 @@ test('GET /api/genres serves current-language labels plus a cross-language name�
   assert.equal(data.byName.comedy, 35);
   assert.equal(data.byName.komedia, 35);
 });
+
+test('GET /api/watchlist carries the genre consolidation map so it is never served stale', async () => {
+  // The watchlist response (unlike the day-cached /api/genres) is never cached, so
+  // shipping the cross-language name→id map here is what guarantees the dropdown
+  // can consolidate 'Akcja'/'Action' even for a browser holding an old genres copy.
+  const c = await client().login({ email: 'wl-vocab@example.com' });
+  const { status, data } = await c.json('/api/watchlist');
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(data.watchlist), 'still returns the watchlist itself');
+  assert.equal(data.byName.akcja, 28, 'Polish name resolves to the canonical id on the fresh response');
+  assert.equal(data.byName.action, 28, 'and so does the English name — the two consolidate');
+  assert.ok(data.genres.some((g) => g.id === 28), 'current-language labels travel with it too');
+});

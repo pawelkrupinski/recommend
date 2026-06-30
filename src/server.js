@@ -227,7 +227,20 @@ async function api(req, res, url) {
     }
 
     // ---- watchlist (saved to watch later) -----------------------------
-    if (p === '/api/watchlist' && req.method === 'GET') return json(req, res, 200, { watchlist: getWatchlist(uid) });
+    if (p === '/api/watchlist' && req.method === 'GET') {
+      // Ship the genre vocabulary WITH the (never-cached) watchlist so the genre
+      // filter's cross-language consolidation map travels on a fresh response. The
+      // same data on /api/genres is browser-cached for a day, and a copy fetched
+      // before `byName` existed leaves the map empty — which silently un-consolidates
+      // the dropdown (every language variant becomes its own option). `genres` are
+      // the current-language labels; `byName` the cross-language name→id map.
+      let genres = [], byName = {};
+      try {
+        genres = (await tmdb.genres('movie', tmdbLang(langFor(uid, req)))).genres || [];
+        byName = await tmdb.genreNameToId('movie');
+      } catch { /* genre vocab is optional — the watchlist still loads without it */ }
+      return json(req, res, 200, { watchlist: getWatchlist(uid), genres, byName });
+    }
     if (p === '/api/watchlist' && req.method === 'POST') {
       const b = JSON.parse((await readBody(req)) || '{}');
       addToWatchlist({ ...b, user_id: uid });

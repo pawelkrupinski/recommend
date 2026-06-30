@@ -78,8 +78,10 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .bar #discover-info { margin-right: auto; }
 .bar .toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .bar .toggle input { cursor: pointer; accent-color: var(--accent); }
-/* The Discover dropdowns and the Watchlist sort share one dark style so they read as a single control set. */
-#genre-filter, #origin-filter, #tag-filter, #watchlist-genre, #watchlist-tone, #watchlist-sort { background: var(--panel2); color: inherit; border: 1px solid var(--line);
+/* Every filter/sort dropdown in a toolbar shares one dark style so they read as a
+   single control set. Scoped to `.bar select` (not an id list) so a NEW select
+   added to a bar is styled automatically — never silently left as a browser default. */
+.bar select { background: var(--panel2); color: inherit; border: 1px solid var(--line);
   border-radius: 8px; padding: 7px 10px; font: inherit; }
 #tag-filter { width: 130px; }
 .hint { color: var(--muted); }
@@ -323,12 +325,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
   /* Discover toolbar: info on its own line, filter + refresh share the next. */
   .bar { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
   .bar #discover-info { flex-basis: 100%; margin-right: 0; }
-  #genre-filter, #origin-filter, #tag-filter { flex: 1; }
+  .bar select { flex: 1; }
   #tag-filter { width: auto; min-width: 110px; }
   #refresh { white-space: nowrap; }
 
   /* 16px keeps iOS from zooming when these are focused. */
-  .form input, .form select, #genre-filter, #origin-filter, #tag-filter, #watchlist-genre, #watchlist-tone, #watchlist-sort { font-size: 16px; }
+  .form input, .form select, .bar select { font-size: 16px; }
   .form { max-width: none; }
 
   /* Let Discover/onboarding cards size to their content. The desktop fixed

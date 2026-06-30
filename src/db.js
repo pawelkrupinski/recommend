@@ -444,7 +444,7 @@ export function getNotSeen(userId) {
 // excluded — it's a per-build recommendation rank a saved title has no place in.
 // The same shape is produced by the Discover card (captured at save time) and by
 // enrichWatchlistItem (backfill), so both write through this one whitelist.
-const CARD_FIELDS = ['imdb_id', 'vote_average', 'runtime', 'genres', 'tones', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
+const CARD_FIELDS = ['imdb_id', 'vote_average', 'runtime', 'genres', 'genreIds', 'tones', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
 function pickCard(src) {
   const card = {};
   for (const k of CARD_FIELDS) if (src[k] != null) card[k] = src[k];
@@ -488,16 +488,19 @@ export function setWatchlistCard(userId, tmdb_id, media_type, card) {
 // Saved titles still needing server-side enrichment — the backfill's work list
 // for one user. A row qualifies when it was never enriched (card IS NULL — saved
 // before save-time capture, or whose enrichment failed); predates a card field
-// since added (lacks a "trailers" or "tones" key); or carries NEITHER rating
-// (no "imdbRating" nor "metascore" key — a title saved before title·year IMDb-id
-// resolution existed). `pickCard` omits null fields, so a film that genuinely has
-// a rating keeps its key and is skipped; one resolvable now gets re-enriched. A
-// film MC/IMDb truly have nothing for re-runs each boot, but every lookup is a
+// since added (lacks a "trailers", "tones", or "genreIds" key); or carries NEITHER
+// rating (no "imdbRating" nor "metascore" key — a title saved before title·year
+// IMDb-id resolution existed). The "genreIds" clause backfills canonical genre ids
+// onto rows enriched before they were stored, so the genre filter consolidates by
+// id rather than localized name. `pickCard` omits null fields, so a film that
+// genuinely has a key keeps it and is skipped; one resolvable now gets re-enriched.
+// A film MC/IMDb truly have nothing for re-runs each boot, but every lookup is a
 // cache hit (negatives cached 14d), so the backfill still settles to near-no-op.
 export function watchlistNeedingEnrichment(userId) {
   return db.prepare(
     `SELECT tmdb_id, media_type FROM watchlist
      WHERE user_id = ? AND (card IS NULL OR card NOT LIKE '%"trailers"%' OR card NOT LIKE '%"tones"%'
+       OR card NOT LIKE '%"genreIds"%'
        OR (card NOT LIKE '%"imdbRating"%' AND card NOT LIKE '%"metascore"%'))`,
   ).all(userId);
 }

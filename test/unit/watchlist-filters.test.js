@@ -71,7 +71,7 @@ test('presentGenres is empty when no saved title carries a genre', () => {
 
 test('presentGenres falls back to the raw name for a genre outside the vocabulary', () => {
   assert.deepEqual(presentGenres([gItem(1, ['Cyberpunk'])], BY_NAME, labelOf),
-    [{ key: 'cyberpunk', label: 'Cyberpunk' }]);
+    [{ key: 'Cyberpunk', label: 'Cyberpunk' }]);
 });
 
 test('filterByGenre matches by canonical id regardless of the saved language', () => {
@@ -81,4 +81,27 @@ test('filterByGenre matches by canonical id regardless of the saved language', (
 
 test('filterByGenre returns the whole list when no genre is selected', () => {
   assert.equal(filterByGenre(gItems, '', BY_NAME), gItems, 'same reference, unfiltered');
+});
+
+// Once an item is backfilled it carries canonical `genreIds`, so consolidation
+// keys on those directly — no name, no byName lookup, no language ambiguity.
+const idItem = (id, genreIds) => ({ tmdb_id: id, genreIds });
+const mixed = [
+  idItem(1, [28, 35]),          // backfilled: Action + Comedy by id
+  idItem(2, [28]),              // backfilled: Action by id
+  gItem(3, ['Akcja']),          // legacy (no genreIds): Polish Action → byName → 28
+];
+
+test('presentGenres consolidates stored genreIds and legacy names onto the same canonical key', () => {
+  assert.deepEqual(presentGenres(mixed, BY_NAME, labelOf), [
+    { key: '28', label: 'Action' }, // ids 28 + the legacy 'Akcja' all collapse
+    { key: '35', label: 'Comedy' },
+  ]);
+});
+
+test('filterByGenre matches stored genreIds without needing byName at all', () => {
+  // No byName passed — genreId-bearing items still resolve; the legacy name item
+  // can't (no map), proving the id path is independent of the cross-language map.
+  assert.deepEqual(filterByGenre(mixed, '28').map((i) => i.tmdb_id), [1, 2]);
+  assert.deepEqual(filterByGenre(mixed, '28', BY_NAME).map((i) => i.tmdb_id), [1, 2, 3], 'with byName, the legacy name joins too');
 });

@@ -171,6 +171,7 @@ test('watchlist: backfill enriches titles saved without card fields', async () =
   ({ data } = await c.json('/api/watchlist'));
   const [w] = data.watchlist;
   assert.deepEqual(w.genres, ['Action'], 'genres filled from TMDB details');
+  assert.deepEqual(w.genreIds, [28], 'canonical genre ids filled too, so the filter consolidates by id');
   assert.deepEqual(w.services, [{ id: 8, name: 'Netflix Test', logo: '/netflix.png' }],
     "the user's chosen service that streams it is attached");
   assert.equal(w.runtime, 107, 'runtime filled');
@@ -179,6 +180,26 @@ test('watchlist: backfill enriches titles saved without card fields', async () =
   // the user's language (default 'en' → the English YouTube trailer).
   assert.deepEqual(w.trailers, [{ key: 'yt-en-201', name: 'Official Trailer' }],
     'the English trailer is selected from TMDB videos and persisted');
+});
+
+test('watchlist: backfill adds canonical genreIds to a card saved before they were stored', async () => {
+  const { backfillWatchlistCards } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'genreid-backfill@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });
+  // A card enriched the OLD way: it has genres/tones/trailers but no genreIds, so
+  // the filter could only key on the localized name. This is the row the backfill
+  // must now re-process (it's otherwise "complete") to make consolidation by id work.
+  await c.json('/api/watchlist', { method: 'POST', body: {
+    tmdb_id: 201, title: 'Stub Streamable One', year: 2020, genres: ['Action'], tones: [], trailers: [],
+  } });
+  let { data } = await c.json('/api/watchlist');
+  assert.equal(data.watchlist[0].genreIds, undefined, 'starts without canonical genre ids');
+
+  await backfillWatchlistCards();
+
+  ({ data } = await c.json('/api/watchlist'));
+  assert.deepEqual(data.watchlist[0].genreIds, [28], 'the backfill re-processed the row and stored the canonical id');
+  assert.deepEqual(data.watchlist[0].genres, ['Action'], 'the localized label is preserved alongside the id');
 });
 
 test('watchlist: backfill tops up trailers on a title enriched before trailers existed', async () => {

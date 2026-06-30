@@ -18,8 +18,8 @@ const save = (tmdb_id, extra) =>
   db.addToWatchlist({ user_id: uid, tmdb_id, title: `T${tmdb_id}`, year: 2018, poster_path: '/p.jpg', ...extra });
 
 test('watchlistNeedingEnrichment targets a rating-less row but skips a rated one', () => {
-  // Fully enriched AND rated — must be skipped.
-  save(11, { trailers: [], tones: [], genres: ['Drama'], imdbRating: 7.7, metascore: 80 });
+  // Fully enriched (incl. genreIds) AND rated — must be skipped.
+  save(11, { trailers: [], tones: [], genres: ['Drama'], genreIds: [18], imdbRating: 7.7, metascore: 80 });
   // Enriched (trailers+tones present) but never rated — the NEW case to backfill.
   save(22, { trailers: [], tones: [], genres: ['Drama'] });
 
@@ -31,7 +31,7 @@ test('watchlistNeedingEnrichment targets a rating-less row but skips a rated one
 test('a full-card rewrite persists the rating WITHOUT wiping other fields', () => {
   // Simulate backfill rewriting the whole enriched card (enrichWatchlistItem
   // rebuilds every field, then setWatchlistCard persists it).
-  db.setWatchlistCard(uid, 22, 'movie', { genres: ['Drama'], services: [{ id: 8, name: 'Netflix' }], trailers: [], tones: [], imdbRating: 6.9, metascore: 71 });
+  db.setWatchlistCard(uid, 22, 'movie', { genres: ['Drama'], genreIds: [18], services: [{ id: 8, name: 'Netflix' }], trailers: [], tones: [], imdbRating: 6.9, metascore: 71 });
   const row = db.getWatchlist(uid).find((w) => w.tmdb_id === 22);
   assert.equal(row.imdbRating, 6.9, 'the resolved rating is now persisted');
   assert.deepEqual(row.genres, ['Drama'], 'genres survived the rewrite');

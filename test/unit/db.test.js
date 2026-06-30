@@ -220,14 +220,19 @@ test('setWatchlistCard fills card fields without touching title/year/poster', ()
   db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [] });
   assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1, 'a card lacking a tones key still needs backfill');
 
-  // Trailers + tones present but NO rating (saved before title·year IMDb-id
-  // resolution existed) — still pending so the backfill can resolve a rating.
+  // Trailers + tones present, but no genreIds and no rating — still pending: the
+  // backfill must add canonical genre ids AND resolve a rating.
   db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [], tones: [] });
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1, 'a card lacking a genreIds key (and a rating) still needs backfill');
+
+  // genreIds added (so the genre filter can key by id), but still NO rating (saved
+  // before title·year IMDb-id resolution existed) — still pending to resolve one.
+  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], genreIds: [27], vote_average: 6.5, runtime: 90, trailers: [], tones: [] });
   assert.equal(db.watchlistNeedingEnrichment(u.id).length, 1, 'a card with no rating still needs backfill');
 
-  // Once trailers, tones AND a rating are captured, it's done.
-  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], vote_average: 6.5, runtime: 90, trailers: [], tones: [], imdbRating: 6.1 });
-  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 0, 'no longer needs backfill once a rating is set too');
+  // Once trailers, tones, genreIds AND a rating are all captured, it's done.
+  db.setWatchlistCard(u.id, 12, 'movie', { genres: ['Horror'], genreIds: [27], vote_average: 6.5, runtime: 90, trailers: [], tones: [], imdbRating: 6.1 });
+  assert.equal(db.watchlistNeedingEnrichment(u.id).length, 0, 'done once trailers, tones, genreIds and a rating are set');
 });
 
 test('cache honours maxAge expiry', () => {

@@ -418,15 +418,16 @@ export async function rankCorpus({ cards, globalMean }, profile) {
 
   // Order by relevance, then re-rank the served head for genre calibration (keep
   // the mix close to the user's history) and diversity (no near-duplicate
-  // neighbours). genreIds/features/voteCount/collab are scoring-only — strip them
-  // before returning, keeping the score.
+  // neighbours). features/voteCount/collab are scoring-only — strip them before
+  // returning, keeping the score. genreIds stays: it's the canonical, language-
+  // independent genre key the watchlist filter consolidates on once a pick is saved.
   scored.sort((a, b) => b.score - a.score);
   const profileGenreDist = genreDistribution(profile.genreLists);
   const ranked = rerank(
     scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
     profileGenreDist, idf,
   ).map((r) => r.card);
-  return ranked.slice(0, POOL_SIZE).map(({ genreIds, features, voteCount, collab, ...card }) => card);
+  return ranked.slice(0, POOL_SIZE).map(({ features, voteCount, collab, ...card }) => card);
 }
 
 // ---- recommendation cache + prebuild --------------------------------------
@@ -712,6 +713,7 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
     overview: full.overview || null,
     vote_average: full.vote_average ?? null,
     genres: (full.genres || []).map((g) => g.name),
+    genreIds: (full.genres || []).map((g) => g.id), // canonical, language-independent — the genre filter consolidates on these
     tones: tonesForMovie(full),
     director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
     cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),

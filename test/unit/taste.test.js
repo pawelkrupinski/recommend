@@ -66,6 +66,21 @@ test('resolveFilters keeps a known tone and drops an unknown one to ""', () => {
   assert.equal(resolveFilters({}).tone, '', 'no tone by default');
 });
 
+test('resolveFilters keeps movie/tv and drops anything else to ""', () => {
+  assert.equal(resolveFilters({ type: 'movie' }).type, 'movie');
+  assert.equal(resolveFilters({ type: 'tv' }).type, 'tv');
+  assert.equal(resolveFilters({ type: 'both' }).type, '', 'a bogus type is no filter, not an empty pool');
+  assert.equal(resolveFilters({}).type, '', 'no type by default');
+});
+
+test('filterSig varies by media type so each type caches its own pool', () => {
+  const both = filterSig({ allowed: new Set(), excludeUs: false, indie: false });
+  const movie = filterSig({ allowed: new Set(), excludeUs: false, indie: false, type: 'movie' });
+  const tv = filterSig({ allowed: new Set(), excludeUs: false, indie: false, type: 'tv' });
+  assert.notEqual(both, movie, 'a type changes the signature');
+  assert.notEqual(movie, tv, 'movies-only and tv-only get different signatures');
+});
+
 const full = (results) => ({ 'watch/providers': { results } });
 
 test('returns only the user\'s chosen services that carry the title', () => {

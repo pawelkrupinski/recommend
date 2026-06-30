@@ -1,7 +1,7 @@
 import { matchServiceLink, serviceSearchLink } from './service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
-import { presentTones, filterByTone, presentGenres, filterByGenre, genreLabels } from './watchlist-filters.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre, filterByType, genreLabels } from './watchlist-filters.js';
 import { newPicks, pickKey } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
@@ -133,6 +133,7 @@ function parseRoute() {
     genre: params.get('genre') || '',
     origin: params.get('origin') || '',
     tag: params.get('tag') || '',
+    type: params.get('type') || '',
     excludeUs: params.get('excludeUs') === '1',
     indie: params.get('indie') === '1',
     sort: params.get('sort') || '',
@@ -231,12 +232,13 @@ function syncDiscoverFilters() {
   const g = $('#genre-filter').value; if (g) params.set('genre', g);
   const o = $('#origin-filter').value; if (o) params.set('origin', o);
   const tag = $('#tag-filter').value; if (tag) params.set('tag', tag);
+  const type = $('#type-filter').value; if (type) params.set('type', type);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
   const qs = params.toString();
   navigate(qs ? `/discover?${qs}` : '/discover');
 }
-for (const id of ['#genre-filter', '#origin-filter', '#tag-filter', '#exclude-us', '#indie']) {
+for (const id of ['#genre-filter', '#origin-filter', '#tag-filter', '#type-filter', '#exclude-us', '#indie']) {
   $(id).onchange = syncDiscoverFilters;
 }
 
@@ -363,6 +365,8 @@ function discoverParams({ refresh = false } = {}) {
   if (origin) params.set('origin', origin);
   const tag = $('#tag-filter').value;
   if (tag) params.set('tag', tag);
+  const type = $('#type-filter').value;
+  if (type) params.set('type', type);
   if ($('#exclude-us').checked) params.set('excludeUs', '1');
   if ($('#indie').checked) params.set('indie', '1');
   if (refresh) params.set('refresh', '1');
@@ -384,6 +388,7 @@ async function loadRecs(force = false) {
   $('#genre-filter').value = h.genre;
   $('#origin-filter').value = h.origin;
   $('#tag-filter').value = h.tag || '';
+  $('#type-filter').value = h.type || '';
   $('#exclude-us').checked = h.excludeUs;
   $('#indie').checked = h.indie;
   const genre = $('#genre-filter').value;
@@ -895,6 +900,7 @@ function queueCard(m, onResolve) {
 let watchlistItems = [];
 let watchlistTone = '';
 let watchlistGenre = '';
+let watchlistType = '';
 async function loadWatchlist() {
   // The watchlist response carries its own genre vocabulary — labels (`genres`)
   // and the cross-language name→id consolidation map (`byName`) — because it's
@@ -914,7 +920,19 @@ async function loadWatchlist() {
   $('#watchlist-sort').value = parseRoute().sort === 'rating' || ME?.watchlistSort === 'rating' ? 'rating' : 'added';
   populateWatchlistTones();
   populateWatchlistGenres();
+  populateWatchlistType();
   renderWatchlist();
+}
+// Show the movie/series filter only when the watchlist actually holds both types
+// — with only one, filtering by it would be a no-op (same rule as the lone-genre
+// case). The three options are fixed, so this just toggles visibility + resets a
+// now-pointless selection.
+function populateWatchlistType() {
+  const types = new Set(watchlistItems.map((it) => it.media_type || 'movie'));
+  if (watchlistType && !types.has(watchlistType)) watchlistType = '';
+  const sel = $('#watchlist-type');
+  sel.value = watchlistType;
+  sel.classList.toggle('hidden', types.size < 2);
 }
 // Fill the tone dropdown with only the tones present on saved titles (canonical
 // order), hiding it when none carry a tone. Preserves the current selection if it
@@ -946,10 +964,11 @@ function populateWatchlistGenres() {
 // the sort.
 function renderWatchlist() {
   const sort = $('#watchlist-sort').value === 'rating' ? 'rating' : 'added';
-  const filtered = filterByGenre(filterByTone(watchlistItems, watchlistTone), watchlistGenre, genreByName);
+  const filtered = filterByType(
+    filterByGenre(filterByTone(watchlistItems, watchlistTone), watchlistGenre, genreByName), watchlistType);
   const ordered = sortWatchlist(filtered, sort);
   const grid = $('#watchlist-grid');
-  const emptyKey = watchlistTone || watchlistGenre ? 'watchlist.emptyFiltered' : 'watchlist.empty';
+  const emptyKey = watchlistTone || watchlistGenre || watchlistType ? 'watchlist.emptyFiltered' : 'watchlist.empty';
   grid.innerHTML = ordered.length ? '' : `<p class="empty">${t(emptyKey)}</p>`;
   for (const w of ordered) grid.append(watchCard(w));
   enrichGrid(grid); // fill in badges for saved titles enriched before rating resolution existed
@@ -966,6 +985,7 @@ $('#watchlist-sort').onchange = () => {
 // titles, so they just re-render — no refetch, no URL change.
 $('#watchlist-tone').onchange = () => { watchlistTone = $('#watchlist-tone').value; renderWatchlist(); };
 $('#watchlist-genre').onchange = () => { watchlistGenre = $('#watchlist-genre').value; renderWatchlist(); };
+$('#watchlist-type').onchange = () => { watchlistType = $('#watchlist-type').value; renderWatchlist(); };
 function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });
 }

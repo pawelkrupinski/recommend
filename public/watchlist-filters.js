@@ -77,3 +77,11 @@ export function filterByGenre(items, key, byName = {}) {
   if (!key) return items;
   return items.filter((it) => genreKeys(it, byName).includes(key));
 }
+
+// The saved titles of one media type ('movie' | 'tv'); the whole list unchanged
+// when no type is selected (''). A row missing media_type is treated as a film,
+// matching how the rest of the app defaults it.
+export function filterByType(items, type) {
+  if (!type) return items;
+  return items.filter((it) => (it.media_type || 'movie') === type);
+}

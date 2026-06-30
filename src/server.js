@@ -265,8 +265,12 @@ async function api(req, res, url) {
     // ---- genre list (for the Discover filter) ------------------------
     // Effectively immutable reference data — let the browser hold it for a day.
     if (p === '/api/genres' && req.method === 'GET') {
+      // `genres` is the current-language id↔name list (the Discover dropdown +
+      // watchlist labels); `byName` is the cross-language name→id map the
+      // watchlist uses to consolidate genres saved under another language.
       const { genres = [] } = await tmdb.genres('movie', tmdbLang(langFor(uid, req)));
-      return json(req, res, 200, { genres }, 'private, max-age=86400');
+      const byName = await tmdb.genreNameToId('movie');
+      return json(req, res, 200, { genres, byName }, 'private, max-age=86400');
     }
 
     // ---- tone tags (for the Discover tone filter + popup chips) -------

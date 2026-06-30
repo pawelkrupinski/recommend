@@ -576,3 +576,17 @@ test('onboarded=0 dev-login leaves the user needing onboarding', async () => {
   assert.equal(data.user.email, 'fresh@example.com');
   assert.equal(data.onboarded, false);
 });
+
+test('GET /api/genres serves current-language labels plus a cross-language name→id map', async () => {
+  const c = await client().login({ email: 'genres@example.com' });
+  const { status, data } = await c.json('/api/genres');
+  assert.equal(status, 200);
+  // Current-language (English) id↔name list — the Discover dropdown + watchlist labels.
+  assert.ok(data.genres.some((g) => g.id === 28 && g.name === 'Action'), 'genres carries the localized label list');
+  // byName maps BOTH languages' names to the canonical id, so the watchlist can
+  // consolidate a genre saved under either language.
+  assert.equal(data.byName.action, 28, 'English name maps to the id');
+  assert.equal(data.byName.akcja, 28, 'Polish name maps to the SAME id — the consolidation seam');
+  assert.equal(data.byName.comedy, 35);
+  assert.equal(data.byName.komedia, 35);
+});

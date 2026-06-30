@@ -68,3 +68,38 @@ test('the watchlist genre dropdown is styled the same as the tone dropdown', asy
   expect(genre.background).toBe(tone.background);
   expect(genre.border).toBe(tone.border);
 });
+
+// Saved cards keep genre NAMES localized to the language they were saved under, so
+// a title saved in Polish carries 'Akcja' where an English one carries 'Action'.
+// The dropdown must treat those as ONE genre (same TMDB id) — labelled in the
+// current language — not split them in two. We seed the watchlist directly with
+// mixed-language genres (the POST stores client-provided card fields) to stage
+// exactly that without a locale round-trip.
+test('the watchlist genre dropdown consolidates the same genre saved in different languages', async ({ page }) => {
+  await login(page, uniqEmail('wlgenrei18n'));
+  await page.evaluate(async () => {
+    const save = (tmdb_id, title, genres) => fetch('/api/watchlist', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tmdb_id, title, genres }),
+    });
+    await save(201, 'Saved In English', ['Action']);  // English label
+    await save(203, 'Zapisane Po Polsku', ['Akcja']); // Polish label, SAME genre (id 28)
+    await save(202, 'A Comedy', ['Comedy']);          // a second, distinct genre
+  });
+
+  await page.locator('#tabs a[data-tab="watchlist"]').click();
+  await expect(page.locator('#watchlist-grid .card')).toHaveCount(3);
+
+  // Two canonical genres, labelled in the current language (English) — 'Akcja' is
+  // folded into 'Action', NOT listed separately.
+  const genre = page.locator('#watchlist-genre');
+  await expect(genre.locator('option')).toHaveText(['All genres', 'Action', 'Comedy']);
+
+  // Filtering Action (canonical id 28) keeps BOTH the English- and Polish-saved
+  // action titles — the consolidation the whole change is for.
+  await genre.selectOption({ label: 'Action' });
+  await expect(page.locator('#watchlist-grid .card')).toHaveCount(2);
+  await expect(page.locator('#watchlist-grid .card[data-id="201"]')).toBeVisible();
+  await expect(page.locator('#watchlist-grid .card[data-id="203"]')).toBeVisible();
+  await expect(page.locator('#watchlist-grid .card[data-id="202"]')).toHaveCount(0);
+});

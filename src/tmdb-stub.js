@@ -51,6 +51,13 @@ const GENRES = [
   { id: 28, name: 'Action' },
   { id: 35, name: 'Comedy' },
 ];
+// Polish names for the same ids, so a pl-PL request returns localized genre names
+// (as real TMDB does) — the fixture the genre-consolidation tests need to prove
+// 'Akcja' (saved in Polish) and 'Action' (saved in English) collapse to id 28.
+const GENRES_PL = { 28: 'Akcja', 35: 'Komedia' };
+const genreName = (id, language) =>
+  (language || '').startsWith('pl') ? (GENRES_PL[id] || GENRES.find((g) => g.id === id)?.name) : GENRES.find((g) => g.id === id)?.name;
+const genreList = (language) => GENRES.map((g) => ({ id: g.id, name: genreName(g.id, language) }));
 
 // Titles a genre-scoped Discover sweep surfaces that the un-genre'd sweep never
 // does — the per-genre long tail. They stream on their own GENRE_ONLY_PROVIDER,
@@ -109,7 +116,7 @@ function details(id, language) {
     poster_path: `/poster${id}.jpg`,
     overview: overviewFor(title, language),
     vote_average: 7.5,
-    genres: [{ id: genreId, name: GENRES.find((g) => g.id === genreId)?.name || 'Action' }],
+    genres: [{ id: genreId, name: genreName(genreId, language) || 'Action' }],
     production_countries: [{ iso_3166_1: country, name: country }],
     production_companies: [{ id: companyId, name: `Company ${companyId}` }],
     // Title 202 carries TMDB keyword 319357 ("heartwarming"), which the tone map
@@ -141,7 +148,7 @@ export function stub(path, params = {}) {
   const page = Number(params.page) || 1;
 
   if (path === '/genre/movie/list') {
-    return { genres: GENRES };
+    return { genres: genreList(params.language) };
   }
   if (path === '/watch/providers/movie') {
     return { results: PROVIDERS };

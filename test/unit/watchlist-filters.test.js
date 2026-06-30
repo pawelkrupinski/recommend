@@ -41,28 +41,44 @@ test('filterByTone returns the whole list when no tone is selected', () => {
   assert.equal(filterByTone(items, ''), items, 'same reference, unfiltered');
 });
 
+// Cross-language genre vocabulary (the /api/genres `byName` map covers every
+// interface language) and the current-language labels (here: English).
+const BY_NAME = { action: 28, akcja: 28, comedy: 35, komedia: 35, drama: 18, dramat: 18 };
+const LABEL = { 28: 'Action', 35: 'Comedy', 18: 'Drama' };
+const labelOf = (key) => LABEL[key];
+
 const gItem = (id, genres) => ({ tmdb_id: id, genres });
+// Mixed-language saves: item 1 in English ('Action'/'Comedy'), item 2 a Polish
+// comedy ('Komedia'), item 4 a Polish action ('Akcja') — the same two genres a
+// locale switch would otherwise split into four.
 const gItems = [
   gItem(1, ['Action', 'Comedy']),
-  gItem(2, ['Comedy']),
+  gItem(2, ['Komedia']),
   gItem(3, []),               // a title with no genres
-  gItem(4, ['Drama']),
+  gItem(4, ['Akcja']),
 ];
 
-test('presentGenres lists distinct genres present, deduped, alphabetical', () => {
-  assert.deepEqual(presentGenres(gItems), ['Action', 'Comedy', 'Drama']);
+test('presentGenres consolidates a genre across languages by id, labelled in the current language', () => {
+  assert.deepEqual(presentGenres(gItems, BY_NAME, labelOf), [
+    { key: '28', label: 'Action' },   // 'Action' + 'Akcja' → id 28, one entry
+    { key: '35', label: 'Comedy' },   // 'Comedy' + 'Komedia' → id 35
+  ]);
 });
 
 test('presentGenres is empty when no saved title carries a genre', () => {
-  assert.deepEqual(presentGenres([gItem(1, []), { tmdb_id: 2 }]), []);
+  assert.deepEqual(presentGenres([gItem(1, []), { tmdb_id: 2 }], BY_NAME, labelOf), []);
 });
 
-test('filterByGenre keeps only titles tagged with the genre', () => {
-  assert.deepEqual(filterByGenre(gItems, 'Comedy').map((i) => i.tmdb_id), [1, 2]);
-  assert.deepEqual(filterByGenre(gItems, 'Drama').map((i) => i.tmdb_id), [4]);
-  assert.deepEqual(filterByGenre(gItems, 'Horror'), [], 'no match → empty');
+test('presentGenres falls back to the raw name for a genre outside the vocabulary', () => {
+  assert.deepEqual(presentGenres([gItem(1, ['Cyberpunk'])], BY_NAME, labelOf),
+    [{ key: 'cyberpunk', label: 'Cyberpunk' }]);
+});
+
+test('filterByGenre matches by canonical id regardless of the saved language', () => {
+  assert.deepEqual(filterByGenre(gItems, '28', BY_NAME).map((i) => i.tmdb_id), [1, 4], 'Action: English + Polish');
+  assert.deepEqual(filterByGenre(gItems, '35', BY_NAME).map((i) => i.tmdb_id), [1, 2], 'Comedy: English + Polish');
 });
 
 test('filterByGenre returns the whole list when no genre is selected', () => {
-  assert.equal(filterByGenre(gItems, ''), gItems, 'same reference, unfiltered');
+  assert.equal(filterByGenre(gItems, '', BY_NAME), gItems, 'same reference, unfiltered');
 });

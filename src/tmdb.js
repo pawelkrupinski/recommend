@@ -5,6 +5,7 @@ import { tmdbCacheGet, tmdbCacheSet } from './tmdb-cache.js';
 import { config } from './env.js';
 import { fetchWithTimeout } from './fetch.js';
 import { DAY } from './cache.js';
+import { SUPPORTED_LANGUAGES, tmdbLang } from './locale.js';
 
 const BASE = 'https://api.themoviedb.org/3';
 export const IMG = 'https://image.tmdb.org/t/p';
@@ -186,6 +187,23 @@ export const acclaimed = (page = 1, language) =>
 
 export const genres = (mediaType = 'movie', language) =>
   tmdb(`/genre/${mediaType}/list`, language ? { language } : {});
+
+// A lowercased localized-genre-name → canonical TMDB id map spanning EVERY
+// interface language, so the same genre consolidates no matter which language a
+// title was saved under ('action'/'akcja' → 28). The watchlist filter compares
+// the genre NAMES stored on saved cards (the only genre data a saved card keeps),
+// so without this a locale switch splits one genre into two. Each language's list
+// is served by the cached genres() call and genres change ~never, so this is a
+// couple of warm reads. Names collide across languages only by coincidence; last
+// language wins, which is harmless (any spelling still resolves to the right id).
+export async function genreNameToId(mediaType = 'movie') {
+  const map = {};
+  for (const { code } of SUPPORTED_LANGUAGES) {
+    const { genres: list = [] } = await genres(mediaType, tmdbLang(code));
+    for (const g of list) map[g.name.toLowerCase()] = g.id;
+  }
+  return map;
+}
 
 // Providers available in a region, e.g. to populate the Settings picker.
 export const providersForRegion = (region, mediaType = 'movie') =>

@@ -156,21 +156,25 @@ tabs.addEventListener('click', (e) => {
 window.addEventListener('popstate', () => activateTab(parseRoute().tab));
 
 // ---- discover -------------------------------------------------------------
-// Populate the genre filter once, lazily, the first time Discover is opened.
+// The genre vocabulary, fetched once: `genreList` is the current-language id↔name
+// list (Discover dropdown + watchlist labels); `genreByName` is the cross-language
+// name→id map the watchlist uses to consolidate genres saved under another
+// language. genreLabel resolves a canonical key (id) to its current-language name.
+let genreList = [];
+let genreByName = {};
 let genresLoaded = false;
 async function loadGenres() {
   if (genresLoaded) return;
   genresLoaded = true;
   try {
-    const { genres } = await api('/api/genres');
+    const { genres = [], byName = {} } = await api('/api/genres');
+    genreList = genres;
+    genreByName = byName;
     const sel = $('#genre-filter');
-    for (const g of genres) {
-      const o = document.createElement('option');
-      o.value = g.id; o.textContent = g.name;
-      sel.append(o);
-    }
+    for (const g of genres) sel.append(new Option(g.name, g.id));
   } catch { genresLoaded = false; /* allow a retry next open */ }
 }
+const genreLabel = (key) => (genreList.find((g) => String(g.id) === String(key)) || {}).name;
 // Populate the origin filter once, lazily — a single dropdown mixing continents
 // and countries. Each continent is an <optgroup> whose first row ("All of …")
 // selects the whole continent; its countries follow. Values are type-tagged
@@ -869,9 +873,10 @@ let watchlistItems = [];
 let watchlistTone = '';
 let watchlistGenre = '';
 async function loadWatchlist() {
-  // Need the tone vocabulary for the dropdown's canonical order; cached after the
-  // first call (also primed when Discover opens).
-  const [{ watchlist }] = await Promise.all([api('/api/watchlist'), loadTones()]);
+  // Need the tone vocabulary (dropdown order) and the genre vocabulary (labels +
+  // the cross-language name→id consolidation map); both cached after the first
+  // call (also primed when Discover opens).
+  const [{ watchlist }] = await Promise.all([api('/api/watchlist'), loadTones(), loadGenres()]);
   watchlistItems = watchlist;
   watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
   setWatchlistCount(watchlist.length); // total saved, independent of the tone filter
@@ -901,11 +906,11 @@ function populateWatchlistTones() {
 // saved titles and filtering by it would be a no-op (unlike a lone tone, which
 // still meaningfully hides untoned titles).
 function populateWatchlistGenres() {
-  const present = presentGenres(watchlistItems);
-  if (watchlistGenre && !present.includes(watchlistGenre)) watchlistGenre = '';
+  const present = presentGenres(watchlistItems, genreByName, genreLabel);
+  if (watchlistGenre && !present.some((g) => g.key === watchlistGenre)) watchlistGenre = '';
   const sel = $('#watchlist-genre');
   sel.innerHTML = `<option value="">${t('genre.all')}</option>`
-    + present.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+    + present.map((g) => `<option value="${esc(g.key)}">${esc(g.label)}</option>`).join('');
   sel.value = watchlistGenre;
   sel.classList.toggle('hidden', present.length < 2);
 }
@@ -913,7 +918,7 @@ function populateWatchlistGenres() {
 // the sort.
 function renderWatchlist() {
   const sort = $('#watchlist-sort').value === 'rating' ? 'rating' : 'added';
-  const filtered = filterByGenre(filterByTone(watchlistItems, watchlistTone), watchlistGenre);
+  const filtered = filterByGenre(filterByTone(watchlistItems, watchlistTone), watchlistGenre, genreByName);
   const ordered = sortWatchlist(filtered, sort);
   const grid = $('#watchlist-grid');
   const emptyKey = watchlistTone || watchlistGenre ? 'watchlist.emptyFiltered' : 'watchlist.empty';

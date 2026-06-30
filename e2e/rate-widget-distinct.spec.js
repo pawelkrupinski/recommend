@@ -1,49 +1,44 @@
 import { test, expect } from '@playwright/test';
 
-// The rating stars and the "Not interested" button used to blend into the card
-// (no background behind the stars; the button shared the card's panel tone).
-// They're now visually distinct: the stars sit in a recessed --bg tray with
-// per-star cells, and the dismiss button is its own recessed --bg bar. This
+// Films and TV series read as distinct types: a film card is tinted gold (the
+// accent) and a TV card blue (--link), and that type colour is shared by the
+// card's meta strip, its rating-stars tray and its "Not interested" bar. This
 // drives the real stylesheet in a browser (jsdom can't compute styles) and
-// asserts the computed backgrounds, which were transparent / panel-toned before.
+// asserts the per-type backgrounds, which were a single gold/red scheme before.
 
-test('the rating stars and dismiss button have distinct backgrounds', async ({ page }) => {
+test('film and TV cards carry distinct type-coloured backgrounds', async ({ page }) => {
   await page.goto('/'); // loads the real styles.css; no login needed to measure styles
 
   const s = await page.evaluate(() => {
-    // Minimal card mirroring ratingRow() in public/app.js: the stars tray and the
-    // dismiss button, dropped into the live #recs grid so the real CSS applies.
     const stars = [1, 2, 3, 4, 5].map((n) => `<span data-n="${n}">★</span>`).join('');
+    const html = `
+      <div class="meta"><div class="title">T</div></div>
+      <div class="rate-stars"><div class="stars">${stars}</div><span class="rating-num"></span></div>
+      <button class="skip dismiss-btn">Not interested / seen it</button>`;
     document.querySelector('#app').classList.remove('hidden');
     const grid = document.querySelector('#recs');
     grid.innerHTML = '';
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.innerHTML = `
-      <div class="rate-stars"><div class="stars">${stars}</div><span class="rating-num"></span></div>
-      <button class="skip dismiss-btn">Not interested / seen it</button>`;
-    grid.append(card);
-
-    const bg = (sel) => getComputedStyle(card.querySelector(sel)).backgroundColor;
-    const tray = card.querySelector('.rate-stars');
-    return {
-      trayBg: bg('.rate-stars'),
-      trayBorder: getComputedStyle(tray).borderTopWidth,
-      starBg: bg('.stars span'),
-      skipBg: bg('.skip'),
-    };
+    const make = (cls) => { const el = document.createElement('div'); el.className = cls; el.innerHTML = html; grid.append(el); return el; };
+    const movie = make('card');
+    const tv = make('card tv');
+    const bg = (el, sel) => getComputedStyle(el.querySelector(sel)).backgroundColor;
+    const read = (el) => ({ meta: bg(el, '.meta'), tray: bg(el, '.rate-stars'), skip: bg(el, '.skip') });
+    return { movie: read(movie), tv: read(tv) };
   });
 
-  const GOLD = 'rgba(245, 197, 24, 0.12)'; // accent-tinted stars tray
-  const RED = 'rgba(248, 113, 113, 0.14)'; // --bad-tinted dismiss bar
-  const TRANSPARENT = 'rgba(0, 0, 0, 0)';
+  const GOLD = (a) => `rgba(245, 197, 24, ${a})`;
+  const BLUE = (a) => `rgba(90, 162, 255, ${a})`;
 
-  // The stars sit in a gold-tinted tray with a border.
-  expect(s.trayBg).toBe(GOLD);
-  expect(s.trayBorder).not.toBe('0px');
-  // Each star carries its own cell background (was transparent).
-  expect(s.starBg).not.toBe(TRANSPARENT);
-  // The dismiss button is red-tinted — a distinct colour from the gold tray.
-  expect(s.skipBg).toBe(RED);
-  expect(s.skipBg).not.toBe(s.trayBg);
+  // Films are gold across meta, stars tray and dismiss bar.
+  expect(s.movie.meta).toBe(GOLD('0.05'));
+  expect(s.movie.tray).toBe(GOLD('0.12'));
+  expect(s.movie.skip).toBe(GOLD('0.13'));
+  // TV is blue across the same three.
+  expect(s.tv.meta).toBe(BLUE('0.06'));
+  expect(s.tv.tray).toBe(BLUE('0.14'));
+  expect(s.tv.skip).toBe(BLUE('0.13'));
+  // The two types are distinct everywhere, including the shared stars/dismiss bg.
+  expect(s.movie.meta).not.toBe(s.tv.meta);
+  expect(s.movie.tray).not.toBe(s.tv.tray);
+  expect(s.movie.skip).not.toBe(s.tv.skip);
 });

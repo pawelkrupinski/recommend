@@ -157,6 +157,9 @@ export async function metacriticScore(title, year = null) {
 // item.title (+ year) for Metacritic. When IMDb has no id to look up (TMDB never
 // carried one), we RESOLVE one strictly from title·year·people (resolveImdbId,
 // zero false positives) and adopt it onto the item so the badge deep-links right.
+// That resolution also hands back IMDb's canonical (English) title, which we then
+// re-probe Metacritic with when the card's title was localised — MC indexes by
+// the English title, so "Zimna wojna" only finds its score under "Cold War".
 export async function attachRatings(items, concurrency = 6) {
   // In test mode skip the live IMDb/Metacritic lookups entirely — they'd hit the
   // network and slow the suite; a missing rating just hides its badge anyway.
@@ -167,8 +170,16 @@ export async function attachRatings(items, concurrency = 6) {
       const it = items[next++];
       let [imdb, mc] = await Promise.all([imdbRating(it.imdb_id), metacriticScore(it.title, it.year)]);
       if (imdb == null) {
-        const resolved = await resolveImdbId(it); // strict title·year·people match, or null
-        if (resolved) { it.imdb_id = resolved; imdb = await imdbRating(resolved); }
+        const match = await resolveImdbId(it); // strict title·year·people match, or null
+        if (match) {
+          it.imdb_id = match.id;
+          imdb = await imdbRating(match.id);
+          // Retry MC under IMDb's canonical title when ours was localised (the
+          // probe still verifies name+year, so this stays a zero-false-positive hit).
+          if (mc == null && foldTitle(match.title) !== foldTitle(it.title)) {
+            mc = await metacriticScore(match.title, it.year ?? match.year);
+          }
+        }
       }
       it.imdbRating = imdb;
       it.metascore = mc;

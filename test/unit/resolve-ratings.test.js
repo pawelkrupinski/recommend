@@ -80,20 +80,35 @@ test('pickByPeople REJECTS with no people, no year, or only a shared first name'
 // ---- end-to-end with an injected fetcher (no network) --------------------
 const fakeRes = (body) => ({ ok: true, text: async () => body });
 
-test('resolveImdbId resolves a real title via the suggestion endpoint', async () => {
-  const id = await resolveImdbId(
+test('resolveImdbId resolves a real title, returning the matched candidate', async () => {
+  const m = await resolveImdbId(
     { title: 'The Matrix', year: 1999, cast: ['Keanu Reeves'] },
     { fetcher: async () => fakeRes(MATRIX_BODY) },
   );
-  assert.equal(id, 'tt0133093');
+  assert.equal(m.id, 'tt0133093');
+});
+
+test("resolveImdbId hands back IMDb's canonical title for a localised film (enables the MC walk)", async () => {
+  // Card title is the Polish "Zimna wojna"; IMDb (and Metacritic) index "Cold War".
+  // The match comes via cast corroboration, and its title is the English one we
+  // then probe Metacritic with. The 1984 same-name film is excluded by year.
+  const coldWar = JSON.stringify({ d: [
+    { id: 'tt6543652', l: 'Cold War', y: 2018, rank: 500, qid: 'movie', s: 'Joanna Kulig, Tomasz Kot' },
+    { id: 'tt0083436', l: 'Cold War', y: 1984, rank: 9000, qid: 'movie', s: 'Someone Else' },
+  ] });
+  const m = await resolveImdbId(
+    { title: 'Zimna wojna', year: 2018, cast: ['Joanna Kulig'] },
+    { fetcher: async () => fakeRes(coldWar) },
+  );
+  assert.deepEqual({ id: m.id, title: m.title, year: m.year }, { id: 'tt6543652', title: 'Cold War', year: 2018 });
 });
 
 test('resolveImdbId bails (no fetch) when the card has no year', async () => {
   let called = false;
-  const id = await resolveImdbId(
+  const m = await resolveImdbId(
     { title: 'The Matrix', cast: ['Keanu Reeves'] },
     { fetcher: async () => { called = true; return fakeRes(MATRIX_BODY); } },
   );
-  assert.equal(id, null);
+  assert.equal(m, null);
   assert.equal(called, false, 'nothing to disambiguate on → never hits the network');
 });

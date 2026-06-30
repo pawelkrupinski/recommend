@@ -75,9 +75,12 @@ export function pickByPeople(cands, film, year) {
   return hits.length === 1 ? hits[0].id : null;
 }
 
-// Resolve a film ({ title, year, director, cast }) to an IMDb tt-id, or null when
-// no candidate is corroborated strongly enough. Needs a year to gate on — with
-// neither year nor a way to disambiguate, any match would be a guess, so we bail.
+// Resolve a film ({ title, year, director, cast }) to its matched IMDb
+// candidate — { id, title, year } — or null when no candidate is corroborated
+// strongly enough. Needs a year to gate on; with neither year nor a way to
+// disambiguate, any match would be a guess, so we bail. The matched candidate's
+// `title` is IMDb's canonical (usually English) name, which the Metacritic probe
+// reuses to recover a localised-title film MC indexes under its English slug.
 // Cached (capped/regenerable; negatives included). `fetcher` is injectable for tests.
 export async function resolveImdbId(film = {}, { fetcher = fetchWithTimeout } = {}) {
   const { title, year } = film;
@@ -89,6 +92,8 @@ export async function resolveImdbId(film = {}, { fetcher = fetchWithTimeout } = 
     const res = await fetcher(url, { headers: { 'user-agent': BROWSER_UA } });
     if (!res.ok) return null;
     const cands = parseSuggestions(await res.text());
-    return pickByTitleYear(cands, title, year) || pickByPeople(cands, film, year);
+    const id = pickByTitleYear(cands, title, year) || pickByPeople(cands, film, year);
+    const hit = id && cands.find((c) => c.id === id);
+    return hit ? { id: hit.id, title: hit.title, year: hit.year } : null;
   });
 }

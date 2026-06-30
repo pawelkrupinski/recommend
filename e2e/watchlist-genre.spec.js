@@ -46,3 +46,25 @@ test('the watchlist genre dropdown is hidden when saved titles share one genre',
   await expect(page.locator('#watchlist-grid .card')).toHaveCount(2);
   await expect(page.locator('#watchlist-genre')).toBeHidden();
 });
+
+// The genre dropdown must look identical to its neighbours, not fall back to the
+// browser's default <select> chrome. The watchlist selects are styled by an
+// id-list rule (panel background + 1px line border), so a new control is only
+// styled if it's added to that list — assert it matches the tone select's
+// computed background and border rather than a bare native widget.
+test('the watchlist genre dropdown is styled the same as the tone dropdown', async ({ page }) => {
+  await login(page, uniqEmail('wlgenrestyle'));
+  await enterPicks(page);
+  await page.locator('#recs .card[data-id="201"] .watch-btn').click(); // Action
+  await page.locator('#recs .card[data-id="202"] .watch-btn').click(); // Comedy
+  await page.locator('#tabs a[data-tab="watchlist"]').click();
+
+  const styleOf = (sel) => page.locator(sel).evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { background: s.backgroundColor, border: `${s.borderWidth} ${s.borderStyle} ${s.borderColor}` };
+  });
+  const [genre, tone] = await Promise.all([styleOf('#watchlist-genre'), styleOf('#watchlist-tone')]);
+
+  expect(genre.background).toBe(tone.background);
+  expect(genre.border).toBe(tone.border);
+});

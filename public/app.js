@@ -1,7 +1,7 @@
 import { matchServiceLink, serviceSearchLink } from './service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
-import { presentTones, filterByTone } from './watchlist-tones.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre } from './watchlist-filters.js';
 import { newPicks } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
@@ -827,10 +827,11 @@ function queueCard(m, onResolve) {
 // Saved titles as poster cards: tap the poster for where-to-watch, "Remove" to
 // take it off the list. Doubles as the refresh of the cached id set so the
 // Discover + buttons stay accurate after edits here.
-// The saved titles last loaded, kept client-side so the tone filter and sort can
-// re-render without re-fetching; the active tone filter ('' = all tones).
+// The saved titles last loaded, kept client-side so the tone/genre filters and
+// sort can re-render without re-fetching; active filters ('' = all).
 let watchlistItems = [];
 let watchlistTone = '';
+let watchlistGenre = '';
 async function loadWatchlist() {
   // Need the tone vocabulary for the dropdown's canonical order; cached after the
   // first call (also primed when Discover opens).
@@ -843,6 +844,7 @@ async function loadWatchlist() {
   // on ME so a bare /watchlist (e.g. the nav tab) restores it.
   $('#watchlist-sort').value = parseRoute().sort === 'rating' || ME?.watchlistSort === 'rating' ? 'rating' : 'added';
   populateWatchlistTones();
+  populateWatchlistGenres();
   renderWatchlist();
 }
 // Fill the tone dropdown with only the tones present on saved titles (canonical
@@ -857,12 +859,29 @@ function populateWatchlistTones() {
   sel.value = watchlistTone;
   sel.classList.toggle('hidden', present.length === 0);
 }
-// Paint the grid from the cached items, applying the tone filter then the sort.
+// Fill the genre ("category") dropdown with only the genres present on saved
+// titles (A→Z), preserving the current selection if it still applies. Hidden
+// below two genres: every film carries a genre, so a lone genre is shared by all
+// saved titles and filtering by it would be a no-op (unlike a lone tone, which
+// still meaningfully hides untoned titles).
+function populateWatchlistGenres() {
+  const present = presentGenres(watchlistItems);
+  if (watchlistGenre && !present.includes(watchlistGenre)) watchlistGenre = '';
+  const sel = $('#watchlist-genre');
+  sel.innerHTML = `<option value="">${t('genre.all')}</option>`
+    + present.map((g) => `<option value="${esc(g)}">${esc(g)}</option>`).join('');
+  sel.value = watchlistGenre;
+  sel.classList.toggle('hidden', present.length < 2);
+}
+// Paint the grid from the cached items, applying the tone + genre filters then
+// the sort.
 function renderWatchlist() {
   const sort = $('#watchlist-sort').value === 'rating' ? 'rating' : 'added';
-  const ordered = sortWatchlist(filterByTone(watchlistItems, watchlistTone), sort);
+  const filtered = filterByGenre(filterByTone(watchlistItems, watchlistTone), watchlistGenre);
+  const ordered = sortWatchlist(filtered, sort);
   const grid = $('#watchlist-grid');
-  grid.innerHTML = ordered.length ? '' : `<p class="empty">${t(watchlistTone ? 'watchlist.emptyTone' : 'watchlist.empty')}</p>`;
+  const emptyKey = watchlistTone || watchlistGenre ? 'watchlist.emptyFiltered' : 'watchlist.empty';
+  grid.innerHTML = ordered.length ? '' : `<p class="empty">${t(emptyKey)}</p>`;
   for (const w of ordered) grid.append(watchCard(w));
 }
 // Changing the sort rewrites the path's query (navigate() reloads the tab) and
@@ -873,9 +892,10 @@ $('#watchlist-sort').onchange = () => {
   saveSetting('watchlistSort', v);
   navigate(v === 'rating' ? '/watchlist?sort=rating' : '/watchlist');
 };
-// The tone filter is a pure client-side view over the already-loaded titles, so
-// it just re-renders — no refetch, no URL change.
+// The tone/genre filters are pure client-side views over the already-loaded
+// titles, so they just re-render — no refetch, no URL change.
 $('#watchlist-tone').onchange = () => { watchlistTone = $('#watchlist-tone').value; renderWatchlist(); };
+$('#watchlist-genre').onchange = () => { watchlistGenre = $('#watchlist-genre').value; renderWatchlist(); };
 function setWatchlistCount(n) {
   $('#watchlist-count').textContent = t('watchlist.count', { n });
 }
@@ -895,9 +915,10 @@ function watchCard(w) {
     watchlistIds.delete(w.tmdb_id);
     watchlistItems = watchlistItems.filter((it) => it.tmdb_id !== w.tmdb_id);
     setWatchlistCount(watchlistItems.length);
-    // Re-derive the tone dropdown (removing the last title of a tone drops it) and
-    // repaint, so the view stays consistent with the filter and remaining items.
+    // Re-derive both dropdowns (removing the last title of a tone/genre drops it)
+    // and repaint, so the view stays consistent with the filters and remaining items.
     populateWatchlistTones();
+    populateWatchlistGenres();
     renderWatchlist();
   };
   return el;

@@ -1,9 +1,9 @@
-// Unit tests for the Watchlist tone filter helpers: presentTones surfaces only
-// the tones saved titles actually carry (canonical order, deduped), and
-// filterByTone narrows the list to titles carrying the chosen tone.
+// Unit tests for the Watchlist filter helpers: presentTones/presentGenres surface
+// only the values saved titles actually carry, and filterByTone/filterByGenre
+// narrow the list to titles carrying the chosen one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { presentTones, filterByTone } from '../../public/watchlist-tones.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre } from '../../public/watchlist-filters.js';
 
 const ORDER = ['heartfelt', 'deadpan', 'gritty', 'romantic'];
 const item = (id, tones) => ({ tmdb_id: id, tones: tones.map((slug) => ({ slug, label: slug[0].toUpperCase() + slug.slice(1) })) });
@@ -39,4 +39,30 @@ test('filterByTone keeps only titles carrying the tone', () => {
 
 test('filterByTone returns the whole list when no tone is selected', () => {
   assert.equal(filterByTone(items, ''), items, 'same reference, unfiltered');
+});
+
+const gItem = (id, genres) => ({ tmdb_id: id, genres });
+const gItems = [
+  gItem(1, ['Action', 'Comedy']),
+  gItem(2, ['Comedy']),
+  gItem(3, []),               // a title with no genres
+  gItem(4, ['Drama']),
+];
+
+test('presentGenres lists distinct genres present, deduped, alphabetical', () => {
+  assert.deepEqual(presentGenres(gItems), ['Action', 'Comedy', 'Drama']);
+});
+
+test('presentGenres is empty when no saved title carries a genre', () => {
+  assert.deepEqual(presentGenres([gItem(1, []), { tmdb_id: 2 }]), []);
+});
+
+test('filterByGenre keeps only titles tagged with the genre', () => {
+  assert.deepEqual(filterByGenre(gItems, 'Comedy').map((i) => i.tmdb_id), [1, 2]);
+  assert.deepEqual(filterByGenre(gItems, 'Drama').map((i) => i.tmdb_id), [4]);
+  assert.deepEqual(filterByGenre(gItems, 'Horror'), [], 'no match → empty');
+});
+
+test('filterByGenre returns the whole list when no genre is selected', () => {
+  assert.equal(filterByGenre(gItems, ''), gItems, 'same reference, unfiltered');
 });

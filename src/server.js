@@ -315,9 +315,11 @@ async function api(req, res, url) {
 
     // ---- on-demand pick enrichment (IMDb/Metacritic ratings + tones) --
     // Deferred off the recommendation build (see taste.enrichPicks): the client
-    // fetches this for the cards it actually shows and patches their rating
-    // badges. The ids are bounded to a screenful; the underlying lookups are
-    // TTL-cached server-side, so a short browser cache is safe.
+    // fetches this for the cards it actually shows and patches each card's rating
+    // badges. Streamed as NDJSON (one `{ key, imdbRating, metascore, imdb_id,
+    // tones }` line per title) so a card lights up the moment its title resolves,
+    // rather than waiting on the slowest title in the screenful. The ids are
+    // bounded to a screenful; the underlying lookups are TTL-cached server-side.
     if (p === '/api/enrich' && req.method === 'GET') {
       // Each id is a `media_type:tmdb_id` token (e.g. `tv:1399`); a bare number is
       // taken as a movie so older clients keep working. A film and a series can
@@ -330,7 +332,15 @@ async function api(req, res, url) {
         .filter((it) => it.id)
         .slice(0, 40);
       const language = tmdbLang(langFor(uid, req));
-      return json(req, res, 200, await enrichPicks(items, { language }), 'private, max-age=3600');
+      // Chunked NDJSON (no content-length) so each line flushes as it's produced.
+      // x-accel-buffering:no asks any reverse proxy not to buffer the stream.
+      res.writeHead(200, {
+        'content-type': 'application/x-ndjson; charset=utf-8',
+        'cache-control': 'private, no-cache',
+        'x-accel-buffering': 'no',
+      });
+      await enrichPicks(items, { language, onItem: (key, payload) => res.write(JSON.stringify({ key, ...payload }) + '\n') });
+      return res.end();
     }
 
     // ---- learned taste profile (the hidden /insights page) ------------

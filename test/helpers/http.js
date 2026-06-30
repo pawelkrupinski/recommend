@@ -30,6 +30,13 @@ export function client(base, extraHeaders = {}) {
       const res = await this.raw(path, opts);
       return { status: res.status, data: await res.json().catch(() => null) };
     },
+    // Read an NDJSON stream (one JSON object per line, e.g. /api/enrich): returns
+    // the parsed rows in arrival order.
+    async ndjson(path, opts) {
+      const res = await this.raw(path, opts);
+      const rows = (await res.text()).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+      return { status: res.status, rows };
+    },
     async login({ email = 'tester@example.com', admin = false, onboarded = true } = {}) {
       const q = new URLSearchParams({ email, ...(admin ? { admin: '1' } : {}), ...(onboarded ? {} : { onboarded: '0' }) });
       const res = await this.raw('/auth/dev-login?' + q);

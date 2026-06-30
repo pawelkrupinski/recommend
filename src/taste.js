@@ -772,13 +772,17 @@ const ENRICH_CONCURRENCY = 6;
 // "Building your picks" never waits on those slow web lookups. The client calls
 // /api/enrich with the visible titles (as `media_type:tmdb_id` tokens, since a
 // film and a series can share an id) and patches each card's rating badges (and
-// tones) when this returns. Each title's details are already TMDB-cached (the pool
+// tones) as it resolves. Each title's details are already TMDB-cached (the pool
 // was just built from them) and the rating/tone lookups are TTL-cached, so repeat
-// calls as the user advances through picks are cheap. Returns
-// { [`${media_type}:${tmdb_id}`]: { imdbRating, metascore, tones } }; a title that
-// fails to resolve is simply omitted, leaving its card to render without badges.
-export async function enrichPicks(items, { language } = {}) {
-  const out = {};
+// calls as the user advances through picks are cheap.
+//
+// Each title is emitted to `onItem(key, payload)` THE MOMENT it resolves — the
+// pool fans out at ENRICH_CONCURRENCY, so a slow IMDb/Metacritic lookup on one
+// title never holds up the badges of the titles already done. The endpoint
+// streams those emissions to the client as they land. `key` is `media_type:id`;
+// `payload` is { imdbRating, metascore, imdb_id, tones }. A title that fails to
+// resolve is simply never emitted, leaving its card to render without badges.
+export async function enrichPicks(items, { language, onItem } = {}) {
   await mapPool(items, ENRICH_CONCURRENCY, async ({ id, media_type = 'movie' }) => {
     let full;
     try { full = await details(id, media_type, language); } catch { return; }
@@ -796,9 +800,8 @@ export async function enrichPicks(items, { language } = {}) {
     await resolveTones(item, media_type); // persist any newly-scraped tone slugs (TTL-skipped)
     await attachRatings([item]);          // imdbRating + metascore (null when unmatched); may resolve item.imdb_id
     // imdb_id flows back so the client's badge deep-links to a freshly-resolved title.
-    out[mediaKey(media_type, id)] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, imdb_id: item.imdb_id ?? null, tones: tonesForMovie(full, media_type) };
+    onItem?.(mediaKey(media_type, id), { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, imdb_id: item.imdb_id ?? null, tones: tonesForMovie(full, media_type) });
   });
-  return out;
 }
 
 // Map each displayed credit name (director(s) + top cast) to its IMDb person id,

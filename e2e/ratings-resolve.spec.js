@@ -11,9 +11,11 @@ import { login, uniqEmail, enterPicks } from './helpers.js';
 async function stubEnrich(page) {
   await page.route('**/api/enrich**', async (route) => {
     const ids = (new URL(route.request().url()).searchParams.get('ids') || '').split(',').filter(Boolean);
-    const body = {};
-    for (const id of ids) body[id] = { imdbRating: 7.8, metascore: 84, imdb_id: 'tt0133093', tones: [] };
-    await route.fulfill({ json: body });
+    // /api/enrich streams NDJSON — one `{ key, ... }` line per resolved title.
+    const body = ids
+      .map((id) => JSON.stringify({ key: id, imdbRating: 7.8, metascore: 84, imdb_id: 'tt0133093', tones: [] }))
+      .join('\n') + '\n';
+    await route.fulfill({ contentType: 'application/x-ndjson', body });
   });
 }
 

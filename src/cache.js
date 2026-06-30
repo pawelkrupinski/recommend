@@ -15,9 +15,11 @@
 import { cacheGet, cacheSet } from './db.js';
 import { tmdbCacheGet, tmdbCacheSet } from './tmdb-cache.js';
 
-// Common cache lifetime unit. External ratings/availability barely move, so the
-// clients cache for whole multiples of a day.
-export const DAY = 24 * 60 * 60 * 1000;
+// Common cache lifetime units. Availability and id-resolution barely move, so
+// those clients cache for whole multiples of a day; rating scores refresh on the
+// order of hours, so a Discover/Watchlist revisit picks up a newer score.
+export const HOUR = 60 * 60 * 1000;
+export const DAY = 24 * HOUR;
 
 // The read-through spine, parameterised by its backing store's get/set so the
 // durable and capped variants can't drift in their negative-cache / transient-

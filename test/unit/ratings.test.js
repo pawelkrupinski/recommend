@@ -2,10 +2,11 @@
 // and the JSON-LD Metascore parser. No network — these never call fetch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freshDbEnv } from '../helpers/env.js';
+import { freshDbEnv, readFixture } from '../helpers/env.js';
 
 freshDbEnv();
-const { slugify, parseMetascore } = await import('../../src/ratings.js');
+const { slugify, foldTitle, parseMetascore, parseMetacriticPage, metacriticMatches } =
+  await import('../../src/ratings.js');
 
 test('slugify lowercases, strips apostrophes and collapses separators', () => {
   assert.equal(slugify("Schindler's List"), 'schindlers-list');
@@ -39,4 +40,30 @@ test('parseMetascore rounds and bounds the value', () => {
     aggregateRating: { ratingValue: 72.6, bestRating: 100, name: 'Metascore' },
   })}</script>`;
   assert.equal(parseMetascore(html), 73);
+});
+
+test('foldTitle folds accents/ł and reduces to a comparable form; slugify hyphenates it', () => {
+  assert.equal(foldTitle('Amélie'), 'amelie');
+  assert.equal(foldTitle('Pokłosie'), 'poklosie');
+  assert.equal(foldTitle("Schindler's List"), 'schindlers list');
+  assert.equal(slugify("Schindler's List"), 'schindlers-list'); // unchanged behaviour
+});
+
+test('parseMetacriticPage pulls the score plus the verifiable name + year', () => {
+  const page = parseMetacriticPage(readFixture('metacritic-the-matrix.html'));
+  assert.deepEqual(page, { score: 73, name: 'The Matrix', year: 1999 });
+});
+
+test('parseMetacriticPage is null when the page carries no Metascore', () => {
+  assert.equal(parseMetacriticPage('<html><body>nothing</body></html>'), null);
+});
+
+test('metacriticMatches accepts the right film and REJECTS a slug collision', () => {
+  const page = { score: 73, name: 'The Matrix', year: 1999 };
+  assert.equal(metacriticMatches(page, 'The Matrix', 1999), true);
+  assert.equal(metacriticMatches(page, 'The Matrix', null), true, 'name match alone passes when year unknown');
+  // A remake/reissue whose slug collides: same name, wrong year → no borrowed score.
+  assert.equal(metacriticMatches(page, 'The Matrix', 2030), false);
+  // A different film whose slug happened to resolve → name mismatch rejects it.
+  assert.equal(metacriticMatches({ score: 80, name: 'The Matrix Reloaded', year: 2003 }, 'The Matrix', 1999), false);
 });

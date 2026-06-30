@@ -12,7 +12,8 @@
 // Results are cached hard (14 days; scores barely move) and negative results
 // are cached too, so a title without a match isn't re-fetched every Discover load.
 import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
-import { readThrough, DAY } from './cache.js';
+import { readThroughCapped, DAY } from './cache.js';
+import { resolveImdbId } from './resolve-ratings.js';
 
 const TTL = 14 * DAY; // critic/audience scores barely move
 // Mirror TMDB/IMDb suppression: a rating backed by <5 votes is noise.
@@ -26,7 +27,7 @@ const IMDB_QUERY = 'query Rating($id:ID!){title(id:$id){ratingsSummary{aggregate
 // unknown. Cached; transient network faults are not cached so they retry later.
 export async function imdbRating(imdbId) {
   if (!imdbId) return null;
-  return readThrough(`imdb:rating:${imdbId}`, TTL, async () => {
+  return readThroughCapped(`imdb:rating:${imdbId}`, TTL, async () => {
     const res = await fetchWithTimeout(IMDB_GRAPHQL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'user-agent': BROWSER_UA },
@@ -44,25 +45,69 @@ export async function imdbRating(imdbId) {
 // ---- Metacritic -----------------------------------------------------------
 const MC_SITE = 'https://www.metacritic.com';
 
-// Metacritic-style slug: lowercase, accents stripped, apostrophes dropped
-// ("Schindler's List" -> "schindlers-list"); all other non-alphanumerics
-// collapse to a single hyphen. (MC keeps "!" in slugs but we never need it here.)
-export function slugify(title) {
+// Accent-folded, lowercased, apostrophe-stripped title with every other run of
+// non-alphanumerics collapsed to a single space — the canonical form for
+// comparing two titles ("Amélie" === "amelie"). Shared by slugify and the IMDb-id
+// resolver (resolve-ratings.js) so a title can't normalise two different ways.
+export function foldTitle(title) {
   return String(title)
     .normalize('NFD').replace(/[̀-ͯ]/g, '') // strip diacritics
     .replace(/ł/gi, 'l') // NFD misses the Polish ł
     .toLowerCase()
     .replace(/['’‘]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
 }
 
-// Some titles index without their leading article on MC, so probe that too.
+// Metacritic-style slug: the folded title with spaces hyphenated
+// ("Schindler's List" -> "schindlers-list").
+export function slugify(title) {
+  return foldTitle(title).replace(/ +/g, '-');
+}
+
+// Slugs to probe, most-specific first: the canonical slug, its de-articled form
+// (some titles index without a leading article), and — for "Title: Subtitle" or
+// "Title - Subtitle" — the main-title-only form. Each probed page is verified
+// against the film's name+year before its score is trusted (metacriticMatches),
+// so widening the probe can recover a near-miss slug without risking a wrong hit.
 function candidateSlugs(title) {
+  const slugs = new Set();
+  const add = (s) => { if (s) slugs.add(s); };
   const primary = slugify(title);
-  if (!primary) return [];
-  const m = primary.match(/^(the|a|an)-(.+)$/);
-  return m ? [primary, m[2]] : [primary];
+  add(primary);
+  const deArticled = primary.match(/^(?:the|a|an)-(.+)$/);
+  if (deArticled) add(deArticled[1]);
+  const main = String(title).split(/\s*[:–-]\s+/)[0];
+  if (main && main !== title) add(slugify(main));
+  return [...slugs];
+}
+
+// The MC movie page's JSON-LD also carries the film's name + datePublished next
+// to its Metascore, so a probed page can be VERIFIED to be the right film before
+// its score is trusted. Returns { score, name, year } or null when unscored.
+export function parseMetacriticPage(html) {
+  const score = parseMetascore(html);
+  if (score == null) return null;
+  let name = null, year = null;
+  const blocks = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  for (const b of blocks) {
+    let data;
+    try { data = JSON.parse(b[1].trim()); } catch { continue; }
+    for (const node of Array.isArray(data) ? data : [data]) {
+      if (!node?.name || !/movie/i.test(String(node['@type'] || ''))) continue;
+      name = node.name;
+      year = Number(String(node.datePublished || '').slice(0, 4)) || null;
+    }
+  }
+  return { score, name, year };
+}
+
+// Accept a probed MC page only when its name matches the film's title (folded)
+// and, when both years are known, they're within a year — so a remake/reissue
+// whose slug collides can't lend its score to the wrong film.
+export function metacriticMatches(page, title, year) {
+  if (!page.name || foldTitle(page.name) !== foldTitle(title)) return false;
+  return !(year && page.year) || Math.abs(page.year - year) <= 1;
 }
 
 // Pull the Metascore (0–100 critic aggregate) out of a page's JSON-LD. MC
@@ -86,26 +131,32 @@ export function parseMetascore(html) {
   return v >= 0 && v <= 100 ? v : null;
 }
 
-// Metascore (0–100) for a film title, or null when MC has no scored page for
-// it. Probes the canonical slug (and de-articled variant); first 200 with a
-// score wins. Cached, negatives included.
-export async function metacriticScore(title) {
+// Metascore (0–100) for a film, or null when MC has no scored page that
+// verifiably matches it. Probes each candidate slug and accepts the first whose
+// page's name+year confirm it's this film (metacriticMatches) — so a colliding
+// slug can't lend a wrong score. Cached (capped, regenerable), negatives included.
+export async function metacriticScore(title, year = null) {
   if (!title?.trim()) return null;
-  return readThrough(`mc:score:${slugify(title)}`, TTL, async () => {
+  return readThroughCapped(`mc:score:${slugify(title)}:${year ?? ''}`, TTL, async () => {
     for (const slug of candidateSlugs(title)) {
       const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': BROWSER_UA } });
       if (!res.ok) continue;
-      const score = parseMetascore(await res.text());
-      if (score != null) return score; // first slug with a score wins, gets cached
+      const page = parseMetacriticPage(await res.text());
+      if (page && metacriticMatches(page, title, year)) return page.score; // verified hit
     }
-    return null; // no slug scored → cache the negative
+    return null; // no slug verifiably matched → cache the negative
   });
 }
 
 // ---- enrichment -----------------------------------------------------------
-// Attach { imdbRating, metascore } to each item (needs item.imdb_id + .title),
-// fetched concurrently but capped so we don't hammer either source. Mutates and
-// returns `items`. Failures degrade to null — a missing rating just hides its badge.
+// Attach { imdbRating, metascore } to each item, fetched concurrently but capped
+// so we don't hammer either source. Mutates and returns `items`. Failures degrade
+// to null — a missing rating just hides its badge.
+//
+// The direct lookups use what the card already has: item.imdb_id for IMDb,
+// item.title (+ year) for Metacritic. When IMDb has no id to look up (TMDB never
+// carried one), we RESOLVE one strictly from title·year·people (resolveImdbId,
+// zero false positives) and adopt it onto the item so the badge deep-links right.
 export async function attachRatings(items, concurrency = 6) {
   // In test mode skip the live IMDb/Metacritic lookups entirely — they'd hit the
   // network and slow the suite; a missing rating just hides its badge anyway.
@@ -114,7 +165,11 @@ export async function attachRatings(items, concurrency = 6) {
   async function worker() {
     while (next < items.length) {
       const it = items[next++];
-      const [imdb, mc] = await Promise.all([imdbRating(it.imdb_id), metacriticScore(it.title)]);
+      let [imdb, mc] = await Promise.all([imdbRating(it.imdb_id), metacriticScore(it.title, it.year)]);
+      if (imdb == null) {
+        const resolved = await resolveImdbId(it); // strict title·year·people match, or null
+        if (resolved) { it.imdb_id = resolved; imdb = await imdbRating(resolved); }
+      }
       it.imdbRating = imdb;
       it.metascore = mc;
     }

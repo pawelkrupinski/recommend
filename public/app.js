@@ -422,21 +422,29 @@ function renderRecs(results, profileSize, genre) {
 // land, fetch /api/enrich for the ones we haven't resolved yet and patch each
 // card's rating badges in place (and refresh popup tones if newly scraped). The
 // server bounds and TTL-caches the lookups, so this stays cheap as the user
-// advances and refillPicks adds more cards.
-async function enrichVisible() {
-  const grid = $('#recs');
+// advances and refillPicks adds more cards. Shared by Discover and the Watchlist
+// (both carry `_pick` cards), so a saved title missing a badge fills in too.
+async function enrichGrid(grid) {
+  if (!grid) return;
   const pending = [...grid.querySelectorAll('.card')].filter((c) => c._pick && c._pick.imdbRating === undefined);
   if (!pending.length) return;
-  let data;
-  try { data = await api('/api/enrich?ids=' + pending.map((c) => c._pick.tmdb_id).join(',')); } catch { return; }
-  for (const c of pending) {
-    const d = data[c._pick.tmdb_id] || {};
-    c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
-    c._pick.metascore = d.metascore ?? null;
-    if (d.tones && d.tones.length) c._pick.tones = d.tones;
-    refreshRatings(c);
+  // The endpoint caps at a screenful of ids; chunk so a long watchlist isn't
+  // silently truncated to the first 40.
+  for (let i = 0; i < pending.length; i += 40) {
+    const chunk = pending.slice(i, i + 40);
+    let data;
+    try { data = await api('/api/enrich?ids=' + chunk.map((c) => c._pick.tmdb_id).join(',')); } catch { continue; }
+    for (const c of chunk) {
+      const d = data[c._pick.tmdb_id] || {};
+      c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
+      c._pick.metascore = d.metascore ?? null;
+      if (d.imdb_id) c._pick.imdb_id = d.imdb_id;   // adopt a freshly-resolved id so the badge deep-links
+      if (d.tones && d.tones.length) c._pick.tones = d.tones;
+      refreshRatings(c);
+    }
   }
 }
+const enrichVisible = () => enrichGrid($('#recs'));
 
 // Patch one card's IMDb/Metacritic badge row from its (now-enriched) pick object,
 // inserting the row before the genres line when the card had no badges yet and
@@ -929,6 +937,7 @@ function renderWatchlist() {
   const emptyKey = watchlistTone || watchlistGenre ? 'watchlist.emptyFiltered' : 'watchlist.empty';
   grid.innerHTML = ordered.length ? '' : `<p class="empty">${t(emptyKey)}</p>`;
   for (const w of ordered) grid.append(watchCard(w));
+  enrichGrid(grid); // fill in badges for saved titles enriched before rating resolution existed
 }
 // Changing the sort rewrites the path's query (navigate() reloads the tab) and
 // persists the choice so it's remembered on the next visit.
@@ -949,6 +958,7 @@ function watchCard(w) {
   const el = document.createElement('div');
   el.className = 'card';
   el.dataset.id = w.tmdb_id;
+  el._pick = w;                // so deferred /api/enrich can patch this card's badges, as on Discover
   // Same card body as a Discover pick (the rich fields were captured when it was
   // saved), minus the score badge and rate widget; a Remove button stands in for
   // the rate row. Tapping the poster opens the same where-to-watch popup.

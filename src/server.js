@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
@@ -129,6 +129,10 @@ async function api(req, res, url) {
 
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
+      // The SPA boot probe doubles as an "arrival" signal: warm this user's
+      // landing pool in the background (a no-op if it's already fresh) so their
+      // first Discover request is a cache hit, not a cold build.
+      warmLandingPool(uid);
       const detectedCountry = detectCountry(req);
       return json(req, res, 200, {
         user: { id: user.id, email: user.email, name: user.name, picture: user.picture },
@@ -288,6 +292,17 @@ async function api(req, res, url) {
       });
       const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language, filters });
       return json(req, res, 200, out);
+    }
+
+    // ---- on-demand pick enrichment (IMDb/Metacritic ratings + tones) --
+    // Deferred off the recommendation build (see taste.enrichPicks): the client
+    // fetches this for the cards it actually shows and patches their rating
+    // badges. The ids are bounded to a screenful; the underlying lookups are
+    // TTL-cached server-side, so a short browser cache is safe.
+    if (p === '/api/enrich' && req.method === 'GET') {
+      const ids = (url.searchParams.get('ids') || '').split(',').map(Number).filter(Boolean).slice(0, 40);
+      const language = tmdbLang(langFor(uid, req));
+      return json(req, res, 200, await enrichPicks(ids, { language }), 'private, max-age=3600');
     }
 
     // ---- learned taste profile (the hidden /insights page) ------------

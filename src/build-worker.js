@@ -1,6 +1,7 @@
 // Worker-thread entry for the recommendation build. Runs the heavy, synchronous
-// build (gather → ~500 detail fetches → score → enrich) off the main event loop
-// so /watchlist, /health and live requests stay responsive while a build runs.
+// build (gather → candidate detail fetches → score) off the main event loop so
+// /watchlist, /health and live requests stay responsive while a build runs.
+// (Rating/tone enrichment is no longer part of the build — see taste.enrichPicks.)
 //
 // The worker opens its OWN node:sqlite connection (db.js does this at import,
 // keyed off the inherited DB_PATH) and writes the finished pool straight into the

@@ -226,6 +226,13 @@ const CANDIDATE_CAP = 500;
 // fan out rather than await one title at a time; 8 keeps it well under TMDB's
 // limits (the convention's 5-10 band) while collapsing the fetch phase ~8x.
 const DETAIL_FETCH_CONCURRENCY = 8;
+// How many survivors the fast foreground "head" build stops at before serving (see
+// buildCorpus survivorTarget). Comfortably over the 36 a page shows — with margin
+// for rate/dismiss/watchlist exclusions and the diversity rerank — so the first
+// paint is a full grid, while the remaining ~CANDIDATE_CAP candidates are fetched
+// by the deeper background rebuild the cold serve schedules. On a cold cache this
+// is the difference between waiting on ~60 detail fetches and ~500.
+const FAST_HEAD = 60;
 // The recommendation build is split into two layers so a rating doesn't pay for
 // the whole thing. buildCorpus is the expensive, taste-independent layer (gather +
 // ~500 detail fetches + enrichment); it barely moves when a user rates one more
@@ -236,10 +243,14 @@ const DETAIL_FETCH_CONCURRENCY = 8;
 
 // Build the candidate corpus for one genre (or all genres when genreId is
 // undefined): gather → fetch details → hard-filter → per-survivor scoring-ready
-// cards, with a wide head enriched (IMDb/Metacritic + tone feeders). The heavy
-// part — many TMDB calls — so its output is cached under a key WITHOUT the recGen
-// stamp (see corpusKey): a rating re-ranks it rather than rebuilding it.
-async function buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters = {} }) {
+// cards. The heavy part is the many TMDB detail fetches, so the output is cached
+// under a key WITHOUT the recGen stamp (see corpusKey): a rating re-ranks it
+// rather than rebuilding it. With `survivorTarget` set, the detail fetch stops once
+// that many candidates survive — the fast foreground "head" build that lets picks
+// paint after a fraction of the full ~500-candidate fetch, leaving the rest to the
+// deeper background rebuild. `complete` in the result says whether the whole
+// candidate set was fetched (full depth) or the build stopped early (a head).
+async function buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters = {}, survivorTarget }) {
   // Titles the user has already handled — rated, dismissed, or saved to their
   // watchlist — must never be recommended. Movies only (the whole catalogue here),
   // keyed by bare tmdb id since that's the unit candidate sources and the cap work
@@ -273,39 +284,58 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   const storedTonesFor = (id) => candidateTones.get(id) || [];
 
   // Fetch details, apply the hard filters + streamability gate, and collect each
-  // survivor's features/votes. Scoring happens later (rankCorpus) because the IDF
-  // feature weights depend on the whole candidate corpus.
+  // survivor. Scoring happens later (rankCorpus) because the IDF feature weights
+  // depend on the whole candidate corpus.
   const userSet = new Set(providerIds || []);
-  const tDetails = performance.now();
-  // Fetch every candidate's details through a bounded-concurrency pool rather than
-  // a sequential await loop. The per-candidate detail fetch is the corpus build's
-  // dominant cost — ~95% of wall time on a cold cache (prod detailsMs ~30-57s) —
-  // and serial round-trips make it CANDIDATE_CAP deep. Each worker applies the hard
-  // filters + streamability gate inline (all synchronous) and writes a survivor
-  // into its candidate slot, so the corpus keeps the source priority order no
-  // matter which fetch lands first. mapPool isolates a failed fetch (one bad title
-  // never stalls the batch) and yields the loop at every await, so the build keeps
-  // the event loop breathing without the explicit breathe() the serial loop needed.
-  const slots = new Array(pool.length);
-  await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m, i) => {
-    const full = await details(m.id, 'movie', language);
+  // Fetch one candidate's details (the build's dominant cost — ~95% of cold-cache
+  // wall time, prod detailsMs ~30-57s) and apply the genre/origin/indie/tone hard
+  // filters + the streamability gate inline (all synchronous). Returns the survivor
+  // or null; a failed fetch is isolated (null) so one bad title never stalls a batch.
+  const fetchSurvivor = async (m) => {
+    let full;
+    try { full = await details(m.id, 'movie', language); } catch { return null; }
     // When a genre is selected, keep only titles tagged with it (the seed/chart
     // sources aren't genre-constrained at source, so filter here too).
-    if (genreId && !(full.genres || []).some((g) => g.id === genreId)) return;
-    // Origin (continent/country/non-US) and indie filters — same hard-drop
-    // model as the genre filter, applied uniformly to every candidate source.
-    if (!matchesOrigin(full, filters)) return;
-    if (filters.indie && !isIndie(full)) return;
-    // Tone filter (the Discover "tone" control / a ?tag= deep link): hard-drop
-    // titles that don't carry the chosen tone, same model as the genre filter.
-    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) return;
-    // Drop titles not on a chosen service in the user's region; otherwise keep
-    // the matched services so the card can show (and deep-link) each one.
+    if (genreId && !(full.genres || []).some((g) => g.id === genreId)) return null;
+    // Origin (continent/country/non-US) and indie filters — same hard-drop model
+    // as the genre filter, applied uniformly to every candidate source.
+    if (!matchesOrigin(full, filters)) return null;
+    if (filters.indie && !isIndie(full)) return null;
+    // Tone filter (the Discover "tone" control / a ?tag= deep link).
+    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) return null;
+    // Drop titles not on a chosen service; otherwise keep the matched services so
+    // the card can badge (and deep-link) each one.
     const services = userServices(full, region, userSet);
-    if (!services.length) return;
-    slots[i] = { full, services, collab: collab.get(m.id) || 0 };
-  });
-  const survivors = slots.filter(Boolean);
+    if (!services.length) return null;
+    return { full, services, collab: collab.get(m.id) || 0 };
+  };
+  const tDetails = performance.now();
+  let survivors, complete;
+  if (survivorTarget) {
+    // Fast "head" build: fetch in source-priority order, DETAIL_FETCH_CONCURRENCY at
+    // a time, and STOP once survivorTarget candidates survive — so the foreground
+    // serve waits on only a fraction of the fetch. complete is false when candidates
+    // remained unfetched (a head to deepen later), true when we exhausted them anyway
+    // (a small candidate set is already full depth, nothing to deepen).
+    survivors = [];
+    let fetched = 0;
+    for (let i = 0; i < pool.length && survivors.length < survivorTarget; i += DETAIL_FETCH_CONCURRENCY) {
+      const batch = pool.slice(i, i + DETAIL_FETCH_CONCURRENCY);
+      for (const s of await Promise.all(batch.map(fetchSurvivor))) if (s) survivors.push(s);
+      fetched += batch.length;
+    }
+    complete = fetched >= pool.length;
+  } else {
+    // Full build (the background rebuild): keep DETAIL_FETCH_CONCURRENCY fetches in
+    // flight continuously via the bounded pool for max throughput, writing each
+    // survivor into its candidate slot so the corpus keeps source-priority order no
+    // matter which fetch lands first. mapPool isolates failures and yields the loop
+    // at every await, so the build keeps the event loop breathing.
+    const slots = new Array(pool.length);
+    await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m, i) => { slots[i] = await fetchSurvivor(m); });
+    survivors = slots.filter(Boolean);
+    complete = true;
+  }
   const detailsMs = performance.now() - tDetails;
 
   const globalMean = meanVoteAverage(survivors.map((s) => s.full));
@@ -354,9 +384,9 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // TMDB/Trakt) and details (per-candidate detail fetch + sync JSON parse).
   log.info(
     `[perf] corpus phases user=${userId} genre=${genreId ?? 'all'} gatherMs=${gatherMs.toFixed(0)} ` +
-    `detailsMs=${detailsMs.toFixed(0)} candidates=${pool.length} survivors=${survivors.length}`,
+    `detailsMs=${detailsMs.toFixed(0)} candidates=${pool.length} survivors=${survivors.length} complete=${complete}`,
   );
-  return { cards, globalMean };
+  return { cards, globalMean, complete };
 }
 
 // Rank a cached corpus for one profile: IDF over the user's rated features + the
@@ -416,29 +446,36 @@ const poolKey = (...args) => `recpool:${keyTail(...args)}`;
 // prove a rating re-ranks the corpus in place rather than rebuilding it.
 export const corpusKey = (...args) => `corpus:${keyTail(...args)}`;
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
+// The filter signature of the default, unfiltered Discover view — the "landing"
+// pool we both warm ahead of time (prebuild) and serve as a fast head first. A
+// genre or any live origin/indie/tone filter has a different signature, so those
+// take the full build up front rather than the head-then-deepen path.
+const LANDING_SIG = filterSig(resolveFilters());
 
 // Rebuild a user's corpus from scratch and rank it — the full, expensive build,
 // run on a cold cache, a forced Refresh, and the background prebuild (so frozen
 // seeds self-heal). Caches both layers: the corpus (reused across ratings) and the
 // ranked pool stamped with the current generation.
-export async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters }) {
+export async function buildAndCache({ userId, region, providerIds, genreId, profile, ratings, language, filters, survivorTarget }) {
   profile = profile || (await buildProfile(userId));
   ratings = ratings || getRatings(userId);
   filters = filters || resolveFilters();
   const tCorpus = performance.now();
-  const corpus = await buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters });
+  const corpus = await buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters, survivorTarget });
   cacheSet(corpusKey(userId, region, providerIds, genreId, language, filters), corpus);
   const corpusMs = performance.now() - tCorpus;
   const tRank = performance.now();
   const pool = await rankCorpus(corpus, profile);
   const rankMs = performance.now() - tRank;
-  // Where the build's wall-time goes: corpus (gather + details + enrichment — the
-  // part a rating now skips) vs rank (the pure-CPU scoring pass it re-runs).
+  // Where the build's wall-time goes: corpus (gather + details — the part a rating
+  // now skips) vs rank (the pure-CPU scoring pass it re-runs).
   log.info(
     `[perf] build phases user=${userId} genre=${genreId ?? 'all'} ` +
     `corpusMs=${corpusMs.toFixed(0)} rankMs=${rankMs.toFixed(0)}`,
   );
-  const value = { gen: currentGen(userId), profileSize: profile.count, pool };
+  // `partial` flags a fast head build that stopped short of the full candidate set:
+  // recommend() serves it immediately and schedules the deeper rebuild to replace it.
+  const value = { gen: currentGen(userId), profileSize: profile.count, pool, partial: !corpus.complete };
   cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), value);
   return value;
 }
@@ -497,19 +534,25 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
   } else {
     const corpus = force ? null : cacheGet(corpusKey(userId, region, providerIds, genreId, language, filters));
     if (!corpus) {
-      // The expensive gather+enrich rebuild — dispatched through runBuild so it
-      // runs in the worker (off the main loop) in prod; read the result back from
-      // the shared DB once it lands.
-      await runBuild({ userId, region, providerIds, genreId, language, filters });
+      // No corpus yet. For the landing pool (all genres, no live filters) serve a
+      // fast HEAD first — fetch details for just enough candidates to fill a page,
+      // rank those, and serve — then deepen to the full corpus in the background so
+      // the user isn't blocked on the whole ~500-candidate fetch. A forced Refresh,
+      // a selected genre, or a live filter pays the full build up front instead.
+      // Dispatched through runBuild so it runs in the worker (off the main loop) in
+      // prod; the result is read back from the shared DB once it lands.
+      const head = !force && !genreId && filterSig(filters) === LANDING_SIG;
+      await runBuild({ userId, region, providerIds, genreId, language, filters, survivorTarget: head ? FAST_HEAD : undefined });
       cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
+      if (head && cached?.partial) ensurePrebuild(userId); // deepen the head in the background
       mode = 'built';
     } else {
       // The ranking is stale but the corpus isn't — re-rank the cached candidates
-      // over the fresh profile (cheap, no I/O) and refresh the corpus's seeds +
-      // enrichment in the background.
+      // over the fresh profile (cheap, no I/O) and refresh the corpus's seeds in the
+      // background. `partial` rides along so a head corpus keeps deepening.
       const profile = await buildProfile(userId);
       const pool = await rankCorpus(corpus, profile);
-      cached = { gen: currentGen(userId), profileSize: profile.count, pool };
+      cached = { gen: currentGen(userId), profileSize: profile.count, pool, partial: !corpus.complete };
       cacheSet(poolKey(userId, region, providerIds, genreId, language, filters), cached);
       ensurePrebuild(userId);
       mode = 'reranked';

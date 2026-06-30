@@ -6,7 +6,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { offersToOptions, pickNode } from '../../src/justwatch.js';
+import { freshDbEnv } from '../helpers/env.js';
+
+// The mappers under test are pure, but justwatch.js's import chain
+// (→ cache.js / tmdb.js → db.js) opens a SQLite file at module load. Point
+// DB_PATH at a throwaway db BEFORE importing so parallel `node --test` workers
+// don't contend on the shared default db ("database is locked" on the WAL pragma).
+freshDbEnv();
+const { offersToOptions, pickNode } = await import('../../src/justwatch.js');
 
 const fixture = JSON.parse(
   readFileSync(fileURLToPath(new URL('../fixtures/justwatch-dune.json', import.meta.url)), 'utf8'),

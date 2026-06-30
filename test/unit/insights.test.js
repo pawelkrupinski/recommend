@@ -4,8 +4,15 @@
 // weight summary the page renders. No I/O, so we feed it a hand-built profile.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { summarizeProfile } from '../../src/insights.js';
-import { SCORING } from '../../src/scoring.js';
+import { freshDbEnv } from '../helpers/env.js';
+
+// summarizeProfile is pure, but it lives in insights.js whose import chain
+// (→ taste.js → db.js) opens a SQLite file at module load. Point DB_PATH at a
+// throwaway db BEFORE importing so parallel `node --test` workers don't contend
+// on the shared default db (the WAL pragma errors with "database is locked").
+freshDbEnv();
+const { summarizeProfile } = await import('../../src/insights.js');
+const { SCORING } = await import('../../src/scoring.js');
 
 // A small but representative profile: Action liked, Drama disliked, a liked tone
 // and a weakly-liked actor, plus one feature with no rating evidence (dropped).

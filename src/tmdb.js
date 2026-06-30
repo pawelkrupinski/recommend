@@ -121,8 +121,12 @@ export function normalizeDetail(d, mediaType = 'movie') {
   d.title ??= d.name;
   d.release_date ??= d.first_air_date;
   if (d.keywords?.results && !d.keywords.keywords) d.keywords = { keywords: d.keywords.results };
-  d.seasons ??= d.number_of_seasons ?? null;
-  d.episodes ??= d.number_of_episodes ?? null;
+  // TMDB's /tv detail ALREADY has a `seasons` key — but it's the array of
+  // per-season objects, not the count. Overwrite it with number_of_seasons (the
+  // scalar the card renders); `??=` would leave the array in place, which renders
+  // as "[object Object],[object Object],…". The per-season array isn't used here.
+  d.seasons = d.number_of_seasons ?? null;
+  d.episodes = d.number_of_episodes ?? null;
   // A series carries its countries as origin_country (ISO codes), not the
   // production_countries the origin/non-US filter reads — backfill it when TMDB
   // left production_countries empty so matchesOrigin works for TV too.

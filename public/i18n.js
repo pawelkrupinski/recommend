@@ -56,6 +56,7 @@ export const MESSAGES = {
     'card.notSeen': "Haven't seen",
     'card.season': '1 season',
     'card.seasons': '{n} seasons',
+    'card.series': 'Series',
     'aria.close': 'Close',
     // where-to-watch modal
     'modal.loadingAvailability': 'Loading availability…',
@@ -142,6 +143,7 @@ export const MESSAGES = {
     'card.notSeen': 'Nie widziałem',
     'card.season': '1 sezon',
     'card.seasons': '{n} sezony',
+    'card.series': 'Serial',
     'aria.close': 'Zamknij',
     // where-to-watch modal
     'modal.loadingAvailability': 'Sprawdzam dostępność…',

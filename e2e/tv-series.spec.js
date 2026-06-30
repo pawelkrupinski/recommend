@@ -20,15 +20,25 @@ async function enterMixedPicks(page) {
   await expect(page.locator('#recs .card').first()).toBeVisible({ timeout: 20_000 });
 }
 
-test('a TV pick renders its season count in the meta line', async ({ page }) => {
+test('a TV pick renders its season COUNT (not the raw seasons array) and is visually tagged', async ({ page }) => {
   await login(page, uniqEmail('tv'));
   await enterMixedPicks(page);
 
   const series = page.locator('#recs .card[data-key^="tv:"]').first();
   await expect(series).toBeVisible();
-  // A film's slot here is its runtime ("1h 47m"); a series shows seasons instead.
-  await expect(series.locator('.year')).toContainText('seasons');
+  // A film's slot here is its runtime ("1h 47m"); a series shows its season count.
+  // The stub series has 3 seasons — assert the COUNT renders, and explicitly that
+  // the per-season array didn't leak through as "[object Object]" (the bug).
+  await expect(series.locator('.year')).toContainText('3 seasons');
+  await expect(series.locator('.year')).not.toContainText('[object Object]');
   await expect(series.locator('.title')).toContainText('Stub Series');
+  // Visual distinction from films: the series tint class + the "Series" tag.
+  await expect(series).toHaveClass(/\btv\b/);
+  await expect(series.locator('.type-tag')).toBeVisible();
+  // A movie card carries neither the tint class nor the tag.
+  const film = page.locator('#recs .card[data-key^="movie:"]').first();
+  await expect(film).not.toHaveClass(/\btv\b/);
+  await expect(film.locator('.type-tag')).toHaveCount(0);
 });
 
 test('rating a TV pick sends media_type:tv and removes the card', async ({ page }) => {

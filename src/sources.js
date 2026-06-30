@@ -307,13 +307,21 @@ export const filmweb = {
 // rank — but the cap is taken in this order). The indie/distributor, Trakt and
 // scraper sources are film-specific concepts, so they stay movie-only; TV's
 // taste-based depth comes from its own recommendations/similar seeds.
+//
+// The per-genre fan-out is registered for MOVIES ONLY. It's by far the costliest
+// source — one sequential Discover sweep per genre (~16-19 calls), the biggest
+// chunk of a cold landing build's TMDB call volume and detail-cache working set.
+// TV's breadth comes from its popularity + top-rated + trending sweeps (which
+// already page until DISCOVER_FRESH_TARGET fresh titles), so a second full
+// per-genre fan-out for TV roughly doubled that cost for marginal extra depth.
+// Keeping it movie-only keeps TV in the mixed feed without the gather/cache blowup
+// (build-performance.test.js caps the cold gather's TMDB call count to lock this in).
 export const ALL_SOURCES = [
   tmdbDiscover('movie'),
   tmdbDiscover('tv'),
   tmdbDiscoverTopRated('movie'),
   tmdbDiscoverTopRated('tv'),
   tmdbDiscoverByGenre('movie'),
-  tmdbDiscoverByGenre('tv'),
   tmdbIndieDistributors,
   tmdbCuratedProviders,
   tmdbHiddenGems,

@@ -73,7 +73,9 @@ for (const kind of ['jsName', 'cssName']) {
 test('the HTML shell stays revalidate-always so deploys are picked up', async () => {
   const res = await fetch(`${base}/`);
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+  // `private` (localized per language) but still revalidate-always so a deploy's
+  // new hashed-bundle shell is picked up rather than served stale.
+  assert.equal(res.headers.get('cache-control'), 'private, max-age=0, must-revalidate');
   // The served shell is the built one — it names the current hashed bundle.
   const body = await res.text();
   assert.ok(body.includes(`/dist/${built.jsName}`), 'serves the fingerprinted shell, not the raw template');

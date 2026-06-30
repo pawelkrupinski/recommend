@@ -16,13 +16,16 @@ before(async () => {
 });
 after(() => { server.close(); env.cleanup(); });
 
-for (const asset of ['/app.js', '/styles.css', '/index.html']) {
+// The shell (index.html) is `private` because its preview tags are localized
+// per request — Cloudflare must not cache one language and serve it to all. The
+// bare assets are `public`; both still revalidate every load.
+for (const [asset, scope] of [['/app.js', 'public'], ['/styles.css', 'public'], ['/index.html', 'private']]) {
   test(`${asset} revalidates every load (no stale-asset window)`, async () => {
     const res = await fetch(base + asset);
     assert.equal(res.status, 200);
     // max-age=0 forces a conditional GET on every load rather than serving a
     // cached copy blind for some window.
-    assert.equal(res.headers.get('cache-control'), 'public, max-age=0, must-revalidate');
+    assert.equal(res.headers.get('cache-control'), `${scope}, max-age=0, must-revalidate`);
     const etag = res.headers.get('etag');
     assert.ok(etag, 'carries an ETag for the conditional GET');
 

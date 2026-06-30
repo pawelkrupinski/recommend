@@ -17,20 +17,22 @@ let base, close;
 before(async () => { ({ base, close } = await serve(server)); });
 after(() => { close(); env.cleanup(); });
 
-test('GET /api/enrich returns ratings + tones per id, surfacing seeded stored tones', async () => {
+test('GET /api/enrich returns ratings + tones keyed by media_type:id, surfacing seeded stored tones', async () => {
   // Seed a stored tone for one title so the tone path returns real data even
   // though the scraper feeders are inert under the stub (no proxy / no model).
   setMovieToneSource(101, 'movie', 'model', ['heartfelt']);
   const c = client(base); // an anonymous session is enough; enrichment is per-title
 
-  const { status, data } = await c.json('/api/enrich?ids=101,102');
+  // A bare id is taken as a movie (back-compat); `tv:401` enriches the series. The
+  // response keys by media_type:id so a film and a show sharing a tmdb id don't clash.
+  const { status, data } = await c.json('/api/enrich?ids=101,102,tv:401');
   assert.equal(status, 200);
-  for (const id of ['101', '102']) {
-    assert.ok(data[id], `an entry for id ${id}`);
-    assert.ok('imdbRating' in data[id] && 'metascore' in data[id], 'rating keys present (null under the stub)');
-    assert.ok(Array.isArray(data[id].tones), 'tones is an array');
+  for (const key of ['movie:101', 'movie:102', 'tv:401']) {
+    assert.ok(data[key], `an entry for ${key}`);
+    assert.ok('imdbRating' in data[key] && 'metascore' in data[key], 'rating keys present (null under the stub)');
+    assert.ok(Array.isArray(data[key].tones), 'tones is an array');
   }
-  assert.ok(data['101'].tones.some((t) => t.slug === 'heartfelt'), 'the seeded stored tone surfaces');
+  assert.ok(data['movie:101'].tones.some((t) => t.slug === 'heartfelt'), 'the seeded stored tone surfaces');
 });
 
 test('GET /api/enrich ignores blank/garbage ids and returns {} for none', async () => {

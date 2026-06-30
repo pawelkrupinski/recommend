@@ -70,3 +70,33 @@ test('discover() omits the indie params when not asked for', async () => {
   assert.equal(url.searchParams.get('with_companies'), null);
   assert.equal(url.searchParams.get('vote_count.lte'), null);
 });
+
+// normalizeDetail maps a TMDB /tv detail onto the movie-shaped object the rest of
+// the recommender reads (taste.featureEntries, buildCorpus cards, the origin
+// filter), so series flow through one code path. It's pure, so we test it directly.
+test('normalizeDetail maps a TV detail onto the movie-shaped fields', () => {
+  const tv = tmdb.normalizeDetail({
+    id: 1399, name: 'Game of Stubs', first_air_date: '2011-04-17',
+    number_of_seasons: 8, number_of_episodes: 73, origin_country: ['US'],
+    keywords: { results: [{ id: 1, name: 'dragons' }] },
+  }, 'tv');
+  assert.equal(tv.media_type, 'tv');
+  assert.equal(tv.title, 'Game of Stubs', 'name → title');
+  assert.equal(tv.release_date, '2011-04-17', 'first_air_date → release_date');
+  assert.equal(tv.seasons, 8);
+  assert.equal(tv.episodes, 73);
+  assert.deepEqual(tv.keywords.keywords, [{ id: 1, name: 'dragons' }], 'keywords.results → keywords.keywords');
+  assert.deepEqual(tv.production_countries, [{ iso_3166_1: 'US' }], 'origin_country → production_countries for the origin filter');
+});
+
+test('normalizeDetail leaves a movie detail alone but tags its media_type', () => {
+  const movie = tmdb.normalizeDetail({
+    id: 550, title: 'Stub Club', release_date: '1999-10-15', runtime: 139,
+    keywords: { keywords: [{ id: 2, name: 'soap' }] },
+  }, 'movie');
+  assert.equal(movie.media_type, 'movie');
+  assert.equal(movie.title, 'Stub Club', 'a movie title is untouched');
+  assert.equal(movie.runtime, 139);
+  assert.equal(movie.seasons, undefined, 'no TV fields invented on a movie');
+  assert.deepEqual(movie.keywords.keywords, [{ id: 2, name: 'soap' }]);
+});

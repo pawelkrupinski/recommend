@@ -318,9 +318,18 @@ async function api(req, res, url) {
     // badges. The ids are bounded to a screenful; the underlying lookups are
     // TTL-cached server-side, so a short browser cache is safe.
     if (p === '/api/enrich' && req.method === 'GET') {
-      const ids = (url.searchParams.get('ids') || '').split(',').map(Number).filter(Boolean).slice(0, 40);
+      // Each id is a `media_type:tmdb_id` token (e.g. `tv:1399`); a bare number is
+      // taken as a movie so older clients keep working. A film and a series can
+      // share a tmdb id, so the type has to travel with it.
+      const items = (url.searchParams.get('ids') || '').split(',')
+        .map((tok) => {
+          const [a, b] = tok.includes(':') ? tok.split(':') : ['movie', tok];
+          return { media_type: a === 'tv' ? 'tv' : 'movie', id: Number(b) };
+        })
+        .filter((it) => it.id)
+        .slice(0, 40);
       const language = tmdbLang(langFor(uid, req));
-      return json(req, res, 200, await enrichPicks(ids, { language }), 'private, max-age=3600');
+      return json(req, res, 200, await enrichPicks(items, { language }), 'private, max-age=3600');
     }
 
     // ---- learned taste profile (the hidden /insights page) ------------

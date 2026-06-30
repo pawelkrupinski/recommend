@@ -100,12 +100,37 @@ export async function personImdbId(personId) {
 // pickTrailers); include_video_language widens the videos block beyond the main
 // `language` so the trailer can fall back to English when there's no localized
 // one (TMDB otherwise returns only videos tagged with `language`).
-export const details = (id, mediaType = 'movie', language) =>
-  tmdb(`/${mediaType}/${id}`, {
+export const details = async (id, mediaType = 'movie', language) =>
+  normalizeDetail(await tmdb(`/${mediaType}/${id}`, {
     append_to_response: 'keywords,credits,external_ids,watch/providers,videos',
     include_video_language: videoLanguages(language),
     ...(language ? { language } : {}),
-  });
+  }), mediaType);
+
+// TMDB names a TV series' fields differently from a movie's (name/first_air_date/
+// number_of_seasons) and nests its appended keywords under `results` instead of
+// `keywords`. Map a /tv detail onto the movie-shaped object the recommender reads
+// (taste.featureEntries, buildCorpus cards, the origin filter) so everything
+// downstream stays single-path — and tag BOTH media types so a card knows which
+// it is. Movies pass straight through (their fields already match). Idempotent:
+// re-normalising an already-mapped object is a no-op, so a cached detail is safe.
+export function normalizeDetail(d, mediaType = 'movie') {
+  if (!d || typeof d !== 'object') return d;
+  d.media_type = mediaType;
+  if (mediaType !== 'tv') return d;
+  d.title ??= d.name;
+  d.release_date ??= d.first_air_date;
+  if (d.keywords?.results && !d.keywords.keywords) d.keywords = { keywords: d.keywords.results };
+  d.seasons ??= d.number_of_seasons ?? null;
+  d.episodes ??= d.number_of_episodes ?? null;
+  // A series carries its countries as origin_country (ISO codes), not the
+  // production_countries the origin/non-US filter reads — backfill it when TMDB
+  // left production_countries empty so matchesOrigin works for TV too.
+  if (!d.production_countries?.length && d.origin_country?.length) {
+    d.production_countries = d.origin_country.map((c) => ({ iso_3166_1: c }));
+  }
+  return d;
+}
 
 // `include_video_language` value for a detail fetch: the user's language (the
 // 2-letter ISO-639-1 code TMDB tags videos with), English, and language-neutral

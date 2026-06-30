@@ -19,18 +19,30 @@
 //
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
 // switch to edit, no change to buildCorpus.
-import { discover, recommendations, similar, trending, details, genres as movieGenres, tmdbConfigured } from './tmdb.js';
+import { discover, recommendations, similar, trending, details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
 import { letterboxdCandidates } from './letterboxd.js';
 import { filmwebCandidates } from './filmweb.js';
 import { log } from './log.js';
 
-// How many of a user's rated films seed the per-title expansion sources
-// (recommendations, similar, trakt-related). Highest-rated first.
+// The pipeline mixes movies and TV in one pool, so a candidate's identity is its
+// (media_type, tmdb id) pair — a movie and a series can share a tmdb id. Every
+// dedup/consumed/exclusion key is built from this one helper so the seam stays
+// consistent across sources.js, taste.js and the served pool.
+export const mediaKey = (mediaType, id) => `${mediaType}:${id}`;
+
+// A list endpoint result carries `title` for a movie, `name` for a series.
+const candidateTitle = (m) => m.title ?? m.name;
+
+// How many of a user's rated titles seed the per-title expansion sources
+// (recommendations, similar, trakt-related). Highest-rated first. Seeded from the
+// user's ratings OF THE SAME media type, so a TV seed expands into TV and a film
+// seed into films — a new user with no TV ratings simply gets no TV seed source
+// (the provider-scoped TV Discover sweeps carry the cold start).
 const SEED_COUNT = 10;
-const seeds = (ratings) =>
+const seeds = (ratings, mediaType) =>
   (ratings || [])
-    .filter((r) => r.media_type === 'movie')
+    .filter((r) => r.media_type === mediaType)
     .sort((a, b) => b.rating - a.rating)
     .slice(0, SEED_COUNT);
 
@@ -46,23 +58,23 @@ const seeds = (ratings) =>
 // titles lets a light user stop after one page while a heavy user pages deeper
 // into the freshly-streamable long tail. `consumed` = ids already handled.
 const DISCOVER_PAGE_CEIL = 40;     // TMDB caps /discover at 500 pages; stay modest.
-export async function pageUntilFresh({ fetchPage, want, consumed, ceil = DISCOVER_PAGE_CEIL }) {
+export async function pageUntilFresh({ fetchPage, want, consumed, mediaType = 'movie', ceil = DISCOVER_PAGE_CEIL }) {
   const out = [];
   let fresh = 0;
   for (let page = 1; page <= ceil; page++) {
     const res = await fetchPage(page);
     for (const m of res.results || []) {
-      out.push({ id: m.id, title: m.title });
-      if (!consumed?.has(m.id)) fresh++;
+      out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m) });
+      if (!consumed?.has(mediaKey(mediaType, m.id))) fresh++;
     }
     if (fresh >= want || page >= (res.total_pages || 1)) break;
   }
   return out;
 }
-const discoverFresh = ({ region, providerIds, genreId, language, sortBy, voteCountGte, voteCountLte, withCompanies, want, consumed }) =>
+const discoverFresh = ({ region, providerIds, genreId, mediaType = 'movie', language, sortBy, voteCountGte, voteCountLte, withCompanies, want, consumed }) =>
   pageUntilFresh({
-    want, consumed,
-    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType: 'movie', page, sortBy, voteCountGte, voteCountLte, withCompanies, language }),
+    want, consumed, mediaType,
+    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType, page, sortBy, voteCountGte, voteCountLte, withCompanies, language }),
   });
 
 // How many not-yet-handled candidates each provider-scoped sweep aims to surface
@@ -75,12 +87,12 @@ const DISCOVER_TOP_RATED_TARGET = 80;
 
 // Expand each seed film through a TMDB list endpoint (recommendations | similar),
 // collecting every result. A dud seed is skipped, not fatal.
-async function expandSeeds(ratings, language, listFn) {
+async function expandSeeds(ratings, language, listFn, mediaType) {
   const out = [];
-  for (const r of seeds(ratings)) {
+  for (const r of seeds(ratings, mediaType)) {
     try {
-      const res = await listFn(r.tmdb_id, 'movie', language);
-      for (const m of res.results || []) out.push({ id: m.id, title: m.title });
+      const res = await listFn(r.tmdb_id, mediaType, language);
+      for (const m of res.results || []) out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m) });
     } catch { /* skip this seed */ }
   }
   return out;
@@ -92,24 +104,27 @@ async function expandSeeds(ratings, language, listFn) {
 // Pages as deep as needed to surface DISCOVER_FRESH_TARGET titles the user hasn't
 // already rated, dismissed or shelved — so the picks don't run dry as they watch
 // through the head (this replaces the old fixed-depth "deep" backfill source).
-export const tmdbDiscover = {
-  name: 'tmdb-discover',
+// A factory over media type: registered once for 'movie' and once for 'tv', so
+// the merged pool mixes films and series (open/closed — a third media type would
+// be one more registration, not an edit here).
+export const tmdbDiscover = (mediaType) => ({
+  name: `tmdb-discover-${mediaType}`,
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
-    ? discoverFresh({ ...ctx, sortBy: 'popularity.desc', voteCountGte: 50, want: DISCOVER_FRESH_TARGET })
+    ? discoverFresh({ ...ctx, mediaType, sortBy: 'popularity.desc', voteCountGte: 50, want: DISCOVER_FRESH_TARGET })
     : Promise.resolve([]),
-};
+});
 
 // Acclaimed-but-less-watched: same streamable catalog, ranked by rating instead
 // of popularity (with a higher vote floor so it stays trustworthy). Surfaces the
 // well-reviewed long tail the popularity sort buries.
-export const tmdbDiscoverTopRated = {
-  name: 'tmdb-discover-top-rated',
+export const tmdbDiscoverTopRated = (mediaType) => ({
+  name: `tmdb-discover-top-rated-${mediaType}`,
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
-    ? discoverFresh({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 300, want: DISCOVER_TOP_RATED_TARGET })
+    ? discoverFresh({ ...ctx, mediaType, sortBy: 'vote_average.desc', voteCountGte: 300, want: DISCOVER_TOP_RATED_TARGET })
     : Promise.resolve([]),
-};
+});
 
 // Per-genre depth for the "all genres" pool. The un-genre'd popularity sweep only
 // reaches the globally-most-popular head; once a heavy user has handled it the
@@ -119,20 +134,20 @@ export const tmdbDiscoverTopRated = {
 // all-genres pool (a selected genre's own sweep already covers it) and when there
 // are providers to scope by. Fresh titles only — `consumed` pages past handled ids.
 const PER_GENRE_TARGET = 15;   // ~15 fresh × every genre ≫ POOL_SIZE after de-dup.
-const movieGenreIds = async (language) =>
-  ((await movieGenres('movie', language)).genres || []).map((g) => g.id);
-export const tmdbDiscoverByGenre = {
-  name: 'tmdb-discover-by-genre',
+const genreIdsFor = async (mediaType, language) =>
+  ((await tmdbGenres(mediaType, language)).genres || []).map((g) => g.id);
+export const tmdbDiscoverByGenre = (mediaType) => ({
+  name: `tmdb-discover-by-genre-${mediaType}`,
   configured: tmdbConfigured,
   async fetch(ctx) {
     if (ctx.genreId || !ctx.providerIds?.length) return [];
     const out = [];
-    for (const genreId of await movieGenreIds(ctx.language)) {
-      out.push(...await discoverFresh({ ...ctx, genreId, sortBy: 'popularity.desc', voteCountGte: 50, want: PER_GENRE_TARGET }));
+    for (const genreId of await genreIdsFor(mediaType, ctx.language)) {
+      out.push(...await discoverFresh({ ...ctx, mediaType, genreId, sortBy: 'popularity.desc', voteCountGte: 50, want: PER_GENRE_TARGET }));
     }
     return out;
   },
-};
+});
 
 // ---- Indie / art-house sources -------------------------------------------
 // Popularity and vote-floor sorts structurally bury small releases, so the broad
@@ -202,30 +217,30 @@ export const tmdbHiddenGems = {
     : Promise.resolve([]),
 };
 
-// Behaviour-based "more like the films you rated highly".
-export const tmdbRecommendations = {
-  name: 'tmdb-recommendations',
+// Behaviour-based "more like the titles you rated highly" (same media type).
+export const tmdbRecommendations = (mediaType) => ({
+  name: `tmdb-recommendations-${mediaType}`,
   configured: tmdbConfigured,
-  fetch: ({ ratings, language }) => expandSeeds(ratings, language, recommendations),
-};
+  fetch: ({ ratings, language }) => expandSeeds(ratings, language, recommendations, mediaType),
+});
 
-// Content-overlap "similar to the films you rated highly" — a different angle on
+// Content-overlap "similar to the titles you rated highly" — a different angle on
 // the same seeds than recommendations.
-export const tmdbSimilar = {
-  name: 'tmdb-similar',
+export const tmdbSimilar = (mediaType) => ({
+  name: `tmdb-similar-${mediaType}`,
   configured: tmdbConfigured,
-  fetch: ({ ratings, language }) => expandSeeds(ratings, language, similar),
-};
+  fetch: ({ ratings, language }) => expandSeeds(ratings, language, similar, mediaType),
+});
 
 // Site-wide hot-this-week, independent of the user's taste.
-export const tmdbTrending = {
-  name: 'tmdb-trending',
+export const tmdbTrending = (mediaType) => ({
+  name: `tmdb-trending-${mediaType}`,
   configured: tmdbConfigured,
   async fetch({ language }) {
-    const res = await trending('movie', language);
-    return (res.results || []).map((m) => ({ id: m.id, title: m.title }));
+    const res = await trending(mediaType, language);
+    return (res.results || []).map((m) => ({ id: m.id, media_type: mediaType, title: candidateTitle(m) }));
   },
-};
+});
 
 // ---- Trakt sources --------------------------------------------------------
 
@@ -236,11 +251,11 @@ export const traktRelated = {
   configured: traktConfigured,
   async fetch({ ratings, language }) {
     const out = [];
-    for (const r of seeds(ratings)) {
+    for (const r of seeds(ratings, 'movie')) {
       let imdbId;
       try { imdbId = (await details(r.tmdb_id, 'movie', language)).external_ids?.imdb_id; } catch { continue; }
       for (const m of await relatedMovies(imdbId)) {
-        out.push({ id: m.tmdb_id, title: m.title, year: m.year, collab: 1 });
+        out.push({ id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year, collab: 1 });
       }
     }
     return out;
@@ -252,7 +267,7 @@ const traktChartSource = (kind) => ({
   name: `trakt-${kind}`,
   configured: traktConfigured,
   async fetch() {
-    return (await traktChart(kind)).map((m) => ({ id: m.tmdb_id, title: m.title, year: m.year }));
+    return (await traktChart(kind)).map((m) => ({ id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year }));
   },
 });
 export const traktTrending = traktChartSource('trending');
@@ -287,19 +302,30 @@ export const filmweb = {
 // the candidates that survive the streamability gate, so spending the detail-fetch
 // budget on them first (ahead of the taste/chart sources, most of whose titles the
 // gate drops) is what lets the deep genre fan-out actually reach the served pool.
+// Movie and TV Discover sweeps lead and interleave so both media types reach the
+// CANDIDATE_CAP detail-fetch budget (scoring, not source order, sets the final
+// rank — but the cap is taken in this order). The indie/distributor, Trakt and
+// scraper sources are film-specific concepts, so they stay movie-only; TV's
+// taste-based depth comes from its own recommendations/similar seeds.
 export const ALL_SOURCES = [
-  tmdbDiscover,
-  tmdbDiscoverTopRated,
-  tmdbDiscoverByGenre,
+  tmdbDiscover('movie'),
+  tmdbDiscover('tv'),
+  tmdbDiscoverTopRated('movie'),
+  tmdbDiscoverTopRated('tv'),
+  tmdbDiscoverByGenre('movie'),
+  tmdbDiscoverByGenre('tv'),
   tmdbIndieDistributors,
   tmdbCuratedProviders,
   tmdbHiddenGems,
-  tmdbRecommendations,
-  tmdbSimilar,
+  tmdbRecommendations('movie'),
+  tmdbRecommendations('tv'),
+  tmdbSimilar('movie'),
+  tmdbSimilar('tv'),
   traktRelated,
   letterboxd,
   filmweb,
-  tmdbTrending,
+  tmdbTrending('movie'),
+  tmdbTrending('tv'),
   traktTrending,
   traktPopular,
   traktAnticipated,
@@ -309,7 +335,10 @@ export const ALL_SOURCES = [
 // single de-duplicated Map (insertion order = source priority). Sources are
 // independent: one that throws or times out is logged and skipped, never taking
 // the others (or the build) down with it — the whole point of having many.
-// Returns { candidates: Map<id, {id,title,year}>, collab: Map<id, hits> }.
+// Returns { candidates: Map<mediaKey, {id,media_type,title,year}>, collab: Map<mediaKey, hits> }.
+// Keyed by the (media_type, id) pair, not the bare id, so a movie and a series
+// that happen to share a tmdb id stay distinct candidates. A source that omits
+// media_type (the film-only scrapers) defaults to 'movie'.
 export async function gatherCandidates(ctx, sources = ALL_SOURCES) {
   const active = sources.filter((s) => s.configured());
   const settled = await Promise.allSettled(active.map((s) => s.fetch(ctx)));
@@ -323,8 +352,10 @@ export async function gatherCandidates(ctx, sources = ALL_SOURCES) {
     }
     for (const m of res.value || []) {
       if (m?.id == null) continue;
-      if (!candidates.has(m.id)) candidates.set(m.id, { id: m.id, title: m.title, year: m.year });
-      if (m.collab) collab.set(m.id, (collab.get(m.id) || 0) + m.collab);
+      const media_type = m.media_type || 'movie';
+      const key = mediaKey(media_type, m.id);
+      if (!candidates.has(key)) candidates.set(key, { id: m.id, media_type, title: m.title, year: m.year });
+      if (m.collab) collab.set(key, (collab.get(key) || 0) + m.collab);
     }
   });
   return { candidates, collab };

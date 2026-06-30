@@ -1,7 +1,8 @@
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import './env.js';
-import { send, serveStatic, readBody } from './http.js';
+import { send, serveStatic, serveShell, readBody } from './http.js';
+import { fbLocaleLang } from './shell.js';
 import {
   db,
   getUserSetting, setUserSetting,
@@ -393,6 +394,11 @@ const server = createServer(async (req, res) => {
     // link lands here and the app boots straight into that tab. '/' already maps
     // to index.html via serveStatic.
     else if (APP_ROUTES.has(url.pathname)) url.pathname = '/index.html';
+    // The SPA shell carries the social-preview tags, so it's served localized per
+    // detected language — Facebook's ?fb_locale override, else the request's
+    // country / Accept-Language — rather than as one shared static file.
+    if ((url.pathname === '/' || url.pathname === '/index.html')
+      && (await serveShell(req, res, PUBLIC, fbLocaleLang(url) || detectLanguage(req, detectCountry(req))))) return;
     // serveStatic compresses, caches (in-memory, pre-built variants) and serves a
     // 304 on a matching ETag; returns false when the file is missing.
     if (await serveStatic(req, res, PUBLIC, url.pathname)) return;

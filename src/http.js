@@ -7,6 +7,7 @@ import { gzipSync, brotliCompressSync, constants as Z } from 'node:zlib';
 import { createHash } from 'node:crypto';
 import { readFile, access } from 'node:fs/promises';
 import { extname } from 'node:path';
+import { localizeShell } from './shell.js';
 
 // Below this, compression framing overhead outweighs the saving — send raw.
 const MIN_COMPRESS = 256;
@@ -167,33 +168,38 @@ async function resolveShell(dir) {
   return shellRel.get(dir);
 }
 
+// Emit a built cache entry (raw + pre-built br/gzip + etag) with conditional-GET
+// and the best encoding the client accepts. Shared by the static-file and
+// localized-shell paths. `headers` already carries content-type, etag, vary and
+// cache-control. Returns true (response sent).
+function respondEntry(req, res, entry, headers) {
+  if (matches(req.headers['if-none-match'], entry.etag)) {
+    res.writeHead(304, headers);
+    res.end();
+    return true;
+  }
+  const encoding = pickEncoding(req);
+  const body = (encoding === 'br' && entry.br) || (encoding === 'gzip' && entry.gzip) || null;
+  if (body) headers['content-encoding'] = body === entry.br ? 'br' : 'gzip';
+  const payload = body || entry.raw;
+  headers['content-length'] = payload.length;
+  res.writeHead(200, headers);
+  res.end(req.method === 'HEAD' ? undefined : payload);
+  return true;
+}
+
 // Serve one resolved file (rel) with negotiation + caching. Returns false when
 // it can't be read, so the caller can fall through (404 or a fallback shell).
 async function serveFile(req, res, dir, rel) {
   try {
     let entry = cache.get(rel);
     if (!entry) cache.set(rel, (entry = await load(dir + rel, extname(rel))));
-
-    const headers = {
+    return respondEntry(req, res, entry, {
       'content-type': entry.type,
       etag: entry.etag,
       vary: 'Accept-Encoding',
       'cache-control': cacheControlFor(rel),
-    };
-    if (matches(req.headers['if-none-match'], entry.etag)) {
-      res.writeHead(304, headers);
-      res.end();
-      return true;
-    }
-
-    const encoding = pickEncoding(req);
-    const body = (encoding === 'br' && entry.br) || (encoding === 'gzip' && entry.gzip) || null;
-    if (body) headers['content-encoding'] = body === entry.br ? 'br' : 'gzip';
-    const payload = body || entry.raw;
-    headers['content-length'] = payload.length;
-    res.writeHead(200, headers);
-    res.end(req.method === 'HEAD' ? undefined : payload);
-    return true;
+    });
   } catch {
     return false;
   }
@@ -210,4 +216,39 @@ export async function serveStatic(req, res, dir, pathname) {
   // 404 the homepage.
   if (rel === 'dist/index.html' && !res.headersSent) return serveFile(req, res, dir, 'index.html');
   return false;
+}
+
+// ---- localized SPA shell -------------------------------------------------
+// The shell's social-preview tags vary by interface language (localizeShell),
+// so — unlike serveStatic — it can't be one shared static file. Each (rel, lang)
+// variant is localized + compressed once and cached. It's marked `private` so
+// Cloudflare never caches one language's HTML and serves it to everyone, and
+// carries a per-language ETag for cheap 304s. `dir` must end in a slash.
+const shellCache = new Map();
+
+async function shellEntry(dir, lang) {
+  let rel = await resolveShell(dir);
+  // The dist/ shell can momentarily vanish during a rebuild — fall back to the
+  // raw template rather than fail the homepage (mirrors serveStatic).
+  let raw = await readFile(dir + rel, 'utf8').catch(() => null);
+  if (raw == null && rel === 'dist/index.html') raw = await readFile(dir + 'index.html', 'utf8').catch(() => null);
+  if (raw == null) return null;
+
+  const buf = Buffer.from(localizeShell(raw, lang));
+  return { type: MIME['.html'], etag: etagOf(buf), raw: buf, br: compress(buf, 'br', STATIC_Q), gzip: compress(buf, 'gzip', STATIC_Q) };
+}
+
+export async function serveShell(req, res, dir, lang) {
+  const key = dir + '\0' + lang;
+  let entry = shellCache.get(key);
+  // Only cache a successful build — a momentarily-missing shell should retry,
+  // not get pinned as a permanent 404.
+  if (!entry && (entry = await shellEntry(dir, lang))) shellCache.set(key, entry);
+  if (!entry) return false;
+  return respondEntry(req, res, entry, {
+    'content-type': entry.type,
+    etag: entry.etag,
+    vary: 'Accept-Encoding',
+    'cache-control': 'private, max-age=0, must-revalidate',
+  });
 }

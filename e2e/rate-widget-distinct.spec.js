@@ -41,10 +41,10 @@ test('cards are type-tinted but the rate controls stay a consistent blue', async
   expect(s.tv.skip).toBe(s.movie.skip);
 });
 
-// A filled (lit) star reads only through its gold colour — its cell keeps the
-// same dark background as an unlit star, so the highlighted run doesn't tint the
-// tray behind it.
-test('a lit star keeps the same cell background as an unlit one', async ({ page }) => {
+// Stars read only through their colour — neither lit nor unlit stars carry a cell
+// background of their own, so they sit straight on the blue tray without tinting
+// it.
+test('stars carry no cell background, lit or unlit', async ({ page }) => {
   await page.goto('/');
 
   const s = await page.evaluate(() => {
@@ -58,6 +58,6 @@ test('a lit star keeps the same cell background as an unlit one', async ({ page 
     };
   });
 
-  expect(s.on).toBe('rgba(0, 0, 0, 0.28)');
-  expect(s.on).toBe(s.off);
+  expect(s.on).toBe('rgba(0, 0, 0, 0)');
+  expect(s.off).toBe('rgba(0, 0, 0, 0)');
 });

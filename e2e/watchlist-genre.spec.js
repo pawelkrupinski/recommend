@@ -103,3 +103,27 @@ test('the watchlist genre dropdown consolidates the same genre saved in differen
   await expect(page.locator('#watchlist-grid .card[data-id="203"]')).toBeVisible();
   await expect(page.locator('#watchlist-grid .card[data-id="202"]')).toHaveCount(0);
 });
+
+// The genre line ON the card must show the CURRENT language too, not the language
+// the title was saved under — otherwise an English user sees 'Akcja' on a card they
+// saved during a Polish session. Resolved from canonical genreIds (or the stored
+// name via byName) through the current-language vocabulary.
+test('a card saved with Polish genres shows the genre line in the current language', async ({ page }) => {
+  await login(page, uniqEmail('wlcardgenre'));
+  await page.evaluate(async () => {
+    const save = (tmdb_id, title, body) => fetch('/api/watchlist', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tmdb_id, title, ...body }),
+    });
+    // Backfilled card: Polish display names but canonical ids alongside.
+    await save(201, 'Backfilled', { genres: ['Akcja'], genreIds: [28] });
+    // Legacy card: Polish name only, no ids (resolved via byName).
+    await save(202, 'Legacy', { genres: ['Komedia'] });
+  });
+
+  await page.locator('#tabs a[data-tab="watchlist"]').click();
+  await expect(page.locator('#watchlist-grid .card')).toHaveCount(2);
+  // English labels on both cards, NOT the stored Polish 'Akcja'/'Komedia'.
+  await expect(page.locator('#watchlist-grid .card[data-id="201"] .genres')).toHaveText('Action');
+  await expect(page.locator('#watchlist-grid .card[data-id="202"] .genres')).toHaveText('Comedy');
+});

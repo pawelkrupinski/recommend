@@ -1,7 +1,7 @@
 import { matchServiceLink, serviceSearchLink } from './service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
-import { presentTones, filterByTone, presentGenres, filterByGenre } from './watchlist-filters.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre, genreLabels } from './watchlist-filters.js';
 import { newPicks } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
@@ -97,7 +97,7 @@ function posterAndMeta(m) {
       </div>
       <div class="year">${metaLine(m)}</div>
       ${ratingBadges(m)}
-      <div class="genres">${(m.genres || []).slice(0, 3).join(' · ')}</div>
+      <div class="genres">${genreLabels(m, genreByName, genreLabel).slice(0, 3).map(esc).join(' · ')}</div>
     </div>`;
 }
 

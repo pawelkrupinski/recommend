@@ -40,6 +40,22 @@ function genreKeys(item, byName) {
   });
 }
 
+// The genre labels to DISPLAY on a card, in the CURRENT language — what stops a
+// title saved in Polish showing 'Akcja' to an English user. A backfilled card maps
+// each canonical id to its current-language label; if the vocabulary isn't loaded
+// yet (no label), it falls back to the stored localized name at the same position
+// (genreIds and genres are built in the same order) so a bare id never shows. A
+// card without genreIds maps its stored names through `byName` to the current
+// label, else keeps the original name. `labelOf(key)`: current-language name for a
+// canonical id key, or undefined.
+export function genreLabels(item, byName = {}, labelOf = () => undefined) {
+  const names = item.genres || [];
+  if (Array.isArray(item.genreIds) && item.genreIds.length) {
+    return item.genreIds.map((id, i) => labelOf(String(id)) || names[i] || String(id));
+  }
+  return names.filter(Boolean).map((name) => labelOf(String(byName[name.toLowerCase()])) || name);
+}
+
 // The distinct genres present across `items`, consolidated by canonical key and
 // labelled in the current language. `byName`: cross-language name→id map (for
 // not-yet-backfilled cards); `labelOf(key)`: the current-language name for a

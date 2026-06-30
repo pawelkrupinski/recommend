@@ -3,7 +3,7 @@
 // narrow the list to titles carrying the chosen one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { presentTones, filterByTone, presentGenres, filterByGenre } from '../../public/watchlist-filters.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre, genreLabels } from '../../public/watchlist-filters.js';
 
 const ORDER = ['heartfelt', 'deadpan', 'gritty', 'romantic'];
 const item = (id, tones) => ({ tmdb_id: id, tones: tones.map((slug) => ({ slug, label: slug[0].toUpperCase() + slug.slice(1) })) });
@@ -104,4 +104,24 @@ test('filterByGenre matches stored genreIds without needing byName at all', () =
   // can't (no map), proving the id path is independent of the cross-language map.
   assert.deepEqual(filterByGenre(mixed, '28').map((i) => i.tmdb_id), [1, 2]);
   assert.deepEqual(filterByGenre(mixed, '28', BY_NAME).map((i) => i.tmdb_id), [1, 2, 3], 'with byName, the legacy name joins too');
+});
+
+test('genreLabels renders a Polish-saved card in the current language via its genreIds', () => {
+  // A card saved in Polish: localized names, but canonical ids alongside (backfilled).
+  const card = { genreIds: [28, 35], genres: ['Akcja', 'Komedia'] };
+  assert.deepEqual(genreLabels(card, BY_NAME, labelOf), ['Action', 'Comedy'],
+    'the ids resolve to the current-language (English) labels, not the stored Polish names');
+});
+
+test('genreLabels falls back to the stored name when the vocabulary is not loaded', () => {
+  // labelOf returns nothing (genre list not fetched yet) — show the stored name at
+  // the same position, never a bare id.
+  const card = { genreIds: [28, 35], genres: ['Akcja', 'Komedia'] };
+  assert.deepEqual(genreLabels(card, {}, () => undefined), ['Akcja', 'Komedia']);
+});
+
+test('genreLabels maps a legacy card (no genreIds) through byName to the current language', () => {
+  assert.deepEqual(genreLabels({ genres: ['Akcja'] }, BY_NAME, labelOf), ['Action']);
+  assert.deepEqual(genreLabels({ genres: ['Cyberpunk'] }, BY_NAME, labelOf), ['Cyberpunk'],
+    'a genre outside the vocabulary keeps its original name');
 });

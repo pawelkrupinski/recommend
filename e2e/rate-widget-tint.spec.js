@@ -2,12 +2,13 @@ import { test, expect } from '@playwright/test';
 
 // Films and TV series read as distinct types via their card background: a film
 // card's meta strip is tinted blue (--link), a TV card's gold (the accent). The
-// rating-stars tray and "Not interested" bar, by contrast, are a consistent blue
-// on every card regardless of type. This drives the real stylesheet in a browser
-// (jsdom can't compute styles) and asserts both — the distinct meta tints and
-// the uniform control backgrounds.
+// rating-stars tray and "Not interested" bar share that same tint as the meta
+// above them, so the meta strip and the controls read as one continuous panel —
+// blue on films, gold on TV. This drives the real stylesheet in a browser (jsdom
+// can't compute styles) and asserts both the distinct per-type tint and that the
+// controls match their card's meta exactly.
 
-test('cards are type-tinted but the rate controls stay a consistent blue', async ({ page }) => {
+test('the rate-stars tray and dismiss bar share the meta tint per type', async ({ page }) => {
   await page.goto('/'); // loads the real styles.css; no login needed to measure styles
 
   const s = await page.evaluate(() => {
@@ -34,11 +35,11 @@ test('cards are type-tinted but the rate controls stay a consistent blue', async
   expect(s.movie.meta).toBe(BLUE('0.1'));
   expect(s.tv.meta).toBe(GOLD('0.1'));
   expect(s.movie.meta).not.toBe(s.tv.meta);
-  // The stars tray and dismiss bar are the same blue on both types.
-  expect(s.movie.tray).toBe(BLUE('0.14'));
-  expect(s.movie.skip).toBe(BLUE('0.13'));
-  expect(s.tv.tray).toBe(s.movie.tray);
-  expect(s.tv.skip).toBe(s.movie.skip);
+  // The rate-stars tray and dismiss bar match their card's meta background exactly.
+  expect(s.movie.tray).toBe(s.movie.meta);
+  expect(s.movie.skip).toBe(s.movie.meta);
+  expect(s.tv.tray).toBe(s.tv.meta);
+  expect(s.tv.skip).toBe(s.tv.meta);
 });
 
 // Stars read only through their colour — neither lit nor unlit stars carry a cell

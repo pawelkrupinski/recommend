@@ -112,7 +112,13 @@ button.danger:disabled { opacity: .6; cursor: default; }
    border/meta tint (the default above), TV series a warmer gold one plus a small
    "Series" tag beside the title. */
 .card.tv { border-color: rgba(245, 197, 24, .5); }
-.card.tv .meta { background: rgba(245, 197, 24, 0.1); }
+/* The meta strip and the rating/dismiss controls below it share the type tint so
+   they read as one panel — gold on TV (blue on films, the default further down). */
+.card.tv .meta,
+.card.tv .rate-stars,
+.card.tv .skip { background: rgba(245, 197, 24, 0.1); }
+.card.tv .rate-stars { border-color: rgba(245, 197, 24, 0.45); }
+.card.tv .skip { border-color: rgba(245, 197, 24, 0.5); }
 .type-tag {
   flex: none; align-self: flex-start; font-size: 10px; font-weight: 700;
   letter-spacing: .03em; text-transform: uppercase; color: var(--accent);
@@ -178,11 +184,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 /* rate widget — the ten stars span the full card width as two even rows of five,
    sized for thumb taps. The hover "n / 10" readout sits on its own line below so
    it never eats into the stars' width (and stays out of the way on touch). */
-/* Recess the rating control into its own blue tray — the same on every card,
-   regardless of media type — so the rating affordance reads consistently. */
+/* Recess the rating control into its own tray, tinted to match the card's meta
+   strip above it — blue on films, gold on TV (see .card.tv overrides below) — so
+   the controls read as one continuous panel with the meta. */
 .rate-stars {
   display: flex; flex-direction: column; margin: 0 10px 8px; padding: 8px;
-  background: rgba(90, 162, 255, 0.14); border: 1px solid rgba(90, 162, 255, 0.45);
+  background: rgba(90, 162, 255, 0.1); border: 1px solid rgba(90, 162, 255, 0.45);
   border-radius: 8px;
 }
 /* touch-action: pan-y lets a horizontal finger drag across the stars preview a
@@ -207,12 +214,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
   font-size: 13px; font-weight: 600; color: var(--accent);
   font-variant-numeric: tabular-nums; pointer-events: none;
 }
-/* The dismiss action gets its own full-width blue bar, matching the stars tray
-   above it — the same on every card, regardless of media type. */
+/* The dismiss action gets its own full-width bar, matching the stars tray and
+   meta strip above it — blue on films, gold on TV (see .card.tv overrides). */
 .card .skip {
   display: block; width: calc(100% - 20px); margin: 0 10px 10px;
   font-size: 12px; padding: 7px 8px; color: var(--fg);
-  background: rgba(90, 162, 255, 0.13); border-color: rgba(90, 162, 255, 0.5);
+  background: rgba(90, 162, 255, 0.1); border-color: rgba(90, 162, 255, 0.5);
 }
 .card .skip:hover { background: var(--link); border-color: var(--link); color: var(--bg); }
 

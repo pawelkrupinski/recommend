@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { readThrough, DAY } = await import('../../src/cache.js');
+const { readThrough, readThroughCapped, DAY } = await import('../../src/cache.js');
+const { cacheGet } = await import('../../src/db.js');
+const { tmdbCacheGet } = await import('../../src/tmdb-cache.js');
 
 test('DAY is one day in milliseconds', () => {
   assert.equal(DAY, 24 * 60 * 60 * 1000);
@@ -36,4 +38,22 @@ test('a throwing produce yields null and is NOT cached (retries next time)', asy
   assert.equal(await readThrough('k:throw', DAY, produce), null, 'transient fault → null');
   assert.equal(await readThrough('k:throw', DAY, produce), 'ok', 'left uncached → produce retried');
   assert.equal(calls, 2);
+});
+
+// The bloat guard: regenerable ratings/resolutions must land in the ephemeral,
+// capped store — NEVER the durable, Litestream-replicated cache — so the
+// replicated DB stays tiny. readThroughCapped is the seam that enforces it.
+test('readThroughCapped stores in the ephemeral cache, leaving the durable DB clean', async () => {
+  assert.equal(await readThroughCapped('imdb:resolve:x:2020', DAY, async () => 'tt999'), 'tt999');
+  assert.equal(tmdbCacheGet('imdb:resolve:x:2020', DAY), 'tt999', 'cached in the capped store');
+  assert.equal(cacheGet('imdb:resolve:x:2020', DAY), undefined, 'NOT in the durable replicated cache');
+});
+
+test('readThrough (durable) and readThroughCapped (ephemeral) do not share a backing store', async () => {
+  await readThrough('split:durable', DAY, async () => 1);
+  await readThroughCapped('split:capped', DAY, async () => 2);
+  assert.equal(cacheGet('split:durable', DAY), 1);
+  assert.equal(tmdbCacheGet('split:durable', DAY), undefined);
+  assert.equal(tmdbCacheGet('split:capped', DAY), 2);
+  assert.equal(cacheGet('split:capped', DAY), undefined);
 });

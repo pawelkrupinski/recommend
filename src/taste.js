@@ -707,6 +707,7 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
   const item = {
     imdb_id: full.external_ids?.imdb_id || null, // attachRatings needs this; not stored
     title: full.title,                           // ditto (metacritic lookup keys on title)
+    year: Number((full.release_date || '').slice(0, 4)) || null, // gates rating resolution; not stored
     runtime: full.runtime || null,
     overview: full.overview || null,
     vote_average: full.vote_average ?? null,
@@ -740,16 +741,21 @@ export async function enrichPicks(ids, { language } = {}) {
   await mapPool(ids, ENRICH_CONCURRENCY, async (id) => {
     let full;
     try { full = await details(id, 'movie', language); } catch { return; }
+    const crew = full.credits?.crew || [];
     const item = {
       tmdb_id: id,
       imdb_id: full.external_ids?.imdb_id || null,
       title: full.title,
       year: Number((full.release_date || '').slice(0, 4)) || null,
       overview: full.overview,
+      // director + cast let attachRatings corroborate a title·year-resolved IMDb id.
+      director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
+      cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
     };
     await resolveTones(item);    // persist any newly-scraped tone slugs (TTL-skipped)
-    await attachRatings([item]); // imdbRating + metascore (null when unmatched)
-    out[id] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, tones: tonesForMovie(full) };
+    await attachRatings([item]); // imdbRating + metascore (null when unmatched); may resolve item.imdb_id
+    // imdb_id flows back so the client's badge deep-links to a freshly-resolved title.
+    out[id] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, imdb_id: item.imdb_id ?? null, tones: tonesForMovie(full) };
   });
   return out;
 }

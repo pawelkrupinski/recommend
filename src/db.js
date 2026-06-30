@@ -487,14 +487,18 @@ export function setWatchlistCard(userId, tmdb_id, media_type, card) {
 }
 // Saved titles still needing server-side enrichment — the backfill's work list
 // for one user. A row qualifies when it was never enriched (card IS NULL — saved
-// before save-time capture, or whose enrichment failed) or predates a card field
-// that's since been added: it lacks a "trailers" key, or a "tones" key. Once a
-// row carries both — even as empty arrays for a film with no trailer/tone — it's
-// done and this query skips it, so the boot-time backfill settles to a no-op.
+// before save-time capture, or whose enrichment failed); predates a card field
+// since added (lacks a "trailers" or "tones" key); or carries NEITHER rating
+// (no "imdbRating" nor "metascore" key — a title saved before title·year IMDb-id
+// resolution existed). `pickCard` omits null fields, so a film that genuinely has
+// a rating keeps its key and is skipped; one resolvable now gets re-enriched. A
+// film MC/IMDb truly have nothing for re-runs each boot, but every lookup is a
+// cache hit (negatives cached 14d), so the backfill still settles to near-no-op.
 export function watchlistNeedingEnrichment(userId) {
   return db.prepare(
     `SELECT tmdb_id, media_type FROM watchlist
-     WHERE user_id = ? AND (card IS NULL OR card NOT LIKE '%"trailers"%' OR card NOT LIKE '%"tones"%')`,
+     WHERE user_id = ? AND (card IS NULL OR card NOT LIKE '%"trailers"%' OR card NOT LIKE '%"tones"%'
+       OR (card NOT LIKE '%"imdbRating"%' AND card NOT LIKE '%"metascore"%'))`,
   ).all(userId);
 }
 export function removeFromWatchlist(userId, tmdb_id, media_type = 'movie') {

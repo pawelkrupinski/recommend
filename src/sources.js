@@ -109,6 +109,7 @@ async function expandSeeds(ratings, language, listFn, mediaType) {
 // be one more registration, not an edit here).
 export const tmdbDiscover = (mediaType) => ({
   name: `tmdb-discover-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
     ? discoverFresh({ ...ctx, mediaType, sortBy: 'popularity.desc', voteCountGte: 50, want: DISCOVER_FRESH_TARGET })
@@ -120,6 +121,7 @@ export const tmdbDiscover = (mediaType) => ({
 // well-reviewed long tail the popularity sort buries.
 export const tmdbDiscoverTopRated = (mediaType) => ({
   name: `tmdb-discover-top-rated-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
     ? discoverFresh({ ...ctx, mediaType, sortBy: 'vote_average.desc', voteCountGte: 300, want: DISCOVER_TOP_RATED_TARGET })
@@ -138,6 +140,7 @@ const genreIdsFor = async (mediaType, language) =>
   ((await tmdbGenres(mediaType, language)).genres || []).map((g) => g.id);
 export const tmdbDiscoverByGenre = (mediaType) => ({
   name: `tmdb-discover-by-genre-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   async fetch(ctx) {
     if (ctx.genreId || !ctx.providerIds?.length) return [];
@@ -174,6 +177,7 @@ const ARTHOUSE_COMPANIES = [
 const INDIE_FRESH_TARGET = 60;
 export const tmdbIndieDistributors = {
   name: 'tmdb-indie-distributors',
+  mediaType: 'movie',
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
     ? discoverFresh({ ...ctx, withCompanies: ARTHOUSE_COMPANIES, sortBy: 'vote_average.desc', voteCountGte: 20, want: INDIE_FRESH_TARGET })
@@ -196,6 +200,7 @@ export const curatedIndieProviderIds = (providerIds) =>
 const CURATED_FRESH_TARGET = 40;
 export const tmdbCuratedProviders = {
   name: 'tmdb-curated-providers',
+  mediaType: 'movie',
   configured: tmdbConfigured,
   fetch(ctx) {
     const indie = curatedIndieProviderIds(ctx.providerIds);
@@ -211,6 +216,7 @@ export const tmdbCuratedProviders = {
 const HIDDEN_GEMS_TARGET = 60;
 export const tmdbHiddenGems = {
   name: 'tmdb-hidden-gems',
+  mediaType: 'movie',
   configured: tmdbConfigured,
   fetch: (ctx) => ctx.providerIds?.length
     ? discoverFresh({ ...ctx, sortBy: 'vote_average.desc', voteCountGte: 100, voteCountLte: 400, want: HIDDEN_GEMS_TARGET })
@@ -220,6 +226,7 @@ export const tmdbHiddenGems = {
 // Behaviour-based "more like the titles you rated highly" (same media type).
 export const tmdbRecommendations = (mediaType) => ({
   name: `tmdb-recommendations-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   fetch: ({ ratings, language }) => expandSeeds(ratings, language, recommendations, mediaType),
 });
@@ -228,6 +235,7 @@ export const tmdbRecommendations = (mediaType) => ({
 // the same seeds than recommendations.
 export const tmdbSimilar = (mediaType) => ({
   name: `tmdb-similar-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   fetch: ({ ratings, language }) => expandSeeds(ratings, language, similar, mediaType),
 });
@@ -235,6 +243,7 @@ export const tmdbSimilar = (mediaType) => ({
 // Site-wide hot-this-week, independent of the user's taste.
 export const tmdbTrending = (mediaType) => ({
   name: `tmdb-trending-${mediaType}`,
+  mediaType,
   configured: tmdbConfigured,
   async fetch({ language }) {
     const res = await trending(mediaType, language);
@@ -248,6 +257,7 @@ export const tmdbTrending = (mediaType) => ({
 // carries collab:1 so a title related to several of your loved films scores up.
 export const traktRelated = {
   name: 'trakt-related',
+  mediaType: 'movie',
   configured: traktConfigured,
   async fetch({ ratings, language }) {
     const out = [];
@@ -265,6 +275,7 @@ export const traktRelated = {
 // Trakt's community charts — taste-independent fresh candidates.
 const traktChartSource = (kind) => ({
   name: `trakt-${kind}`,
+  mediaType: 'movie',
   configured: traktConfigured,
   async fetch() {
     return (await traktChart(kind)).map((m) => ({ id: m.tmdb_id, media_type: 'movie', title: m.title, year: m.year }));
@@ -284,6 +295,7 @@ const scrapersEnabled = () => process.env.TMDB_STUB !== '1';
 // Letterboxd: recent watches from curated public accounts (direct TMDB ids).
 export const letterboxd = {
   name: 'letterboxd',
+  mediaType: 'movie',
   configured: scrapersEnabled,
   fetch: () => letterboxdCandidates(),
 };
@@ -291,6 +303,7 @@ export const letterboxd = {
 // Filmweb: the Polish Top-500 ranking, titles resolved to TMDB ids.
 export const filmweb = {
   name: 'filmweb',
+  mediaType: 'movie',
   configured: scrapersEnabled,
   fetch: ({ language }) => filmwebCandidates(language),
 };
@@ -338,6 +351,21 @@ export const ALL_SOURCES = [
   traktPopular,
   traktAnticipated,
 ];
+
+// The sources to gather for a media-type filter. `''` (no filter) keeps the full
+// mixed registry. A single type ('movie'/'tv') keeps only that type's sources —
+// applied HERE, before buildCorpus's CANDIDATE_CAP and the dominant detail-fetch
+// budget, so a one-type pool fills entirely with the wanted type instead of
+// wasting half the cap on the excluded type (the starvation the post-filter would
+// cause). 'tv' additionally gets a per-genre fan-out: ALL_SOURCES keeps that
+// movie-only for cost (it's the priciest sweep), but a TV-only pool needs the same
+// per-genre depth, and that cost lands only on an explicit TV-only build — the
+// default mixed build's call budget is unchanged.
+export function sourcesFor(type) {
+  if (type !== 'movie' && type !== 'tv') return ALL_SOURCES;
+  const ofType = ALL_SOURCES.filter((s) => (s.mediaType || 'movie') === type);
+  return type === 'tv' ? [...ofType, tmdbDiscoverByGenre('tv')] : ofType;
+}
 
 // Run every configured source concurrently and merge their candidates into a
 // single de-duplicated Map (insertion order = source priority). Sources are

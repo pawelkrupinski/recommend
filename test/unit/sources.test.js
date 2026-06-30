@@ -8,7 +8,36 @@ import assert from 'node:assert/strict';
 import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
-const { gatherCandidates, pageUntilFresh, curatedIndieProviderIds, mediaKey } = await import('../../src/sources.js');
+const { gatherCandidates, pageUntilFresh, curatedIndieProviderIds, mediaKey, sourcesFor, ALL_SOURCES } = await import('../../src/sources.js');
+
+// sourcesFor selects the candidate sources for a media-type filter — the seam
+// that keeps a one-type pool from starving (it narrows BEFORE the cap, so the
+// whole budget fills with the wanted type instead of half going to the excluded
+// one). Every source carries a `mediaType` (movie-only scrapers default 'movie').
+const typesOf = (sources) => new Set(sources.map((s) => s.mediaType || 'movie'));
+
+test('sourcesFor("") keeps the full mixed registry unchanged', () => {
+  assert.equal(sourcesFor(''), ALL_SOURCES);
+  assert.equal(sourcesFor('anything-bogus'), ALL_SOURCES);
+});
+
+test('sourcesFor("movie") keeps only movie sources — no TV source leaks in', () => {
+  const sources = sourcesFor('movie');
+  assert.deepEqual([...typesOf(sources)], ['movie']);
+  assert.ok(sources.length < ALL_SOURCES.length, 'TV sources were dropped');
+});
+
+test('sourcesFor("tv") keeps only TV sources plus a TV per-genre fan-out', () => {
+  const sources = sourcesFor('tv');
+  assert.deepEqual([...typesOf(sources)], ['tv'], 'no movie source survives');
+  // The per-genre depth ALL_SOURCES keeps movie-only is added for a TV-only pool.
+  assert.ok(sources.some((s) => s.name === 'tmdb-discover-by-genre-tv'), 'TV genre fan-out added');
+  assert.ok(!ALL_SOURCES.some((s) => s.name === 'tmdb-discover-by-genre-tv'), 'and only for TV-only builds');
+});
+
+test('every registered source declares a media type', () => {
+  for (const s of ALL_SOURCES) assert.ok(s.mediaType === 'movie' || s.mediaType === 'tv', s.name);
+});
 
 // consumed/dedup keys are (media_type, id) pairs now — a movie and a series can
 // share a tmdb id. The fake sources below omit media_type, so they default to

@@ -307,6 +307,7 @@ async function api(req, res, url) {
         excludeUs: url.searchParams.get('excludeUs') === '1',
         indie: url.searchParams.get('indie') === '1',
         tone: url.searchParams.get('tag') || '',
+        type: url.searchParams.get('type') || '',
       });
       const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language, filters });
       return json(req, res, 200, out);

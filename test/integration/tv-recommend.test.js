@@ -57,6 +57,21 @@ test('rating a series removes it from the feed but leaves films (exclusion is pe
   assert.ok(after.data.results.some((m) => m.media_type === 'movie'), 'films are untouched');
 });
 
+test('?type=tv narrows the feed to series only — and is not starved to empty', async () => {
+  const c = await mixedUser();
+  const { status, data } = await c.json('/api/recommend?type=tv');
+  assert.equal(status, 200);
+  assert.ok(data.results.length, 'a TV-only pool still returns picks (sources narrowed before the cap, not starved)');
+  assert.ok(data.results.every((m) => m.media_type === 'tv'), 'every pick is a series — no films leak through');
+});
+
+test('?type=movie narrows the feed to films only', async () => {
+  const c = await mixedUser();
+  const { data } = await c.json('/api/recommend?type=movie');
+  assert.ok(data.results.length, 'a films-only pool returns picks');
+  assert.ok(data.results.every((m) => m.media_type === 'movie'), 'every pick is a film — no series leak through');
+});
+
 test('a saved series persists its season counts on the watchlist card', async () => {
   const c = await mixedUser();
   const { data } = await c.json('/api/recommend');

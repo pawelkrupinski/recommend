@@ -10,7 +10,7 @@ import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetti
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
-import { gatherCandidates, mediaKey } from './sources.js';
+import { gatherCandidates, sourcesFor, mediaKey } from './sources.js';
 import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
@@ -194,17 +194,20 @@ export function isIndie(movie) {
 // genre filter), passed as query params — not saved preferences. `origin` is
 // the single picker's type-tagged value ('c:<continent>' | 'k:<country>' | '');
 // see geo.js allowedOriginFromValue. Defaults (no args) mean "no filtering".
-export function resolveFilters({ origin = '', excludeUs = false, indie = false, tone = '' } = {}) {
-  // An unknown tone is dropped to '' (no filter) so a stale/typo'd ?tag= can't
-  // build an empty pool — same lenient stance the other controls take.
-  return { allowed: allowedOriginFromValue(origin), excludeUs: !!excludeUs, indie: !!indie, tone: isTone(tone) ? tone : '' };
+export function resolveFilters({ origin = '', excludeUs = false, indie = false, tone = '', type = '' } = {}) {
+  // An unknown tone/type is dropped to '' (no filter) so a stale/typo'd query
+  // can't build an empty pool — same lenient stance the other controls take.
+  return {
+    allowed: allowedOriginFromValue(origin), excludeUs: !!excludeUs, indie: !!indie,
+    tone: isTone(tone) ? tone : '', type: (type === 'movie' || type === 'tv') ? type : '',
+  };
 }
 
 // Stable signature of a filter set for the pool cache key, so each distinct
 // origin/indie combination caches its own pool (like region and providers do).
-export function filterSig({ allowed, excludeUs, indie, tone } = {}) {
+export function filterSig({ allowed, excludeUs, indie, tone, type } = {}) {
   const origins = [...(allowed || [])].sort().join(',');
-  return `${excludeUs ? 'nous' : ''}.${indie ? 'indie' : ''}.${tone ? `t-${tone}` : ''}.${origins || 'any'}`;
+  return `${excludeUs ? 'nous' : ''}.${indie ? 'indie' : ''}.${tone ? `t-${tone}` : ''}.${type || 'both'}.${origins || 'any'}`;
 }
 
 // The user's chosen services that, in their region, stream this title — each as
@@ -289,7 +292,11 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // Discover sources how deep to page — past titles already handled until they've
   // surfaced enough fresh ones. collab[id] = crowd co-watch hits, an additive bonus.
   const tGather = performance.now();
-  const { candidates, collab } = await gatherCandidates({ region, providerIds, genreId, ratings, language, consumed });
+  // A media-type filter narrows the source set HERE — before the cap — so a
+  // one-type pool fills entirely with the wanted type instead of starving (see
+  // sourcesFor). No filter keeps the full mixed registry.
+  const { candidates, collab } = await gatherCandidates(
+    { region, providerIds, genreId, ratings, language, consumed }, sourcesFor(filters.type));
   const gatherMs = performance.now() - tGather;
 
   // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is
@@ -312,6 +319,9 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // filters + the streamability gate inline (all synchronous). Returns the survivor
   // or null; a failed fetch is isolated (null) so one bad title never stalls a batch.
   const fetchSurvivor = async (m) => {
+    // Media-type filter: sourcesFor already excludes the other type, but the
+    // seed/chart sources can surface a stray, so guard before the detail fetch.
+    if (filters.type && m.media_type !== filters.type) return null;
     let full;
     try { full = await details(m.id, m.media_type, language); } catch { return null; }
     // When a genre is selected, keep only titles tagged with it (the seed/chart

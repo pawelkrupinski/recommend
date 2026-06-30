@@ -78,6 +78,11 @@
       <section id="discover" class="tab active">
         <div class="bar">
           <p id="discover-info" data-i18n="discover.building">Building your picks…</p>
+          <select id="type-filter" data-i18n-title="discover.typeTitle" title="Filter picks by type">
+            <option value="" data-i18n="type.all">Movies &amp; TV</option>
+            <option value="movie" data-i18n="type.movies">Movies</option>
+            <option value="tv" data-i18n="type.series">Series</option>
+          </select>
           <select id="genre-filter" data-i18n-title="discover.filterTitle" title="Filter picks by genre">
             <option value="" data-i18n="genre.all">All genres</option>
           </select>
@@ -97,6 +102,11 @@
       <section id="watchlist" class="tab">
         <div class="bar">
           <p id="watchlist-count" class="hint"></p>
+          <select id="watchlist-type" class="hidden" data-i18n-title="watchlist.typeTitle" title="Filter your watchlist by type">
+            <option value="" data-i18n="type.all">Movies &amp; TV</option>
+            <option value="movie" data-i18n="type.movies">Movies</option>
+            <option value="tv" data-i18n="type.series">Series</option>
+          </select>
           <select id="watchlist-genre" class="hidden" data-i18n-title="watchlist.genreTitle" title="Filter your watchlist by genre">
             <option value="" data-i18n="genre.all">All genres</option>
           </select>

@@ -3,7 +3,7 @@
 // narrow the list to titles carrying the chosen one.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { presentTones, filterByTone, presentGenres, filterByGenre, genreLabels } from '../../public/watchlist-filters.js';
+import { presentTones, filterByTone, presentGenres, filterByGenre, filterByType, genreLabels } from '../../public/watchlist-filters.js';
 
 const ORDER = ['heartfelt', 'deadpan', 'gritty', 'romantic'];
 const item = (id, tones) => ({ tmdb_id: id, tones: tones.map((slug) => ({ slug, label: slug[0].toUpperCase() + slug.slice(1) })) });
@@ -124,4 +124,26 @@ test('genreLabels maps a legacy card (no genreIds) through byName to the current
   assert.deepEqual(genreLabels({ genres: ['Akcja'] }, BY_NAME, labelOf), ['Action']);
   assert.deepEqual(genreLabels({ genres: ['Cyberpunk'] }, BY_NAME, labelOf), ['Cyberpunk'],
     'a genre outside the vocabulary keeps its original name');
+});
+
+const typeItems = [
+  { tmdb_id: 1, media_type: 'movie' },
+  { tmdb_id: 2, media_type: 'tv' },
+  { tmdb_id: 3 }, // no media_type — defaults to film, like the rest of the app
+];
+
+test('filterByType keeps only the chosen media type; no type keeps all', () => {
+  assert.deepEqual(filterByType(typeItems, 'tv').map((i) => i.tmdb_id), [2]);
+  assert.deepEqual(filterByType(typeItems, 'movie').map((i) => i.tmdb_id), [1, 3], 'a missing type counts as a film');
+  assert.equal(filterByType(typeItems, ''), typeItems, 'no type selected → unchanged list');
+});
+
+test('filterByType composes with filterByGenre and filterByTone', () => {
+  const items = [
+    { tmdb_id: 1, media_type: 'tv', genreIds: [28], tones: [{ slug: 'gritty', label: 'Gritty' }] },
+    { tmdb_id: 2, media_type: 'movie', genreIds: [28], tones: [{ slug: 'gritty', label: 'Gritty' }] },
+    { tmdb_id: 3, media_type: 'tv', genreIds: [35], tones: [{ slug: 'gritty', label: 'Gritty' }] },
+  ];
+  const out = filterByType(filterByGenre(filterByTone(items, 'gritty'), '28'), 'tv');
+  assert.deepEqual(out.map((i) => i.tmdb_id), [1], 'gritty + action + tv → only the matching series');
 });

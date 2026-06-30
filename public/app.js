@@ -2,7 +2,7 @@ import { matchServiceLink, serviceSearchLink } from './service-match.js';
 import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
 import { presentTones, filterByTone, presentGenres, filterByGenre, genreLabels } from './watchlist-filters.js';
-import { newPicks } from './recs-queue.js';
+import { newPicks, pickKey } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
@@ -57,6 +57,15 @@ const poster = (p) => (p ? `${IMG}/w342${p}` : 'data:image/svg+xml,%3Csvg xmlns=
 // Minutes → "1h 47m" / "47m". Empty string when runtime is missing or zero.
 const runtime = (min) => (min ? `${min >= 60 ? `${Math.floor(min / 60)}h ` : ''}${min % 60}m`.trim() : '');
 
+// A title's "length" for the meta line: a film shows its runtime, a series its
+// season count (its equivalent at-a-glance scale). Empty when neither is known.
+function lengthLabel(m) {
+  if (m.media_type === 'tv') {
+    return m.seasons ? t(m.seasons === 1 ? 'card.season' : 'card.seasons', { n: m.seasons }) : '';
+  }
+  return runtime(m.runtime);
+}
+
 // IMDb (0–10) + Metacritic (0–100) badges, each a link out to its source. MC uses
 // its own green/yellow/red tiers (≥61 good, 40–60 mixed, ≤39 bad). Each badge only
 // shows when present. The IMDb badge deep-links to the title page when we know its
@@ -79,7 +88,8 @@ function ratingBadges(m) {
 function metaLine(m) {
   const parts = [m.year || ''];
   if (m.vote_average != null) parts.push(`⭐ ${m.vote_average.toFixed(1)}`);
-  if (runtime(m.runtime)) parts.push(runtime(m.runtime));
+  const length = lengthLabel(m);
+  if (length) parts.push(length);
   return parts.filter(Boolean).join(' · ');
 }
 
@@ -403,7 +413,7 @@ function renderRecs(results, profileSize, genre) {
   const info = $('#discover-info'), grid = $('#recs');
   // Titles already on the watchlist have been dealt with — keep them out of the
   // picks grid rather than showing a card the user has to dismiss again.
-  const picks = results.filter((m) => !watchlistIds.has(m.tmdb_id));
+  const picks = results.filter((m) => !watchlistIds.has(pickKey(m)));
   if (!picks.length) {
     info.textContent = '';
     grid.innerHTML = `<p class="empty">${t(genre ? 'discover.emptyGenre' : 'discover.emptyNoPicks')}</p>`;
@@ -433,9 +443,11 @@ async function enrichGrid(grid) {
   for (let i = 0; i < pending.length; i += 40) {
     const chunk = pending.slice(i, i + 40);
     let data;
-    try { data = await api('/api/enrich?ids=' + chunk.map((c) => c._pick.tmdb_id).join(',')); } catch { continue; }
+    // Ids travel as `media_type:tmdb_id` tokens (a film and a series can share an
+    // id) and the response keys by the same pair — see pickKey.
+    try { data = await api('/api/enrich?ids=' + chunk.map((c) => pickKey(c._pick)).join(',')); } catch { continue; }
     for (const c of chunk) {
-      const d = data[c._pick.tmdb_id] || {};
+      const d = data[pickKey(c._pick)] || {};
       c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
       c._pick.metascore = d.metascore ?? null;
       if (d.imdb_id) c._pick.imdb_id = d.imdb_id;   // adopt a freshly-resolved id so the badge deep-links
@@ -465,6 +477,7 @@ function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
   el.dataset.id = m.tmdb_id;   // lets refillPicks tell which titles are already on screen
+  el.dataset.key = pickKey(m); // the (media_type, id) pair refillPicks dedups on
   el._pick = m;                // the pick object, so deferred /api/enrich can patch this card's badges
   const hi = m.score >= 75 ? 'hi' : '';
   el.innerHTML = `
@@ -616,12 +629,12 @@ function wireStars(el, commit) {
 function wireRating(el, m) {
   wireStars(el, (rating) => commitCard(el, () => removeCard(el, picksEmptyMsg()),
     api('/api/ratings', { method: 'POST', body: JSON.stringify({
-      tmdb_id: m.tmdb_id, media_type: 'movie', rating, title: m.title, year: m.year }) }),
+      tmdb_id: m.tmdb_id, media_type: m.media_type || 'movie', rating, title: m.title, year: m.year }) }),
     refillIfLow));
   el.querySelector('.dismiss-btn').onclick = (ev) => {
     ev.stopPropagation();
     commitCard(el, () => removeCard(el, picksEmptyMsg()),
-      api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: 'movie' }) }),
+      api('/api/dismiss', { method: 'POST', body: JSON.stringify({ tmdb_id: m.tmdb_id, media_type: m.media_type || 'movie' }) }),
       refillIfLow);
   };
 }
@@ -667,7 +680,7 @@ async function refillPicks() {
     const grid = $('#recs');
     const qs = discoverParams();
     const { results } = await api('/api/recommend' + (qs ? `?${qs}` : ''));
-    const shown = new Set([...grid.querySelectorAll('.card')].map((c) => Number(c.dataset.id)));
+    const shown = new Set([...grid.querySelectorAll('.card')].map((c) => c.dataset.key));
     const fresh = newPicks(results, shown, watchlistIds);
     if (!fresh.length) return;
     if (grid.querySelector('.empty')) grid.innerHTML = '';   // clear a stale empty-state
@@ -681,7 +694,7 @@ async function refillPicks() {
 // Refresh the cached set of watchlisted ids; tolerate failure (cards just keep
 // their last-known + / ✓ state).
 async function loadWatchlistIds() {
-  try { watchlistIds = new Set((await api('/api/watchlist')).watchlist.map((w) => w.tmdb_id)); }
+  try { watchlistIds = new Set((await api('/api/watchlist')).watchlist.map(pickKey)); }
   catch { /* keep the previous set */ }
 }
 // The corner "+" save button for a Discover card. Cards only ever show for
@@ -714,8 +727,8 @@ function wireWatch(el, m) {
       // its services, ratings, genres, runtime and synopsis, so storing them now
       // lets the Watchlist card + popup render exactly like this one — for free,
       // spending no extra API quota. The server whitelists which fields persist.
-      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: 'movie' }) });
-      watchlistIds.add(m.tmdb_id);
+      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: m.media_type || 'movie' }) });
+      watchlistIds.add(pickKey(m));
       flashTab('watchlist');
       removePick(el);
     } finally { btn.disabled = false; }
@@ -789,7 +802,7 @@ function trailerSection(m) {
 // country's availability.
 function whereUrl(m) {
   const region = REGION ? `&region=${encodeURIComponent(REGION)}` : '';
-  return `/api/where?id=${m.tmdb_id}&media_type=movie${region}`;
+  return `/api/where?id=${m.tmdb_id}&media_type=${m.media_type || 'movie'}${region}`;
 }
 async function openWhere(m, { dismissable = true } = {}) {
   const modal = $('#modal'), body = $('#modal-body');
@@ -891,7 +904,7 @@ async function loadWatchlist() {
   genreList = genres;
   genreByName = byName;
   watchlistItems = watchlist;
-  watchlistIds = new Set(watchlist.map((w) => w.tmdb_id));
+  watchlistIds = new Set(watchlist.map(pickKey));
   setWatchlistCount(watchlist.length); // total saved, independent of the tone filter
   // An explicit ?sort=rating in the URL (refresh/back-forward/shared link) wins;
   // otherwise fall back to the order the user last chose, remembered server-side
@@ -968,8 +981,8 @@ function watchCard(w) {
   wireServiceLinks(el, w, { dismissable: false }); // deep-link each service icon, exactly like Discover
   el.querySelector('.watch-remove').onclick = async () => {
     await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
-    watchlistIds.delete(w.tmdb_id);
-    watchlistItems = watchlistItems.filter((it) => it.tmdb_id !== w.tmdb_id);
+    watchlistIds.delete(pickKey(w));
+    watchlistItems = watchlistItems.filter((it) => pickKey(it) !== pickKey(w));
     setWatchlistCount(watchlistItems.length);
     // Re-derive both dropdowns (removing the last title of a tone/genre drops it)
     // and repaint, so the view stays consistent with the filters and remaining items.

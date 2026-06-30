@@ -54,6 +54,8 @@ export const MESSAGES = {
     // rate / dismiss widget
     'card.notInterested': 'Not interested / seen it',
     'card.notSeen': "Haven't seen",
+    'card.season': '1 season',
+    'card.seasons': '{n} seasons',
     'aria.close': 'Close',
     // where-to-watch modal
     'modal.loadingAvailability': 'Loading availability…',
@@ -138,6 +140,8 @@ export const MESSAGES = {
     // rate / dismiss widget
     'card.notInterested': 'Nie interesuje mnie / widziałem',
     'card.notSeen': 'Nie widziałem',
+    'card.season': '1 sezon',
+    'card.seasons': '{n} sezony',
     'aria.close': 'Zamknij',
     // where-to-watch modal
     'modal.loadingAvailability': 'Sprawdzam dostępność…',

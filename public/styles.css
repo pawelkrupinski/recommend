@@ -174,7 +174,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 /* rate widget — the ten stars span the full card width as two even rows of five,
    sized for thumb taps. The hover "n / 10" readout sits on its own line below so
    it never eats into the stars' width (and stays out of the way on touch). */
-.rate-stars { display: flex; flex-direction: column; padding: 6px 10px 10px; }
+/* Recess the rating control into its own darker tray so it reads as a distinct
+   widget rather than loose glyphs on the card. */
+.rate-stars {
+  display: flex; flex-direction: column; margin: 0 10px 8px; padding: 8px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+}
 /* touch-action: pan-y lets a horizontal finger drag across the stars preview a
    rating (see wireStars), while a vertical drag still scrolls the page; the JS
    resolves the gesture direction. user-select/touch-callout off stops the ★
@@ -184,17 +189,25 @@ button.danger:disabled { opacity: .6; cursor: default; }
   touch-action: pan-y; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
+/* Each star sits in its own raised cell on the tray, so the ten tap targets are
+   individually legible and the filled run is obvious. */
 .stars span {
   cursor: pointer; color: #444; font-size: 18px; line-height: 1;
-  text-align: center; padding: 6px 0; border-radius: 4px;
+  text-align: center; padding: 6px 0; border-radius: 4px; background: var(--panel2);
 }
-.stars span.on { color: var(--accent); }
+.stars span.on { color: var(--accent); background: rgba(245, 197, 24, 0.14); }
 .rating-num {
   align-self: flex-end; min-height: 1.25em; margin-top: 2px;
   font-size: 13px; font-weight: 600; color: var(--accent);
   font-variant-numeric: tabular-nums; pointer-events: none;
 }
-.card .skip { margin: 0 10px 10px; font-size: 12px; padding: 4px 8px; }
+/* The dismiss action gets its own full-width recessed bar with muted text and a
+   red hover, so it's clearly distinct from the gold rating above it. */
+.card .skip {
+  display: block; width: calc(100% - 20px); margin: 0 10px 10px;
+  font-size: 12px; padding: 7px 8px; background: var(--bg); color: var(--muted);
+}
+.card .skip:hover { border-color: var(--bad); color: var(--bad); }
 
 /* Discover + Watchlist cards: keep every card identical height so the action
    button ("Not interested" / "Haven't seen" on the onboarding queue, "Remove" on

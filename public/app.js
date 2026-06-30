@@ -103,6 +103,7 @@ function posterAndMeta(m) {
     <div class="meta">
       <div class="title-row">
         <div class="title">${esc(m.title || m.tmdb_id)}</div>
+        ${m.media_type === 'tv' ? `<span class="type-tag">${esc(t('card.series'))}</span>` : ''}
         ${serviceIcons(m)}
       </div>
       <div class="year">${metaLine(m)}</div>
@@ -476,6 +477,7 @@ const picksEmptyMsg = () => t('discover.picksEmptyMore');
 function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
+  el.classList.toggle('tv', m.media_type === 'tv'); // cooler tint distinguishes series from films
   el.dataset.id = m.tmdb_id;   // lets refillPicks tell which titles are already on screen
   el.dataset.key = pickKey(m); // the (media_type, id) pair refillPicks dedups on
   el._pick = m;                // the pick object, so deferred /api/enrich can patch this card's badges
@@ -970,6 +972,7 @@ function setWatchlistCount(n) {
 function watchCard(w) {
   const el = document.createElement('div');
   el.className = 'card';
+  el.classList.toggle('tv', w.media_type === 'tv'); // same series tint as Discover
   el.dataset.id = w.tmdb_id;
   el._pick = w;                // so deferred /api/enrich can patch this card's badges, as on Discover
   // Same card body as a Discover pick (the rich fields were captured when it was

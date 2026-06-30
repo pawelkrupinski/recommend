@@ -123,6 +123,15 @@ function tvDetails(id, language) {
     first_air_date: '2019-01-01',
     number_of_seasons: 3,
     number_of_episodes: 24,
+    // Real TMDB /tv detail also carries `seasons` as the array of per-season
+    // objects (distinct from the number_of_seasons count) — include it so
+    // normalizeDetail must collapse it to the count, not leak the array onto the
+    // card (the "[object Object]" regression).
+    seasons: [
+      { season_number: 1, episode_count: 8, name: 'Season 1' },
+      { season_number: 2, episode_count: 8, name: 'Season 2' },
+      { season_number: 3, episode_count: 8, name: 'Season 3' },
+    ],
     poster_path: `/poster${id}.jpg`,
     overview: overviewFor(name, language),
     vote_average: 8.0,

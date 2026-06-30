@@ -100,3 +100,16 @@ test('normalizeDetail leaves a movie detail alone but tags its media_type', () =
   assert.equal(movie.seasons, undefined, 'no TV fields invented on a movie');
   assert.deepEqual(movie.keywords.keywords, [{ id: 2, name: 'soap' }]);
 });
+
+test('normalizeDetail collapses the TV seasons ARRAY to the season count', () => {
+  // Real TMDB /tv detail ships `seasons` as per-season objects AND a
+  // number_of_seasons scalar. The card needs the count; leaving the array makes it
+  // render as "[object Object],…", so normalizeDetail must overwrite it.
+  const tv = tmdb.normalizeDetail({
+    id: 1396, name: 'Breaking Stub', number_of_seasons: 5, number_of_episodes: 62,
+    seasons: [{ season_number: 0 }, { season_number: 1 }, { season_number: 2 }, { season_number: 3 }, { season_number: 4 }, { season_number: 5 }],
+  }, 'tv');
+  assert.equal(typeof tv.seasons, 'number', 'seasons is the scalar count, not the per-season array');
+  assert.equal(tv.seasons, 5);
+  assert.equal(tv.episodes, 62);
+});

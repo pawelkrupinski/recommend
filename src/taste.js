@@ -654,6 +654,32 @@ export function warmRecommendations() {
   for (const u of listUsers()) if (readyForRecs(u.id)) schedulePrebuild(u.id, 1500);
 }
 
+// True when the user's default "all genres" landing pool is already cached and
+// current (built, and not invalidated since) — the same check recommend()'s `hit`
+// path makes. warmLandingPool uses it to avoid rebuilding a pool that's ready to
+// serve. Exported so the arrival hook's decision is testable without the timer.
+export function landingPoolFresh(userId, region, providerIds, language) {
+  const cached = cacheGet(poolKey(userId, region, providerIds, undefined, language, resolveFilters()));
+  return !!(cached && cached.gen === currentGen(userId));
+}
+
+// Warm a returning user's landing pool when they arrive (the SPA's /api/me boot
+// probe), so their first Discover request is a cache hit rather than a cold
+// gather+detail build. A no-op when TMDB isn't configured, the user hasn't rated
+// enough to have picks, or the landing pool is already fresh — so the per-load
+// /api/me polls don't re-trigger the expensive rebuild once it's warm. Returns
+// whether a warm was scheduled. The build runs through the same debounced, capped
+// prebuild runner a rating uses (ensurePrebuild won't push back a pending one).
+export function warmLandingPool(userId) {
+  if (!tmdbConfigured() || !readyForRecs(userId)) return false;
+  const region = getUserSetting(userId, 'country', 'PL');
+  const providerIds = (getUserSetting(userId, 'providers', []) || []).map(Number);
+  const language = tmdbLang(getUserSetting(userId, 'language', DEFAULT_LANGUAGE));
+  if (landingPoolFresh(userId, region, providerIds, language)) return false;
+  ensurePrebuild(userId);
+  return true;
+}
+
 // ---- watchlist card enrichment --------------------------------------------
 // Re-derive the rich card fields for one already-saved title, server side, so a
 // title saved before save-time capture (or whose capture failed) renders exactly

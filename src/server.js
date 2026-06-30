@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmLandingPool, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
@@ -129,6 +129,10 @@ async function api(req, res, url) {
 
     // ---- who am I (auth probe; open to everyone) ----------------------
     if (p === '/api/me' && req.method === 'GET') {
+      // The SPA boot probe doubles as an "arrival" signal: warm this user's
+      // landing pool in the background (a no-op if it's already fresh) so their
+      // first Discover request is a cache hit, not a cold build.
+      warmLandingPool(uid);
       const detectedCountry = detectCountry(req);
       return json(req, res, 200, {
         user: { id: user.id, email: user.email, name: user.name, picture: user.picture },

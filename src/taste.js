@@ -10,7 +10,7 @@ import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetti
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
-import { gatherCandidates } from './sources.js';
+import { gatherCandidates, mediaKey } from './sources.js';
 import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
@@ -56,25 +56,44 @@ const COLLAB_WEIGHT = 15;
 // (genre:28, keyword:9663…), `label` its human name for the insights page. The
 // id format lives only here so featuresOf (hot scoring path) and the insights
 // labels stay in lock-step.
-function featureEntries(movie, storedTonesFor = getMovieToneSlugs) {
+// `mediaType` ('movie' | 'tv') tags the title so its stored tones are read from
+// the right provenance rows (a movie and a series can share a tmdb id). Genres,
+// keywords and cast carry no media prefix on purpose: a genre/person the user
+// likes counts the same whether it shows up in a film or a series, so taste
+// transfers across the two.
+function featureEntries(item, mediaType = 'movie', storedTonesFor = getMovieToneSlugs) {
   const e = [];
-  for (const g of movie.genres || []) e.push([`genre:${g.id}`, g.name]);
-  for (const k of movie.keywords?.keywords || []) e.push([`keyword:${k.id}`, k.name]);
+  for (const g of item.genres || []) e.push([`genre:${g.id}`, g.name]);
+  for (const k of item.keywords?.keywords || []) e.push([`keyword:${k.id}`, k.name]);
   // Tone tags (heartfelt, deadpan…) derived from keywords + Netflix membership,
   // scored like any other feature so the profile learns a user's mood affinities.
-  for (const s of toneSlugs(movie, 'movie', storedTonesFor)) e.push([`tone:${s}`, toneLabel(s)]);
-  const crew = movie.credits?.crew || [];
+  for (const s of toneSlugs(item, mediaType, storedTonesFor)) e.push([`tone:${s}`, toneLabel(s)]);
+  const crew = item.credits?.crew || [];
   for (const d of crew.filter((c) => c.job === 'Director')) e.push([`director:${d.id}`, d.name]);
-  for (const a of (movie.credits?.cast || []).slice(0, CAST_DEPTH)) e.push([`cast:${a.id}`, a.name]);
-  const yr = Number((movie.release_date || '').slice(0, 4));
+  for (const a of (item.credits?.cast || []).slice(0, CAST_DEPTH)) e.push([`cast:${a.id}`, a.name]);
+  const yr = Number((item.release_date || '').slice(0, 4));
   if (yr) { const d = Math.floor(yr / 10) * 10; e.push([`decade:${d}`, `${d}s`]); }
   return e;
 }
 
 // Just the feature ids — what scoring works in. (featureEntries also carries the
 // human labels the insights page needs.)
-function featuresOf(movie, storedTonesFor = getMovieToneSlugs) {
-  return featureEntries(movie, storedTonesFor).map(([id]) => id);
+function featuresOf(item, mediaType = 'movie', storedTonesFor = getMovieToneSlugs) {
+  return featureEntries(item, mediaType, storedTonesFor).map(([id]) => id);
+}
+
+// Stored tones for a mixed movie+TV pool, returned as a lookup keyed by the
+// (media_type, id) pair so a film and a series sharing a tmdb id don't cross-
+// pollinate tones. One batched IN-scan per media type — the same single-query
+// shape getMovieToneSlugsBatch gives, split by type — so the hot build path keeps
+// its N+1 fix. The returned fn matches storedTonesFor's (id, mediaType) contract.
+function poolTonesLookup(items) {
+  const map = new Map();
+  for (const mt of new Set(items.map((m) => m.media_type || 'movie'))) {
+    const ids = items.filter((m) => (m.media_type || 'movie') === mt).map((m) => m.id);
+    for (const [id, slugs] of getMovieToneSlugsBatch(ids, mt)) map.set(mediaKey(mt, id), slugs);
+  }
+  return (id, mediaType = 'movie') => map.get(mediaKey(mediaType, id)) || [];
 }
 
 // node:sqlite is fully synchronous and warm TMDB cache hits resolve without real
@@ -103,13 +122,14 @@ const EMPTY_PROFILE = () => ({
 // the films are walked — the insights page needs it; the hot scoring path omits
 // it and pays nothing.
 export async function buildProfile(userId, { labels } = {}) {
-  const ratings = getRatings(userId).filter((r) => r.media_type === 'movie');
+  // Movie AND TV ratings both shape one taste profile — a genre or actor the user
+  // loves counts whichever medium it came from (see featureEntries).
+  const ratings = getRatings(userId);
   if (!ratings.length) return EMPTY_PROFILE();
 
-  // Resolve every rated title's stored tones in one query, like the candidate
-  // pool, so featureEntries below isn't a per-rating N+1.
-  const ratedTones = getMovieToneSlugsBatch(ratings.map((r) => r.tmdb_id));
-  const storedTonesFor = (id) => ratedTones.get(id) || [];
+  // Resolve every rated title's stored tones in one query per media type, like the
+  // candidate pool, so featureEntries below isn't a per-rating N+1.
+  const storedTonesFor = poolTonesLookup(ratings.map((r) => ({ id: r.tmdb_id, media_type: r.media_type })));
 
   const mean = ratings.reduce((s, r) => s + r.rating, 0) / ratings.length;
   const pos = new Map(), neg = new Map(), counts = new Map();
@@ -119,9 +139,9 @@ export async function buildProfile(userId, { labels } = {}) {
   for (const r of ratings) {
     if (++processed % YIELD_EVERY === 0) await breathe();
     let movie;
-    try { movie = await details(r.tmdb_id, 'movie'); } catch { continue; }
+    try { movie = await details(r.tmdb_id, r.media_type); } catch { continue; }
     const delta = r.rating - mean; // liked-vs-typical signal
-    const entries = featureEntries(movie, storedTonesFor);
+    const entries = featureEntries(movie, r.media_type, storedTonesFor);
     if (labels) for (const [id, label] of entries) labels.set(id, label);
     const feats = entries.map(([id]) => id);
     ratedFeatureSets.push(feats);
@@ -252,14 +272,15 @@ const FAST_HEAD = 60;
 // candidate set was fetched (full depth) or the build stopped early (a head).
 async function buildCorpus({ userId, region, providerIds, genreId, ratings, language, filters = {}, survivorTarget }) {
   // Titles the user has already handled — rated, dismissed, or saved to their
-  // watchlist — must never be recommended. Movies only (the whole catalogue here),
-  // keyed by bare tmdb id since that's the unit candidate sources and the cap work
-  // in. Saved titles were the missing case: without them the pool filled with
-  // films already on the watchlist that the UI then stripped out, starving Discover.
+  // watchlist — must never be recommended. Keyed by the (media_type, tmdb id) pair
+  // since that's the unit candidate sources and the cap work in, and a movie and a
+  // series can share a tmdb id. Saved titles were the missing case: without them
+  // the pool filled with films already on the watchlist that the UI then stripped
+  // out, starving Discover.
   const consumed = new Set();
-  for (const r of ratings) if (r.media_type === 'movie') consumed.add(r.tmdb_id);
-  for (const d of getDismissed(userId)) if (d.media_type === 'movie') consumed.add(d.tmdb_id);
-  for (const w of getWatchlistIds(userId)) if (w.media_type === 'movie') consumed.add(w.tmdb_id);
+  for (const r of ratings) consumed.add(mediaKey(r.media_type, r.tmdb_id));
+  for (const d of getDismissed(userId)) consumed.add(mediaKey(d.media_type, d.tmdb_id));
+  for (const w of getWatchlistIds(userId)) consumed.add(mediaKey(w.media_type, w.tmdb_id));
 
   // Assemble candidates from every configured source (TMDB discover variants,
   // recommendations, similar, trending; Trakt related + charts). Each yields ids
@@ -275,13 +296,12 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // spent on candidates that can actually become picks rather than re-fetching
   // titles we'd only discard. The registry is priority-ordered and the Map
   // preserves it, so the strongest fresh sources fill the budget first.
-  const pool = [...candidates.values()].filter((m) => !consumed.has(m.id)).slice(0, CANDIDATE_CAP);
+  const pool = [...candidates.values()].filter((m) => !consumed.has(mediaKey(m.media_type, m.id))).slice(0, CANDIDATE_CAP);
 
-  // Prefetch every candidate's stored tones in ONE query, then read them from the
-  // map below (filter, features, scoring). Per-title getMovieToneSlugs() here was
-  // a CANDIDATE_CAP-sized N+1 — the measured ~11s of synchronous DB per build.
-  const candidateTones = getMovieToneSlugsBatch(pool.map((m) => m.id));
-  const storedTonesFor = (id) => candidateTones.get(id) || [];
+  // Prefetch every candidate's stored tones in ONE query per media type, then read
+  // them from the map below (filter, features, scoring). Per-title getMovieToneSlugs()
+  // here was a CANDIDATE_CAP-sized N+1 — the measured ~11s of synchronous DB per build.
+  const storedTonesFor = poolTonesLookup(pool);
 
   // Fetch details, apply the hard filters + streamability gate, and collect each
   // survivor. Scoring happens later (rankCorpus) because the IDF feature weights
@@ -293,21 +313,23 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // or null; a failed fetch is isolated (null) so one bad title never stalls a batch.
   const fetchSurvivor = async (m) => {
     let full;
-    try { full = await details(m.id, 'movie', language); } catch { return null; }
+    try { full = await details(m.id, m.media_type, language); } catch { return null; }
     // When a genre is selected, keep only titles tagged with it (the seed/chart
-    // sources aren't genre-constrained at source, so filter here too).
+    // sources aren't genre-constrained at source, so filter here too). The genre
+    // dropdown carries movie genre ids, whose namespace differs from TV's, so a
+    // genre-scoped view is film-led — the all-genres default is the mixed feed.
     if (genreId && !(full.genres || []).some((g) => g.id === genreId)) return null;
     // Origin (continent/country/non-US) and indie filters — same hard-drop model
     // as the genre filter, applied uniformly to every candidate source.
     if (!matchesOrigin(full, filters)) return null;
     if (filters.indie && !isIndie(full)) return null;
     // Tone filter (the Discover "tone" control / a ?tag= deep link).
-    if (filters.tone && !toneSlugs(full, 'movie', storedTonesFor).includes(filters.tone)) return null;
+    if (filters.tone && !toneSlugs(full, m.media_type, storedTonesFor).includes(filters.tone)) return null;
     // Drop titles not on a chosen service; otherwise keep the matched services so
     // the card can badge (and deep-link) each one.
     const services = userServices(full, region, userSet);
     if (!services.length) return null;
-    return { full, services, collab: collab.get(m.id) || 0 };
+    return { full, services, collab: collab.get(mediaKey(m.media_type, m.id)) || 0 };
   };
   const tDetails = performance.now();
   let survivors, complete;
@@ -353,18 +375,22 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
     const crew = s.full.credits?.crew || [];
     cards.push({
       tmdb_id: s.full.id,
+      media_type: s.full.media_type,
       imdb_id: s.full.external_ids?.imdb_id || null,
       title: s.full.title,
       year: Number((s.full.release_date || '').slice(0, 4)) || null,
       runtime: s.full.runtime || null,
+      // TV-only: shown on the card in place of a film's runtime.
+      seasons: s.full.seasons ?? null,
+      episodes: s.full.episodes ?? null,
       overview: s.full.overview,
       poster_path: s.full.poster_path,
       vote_average: s.full.vote_average,
       voteCount: s.full.vote_count,
       genres: (s.full.genres || []).map((g) => g.name),
       genreIds: (s.full.genres || []).map((g) => g.id),
-      tones: tonesForMovie(s.full, 'movie', storedTonesFor),
-      features: featuresOf(s.full, storedTonesFor),
+      tones: tonesForMovie(s.full, s.full.media_type, storedTonesFor),
+      features: featuresOf(s.full, s.full.media_type, storedTonesFor),
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (s.full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
       trailers: pickTrailers(s.full.videos, language),
@@ -560,12 +586,12 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
     }
   }
   const excluded = new Set([
-    ...getRatings(userId).map((r) => `${r.media_type}:${r.tmdb_id}`),
-    ...getDismissed(userId).map((d) => `${d.media_type}:${d.tmdb_id}`),
-    ...getWatchlistIds(userId).map((w) => `${w.media_type}:${w.tmdb_id}`),
+    ...getRatings(userId).map((r) => mediaKey(r.media_type, r.tmdb_id)),
+    ...getDismissed(userId).map((d) => mediaKey(d.media_type, d.tmdb_id)),
+    ...getWatchlistIds(userId).map((w) => mediaKey(w.media_type, w.tmdb_id)),
   ]);
   const results = cached.pool
-    .filter((m) => !excluded.has(`movie:${m.tmdb_id}`))
+    .filter((m) => !excluded.has(mediaKey(m.media_type || 'movie', m.tmdb_id)))
     .slice(0, limit)
     .map((m) => ({ ...m }));
   // A synchronous (cache-served) build is the suspected loop-blocker; logging ms
@@ -698,23 +724,25 @@ export function warmLandingPool(userId) {
 // like a fresh Discover pick — same fields buildCorpus() produces, minus score
 // (a saved title has no recommendation rank). Hits TMDB details (cached) + the
 // IMDb/Metacritic scrape; no MotN quota is spent.
-export async function enrichWatchlistItem({ tmdb_id, region, providerIds, language }) {
-  const full = await details(tmdb_id, 'movie', language);
+export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', region, providerIds, language }) {
+  const full = await details(tmdb_id, media_type, language);
   const crew = full.credits?.crew || [];
   // Resolve the per-title tone feeders for this saved title (TTL-skipped) so its
   // tones match a Discover pick's, then read them back (live ∪ stored) below.
   await resolveTones({ tmdb_id, imdb_id: full.external_ids?.imdb_id || null, title: full.title,
-    year: Number((full.release_date || '').slice(0, 4)) || null, overview: full.overview });
+    year: Number((full.release_date || '').slice(0, 4)) || null, overview: full.overview }, media_type);
   const item = {
     imdb_id: full.external_ids?.imdb_id || null, // attachRatings needs this; not stored
     title: full.title,                           // ditto (metacritic lookup keys on title)
     year: Number((full.release_date || '').slice(0, 4)) || null, // gates rating resolution; not stored
     runtime: full.runtime || null,
+    seasons: full.seasons ?? null,   // TV-only — rendered in place of runtime
+    episodes: full.episodes ?? null,
     overview: full.overview || null,
     vote_average: full.vote_average ?? null,
     genres: (full.genres || []).map((g) => g.name),
     genreIds: (full.genres || []).map((g) => g.id), // canonical, language-independent — the genre filter consolidates on these
-    tones: tonesForMovie(full),
+    tones: tonesForMovie(full, media_type),
     director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
     cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
     trailers: pickTrailers(full.videos, language),
@@ -732,17 +760,18 @@ const ENRICH_CONCURRENCY = 6;
 // On-demand enrichment for the cards the client is about to show: IMDb/Metacritic
 // ratings + freshly-scraped tone tags, resolved OFF the build's critical path so
 // "Building your picks" never waits on those slow web lookups. The client calls
-// /api/enrich with the visible tmdb ids and patches each card's rating badges (and
+// /api/enrich with the visible titles (as `media_type:tmdb_id` tokens, since a
+// film and a series can share an id) and patches each card's rating badges (and
 // tones) when this returns. Each title's details are already TMDB-cached (the pool
 // was just built from them) and the rating/tone lookups are TTL-cached, so repeat
 // calls as the user advances through picks are cheap. Returns
-// { [tmdb_id]: { imdbRating, metascore, tones } }; a title that fails to resolve is
-// simply omitted, leaving its card to render without badges.
-export async function enrichPicks(ids, { language } = {}) {
+// { [`${media_type}:${tmdb_id}`]: { imdbRating, metascore, tones } }; a title that
+// fails to resolve is simply omitted, leaving its card to render without badges.
+export async function enrichPicks(items, { language } = {}) {
   const out = {};
-  await mapPool(ids, ENRICH_CONCURRENCY, async (id) => {
+  await mapPool(items, ENRICH_CONCURRENCY, async ({ id, media_type = 'movie' }) => {
     let full;
-    try { full = await details(id, 'movie', language); } catch { return; }
+    try { full = await details(id, media_type, language); } catch { return; }
     const crew = full.credits?.crew || [];
     const item = {
       tmdb_id: id,
@@ -754,10 +783,10 @@ export async function enrichPicks(ids, { language } = {}) {
       director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
       cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
     };
-    await resolveTones(item);    // persist any newly-scraped tone slugs (TTL-skipped)
-    await attachRatings([item]); // imdbRating + metascore (null when unmatched); may resolve item.imdb_id
+    await resolveTones(item, media_type); // persist any newly-scraped tone slugs (TTL-skipped)
+    await attachRatings([item]);          // imdbRating + metascore (null when unmatched); may resolve item.imdb_id
     // imdb_id flows back so the client's badge deep-links to a freshly-resolved title.
-    out[id] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, imdb_id: item.imdb_id ?? null, tones: tonesForMovie(full) };
+    out[mediaKey(media_type, id)] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, imdb_id: item.imdb_id ?? null, tones: tonesForMovie(full, media_type) };
   });
   return out;
 }
@@ -800,7 +829,7 @@ export async function backfillWatchlistCards() {
     for (const r of rows) {
       await breathe();
       try {
-        const item = await enrichWatchlistItem({ tmdb_id: r.tmdb_id, region, providerIds, language });
+        const item = await enrichWatchlistItem({ tmdb_id: r.tmdb_id, media_type: r.media_type, region, providerIds, language });
         setWatchlistCard(u.id, r.tmdb_id, r.media_type, item);
         enriched++;
       } catch (e) { log.warn(`watchlist backfill failed for user ${u.id}/${r.tmdb_id}:`, e.message); }

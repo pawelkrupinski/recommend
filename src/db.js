@@ -444,7 +444,10 @@ export function getNotSeen(userId) {
 // excluded — it's a per-build recommendation rank a saved title has no place in.
 // The same shape is produced by the Discover card (captured at save time) and by
 // enrichWatchlistItem (backfill), so both write through this one whitelist.
-const CARD_FIELDS = ['imdb_id', 'vote_average', 'runtime', 'genres', 'genreIds', 'tones', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
+// `runtime` is a film's; `seasons`/`episodes` are a series' equivalent — both
+// persisted so a saved TV card renders its season count like a film shows runtime.
+// (media_type itself is a watchlist column, so it round-trips without this list.)
+const CARD_FIELDS = ['imdb_id', 'vote_average', 'runtime', 'seasons', 'episodes', 'genres', 'genreIds', 'tones', 'services', 'imdbRating', 'metascore', 'overview', 'director', 'cast', 'trailers'];
 function pickCard(src) {
   const card = {};
   for (const k of CARD_FIELDS) if (src[k] != null) card[k] = src[k];

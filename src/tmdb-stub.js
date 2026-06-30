@@ -78,6 +78,70 @@ const PROVIDERS = [
   { provider_id: 9, provider_name: 'Amazon Prime Test', logo_path: '/prime.png', display_priority: 3 },
 ];
 
+// ---- TV fixtures ----------------------------------------------------------
+// A small set of series that stream ONLY on TV_PROVIDER, so they're invisible to
+// the movie-provider tests (whose pools stay byte-identical) and surface only for
+// a user subscribed to TV_PROVIDER — the mixed movie+TV feed the recommender now
+// builds. TV details use TMDB's series field names (name/first_air_date/
+// number_of_seasons) and nest keywords under `results`, so they also exercise
+// tmdb.normalizeDetail end to end. TV_PROVIDER is intentionally NOT in PROVIDERS
+// (the picker list) — a test sets it directly on the user, like GENRE_ONLY_PROVIDER.
+const TV_PROVIDER = 350;
+const TV = [
+  { id: 401, name: 'Stub Series One', genreId: 18 },
+  { id: 402, name: 'Stub Series Two', genreId: 18 },
+];
+const TV_GENRES = [
+  { id: 18, name: 'Drama' },
+  { id: 10765, name: 'Sci-Fi & Fantasy' },
+];
+const TV_GENRES_PL = { 18: 'Dramat', 10765: 'Sci-Fi i Fantasy' };
+const tvGenreName = (id, language) =>
+  (language || '').startsWith('pl') ? (TV_GENRES_PL[id] || TV_GENRES.find((g) => g.id === id)?.name) : TV_GENRES.find((g) => g.id === id)?.name;
+
+// A series list-result (the /discover|/trending shape): `name`, not `title`, and
+// `first_air_date`, not `release_date` — exactly what normalizeDetail maps.
+const tvCard = (t, language) => ({
+  id: t.id,
+  name: t.name,
+  first_air_date: '2019-01-01',
+  poster_path: `/poster${t.id}.jpg`,
+  overview: overviewFor(t.name, language),
+  vote_average: 8.0,
+  genre_ids: [t.genreId],
+});
+
+// Full /tv/:id detail: series field names + keywords under `results` (not the
+// movie `keywords` key) so tmdb.normalizeDetail is exercised; streams on TV_PROVIDER.
+function tvDetails(id, language) {
+  const known = TV.find((t) => t.id === id);
+  const name = known?.name || `Stub Series ${id}`;
+  const genreId = known?.genreId || 18;
+  return {
+    id,
+    name,
+    first_air_date: '2019-01-01',
+    number_of_seasons: 3,
+    number_of_episodes: 24,
+    poster_path: `/poster${id}.jpg`,
+    overview: overviewFor(name, language),
+    vote_average: 8.0,
+    genres: [{ id: genreId, name: tvGenreName(genreId, language) || 'Drama' }],
+    origin_country: ['GB'],
+    production_companies: [{ id: 99999, name: 'Company 99999' }],
+    keywords: { results: [{ id: 9000, name: 'stub-keyword' }] },
+    credits: {
+      crew: [{ id: 700, job: 'Director', name: 'Stub Showrunner' }],
+      cast: [{ id: 800, name: 'Stub TV Actor' }],
+    },
+    external_ids: { imdb_id: `tt${2000000 + id}` },
+    'watch/providers': { results: { [REGION]: { flatrate: [{ provider_id: TV_PROVIDER, provider_name: 'TV Test', logo_path: '/tv.png' }] } } },
+    videos: { results: [
+      { key: `yt-en-tv-${id}`, site: 'YouTube', type: 'Trailer', official: true, iso_639_1: 'en', name: 'Official Trailer' },
+    ] },
+  };
+}
+
 // Echo the requested TMDB `language` into the overview when present, so tests
 // can assert the param was forwarded end to end (the real API would return a
 // localized synopsis here). Titles stay untouched — the e2e suite pins them.
@@ -179,6 +243,41 @@ export function stub(path, params = {}) {
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };
   }
+
+  // ---- TV endpoints -------------------------------------------------------
+  if (path === '/genre/tv/list') {
+    return { genres: TV_GENRES.map((g) => ({ id: g.id, name: tvGenreName(g.id, params.language) })) };
+  }
+  if (path === '/watch/providers/tv') {
+    return { results: PROVIDERS };
+  }
+  if (path === '/discover/tv') {
+    // Series stream only on TV_PROVIDER, so a movie-provider sweep gets nothing
+    // (keeping those tests' pools unchanged); a TV_PROVIDER user gets the series.
+    const providers = String(params.with_watch_providers || '').split('|').map(Number);
+    if (!providers.includes(TV_PROVIDER)) return { page, total_pages: 1, results: [] };
+    const list = params.with_genres
+      ? TV.filter((t) => String(t.genreId) === String(params.with_genres))
+      : TV;
+    return { page, total_pages: 1, results: list.map((t) => tvCard(t, params.language)) };
+  }
+  // Trending/recommendations/similar are empty in the stub (like the movie
+  // similar/recs paths) so series enter a pool only via provider-scoped Discover —
+  // which keeps every movie-provider test's candidate set and detail-fetch count
+  // exactly as before.
+  if (path === '/trending/tv/week') {
+    return { page, total_pages: 1, results: [] };
+  }
+  if (/^\/tv\/(\d+)\/recommendations$/.test(path) || /^\/tv\/(\d+)\/similar$/.test(path)) {
+    return { page: 1, total_pages: 1, results: [] };
+  }
+  const tvWp = path.match(/^\/tv\/(\d+)\/watch\/providers$/);
+  if (tvWp) {
+    return { results: { [REGION]: { link: 'https://example.test/watch',
+      flatrate: [{ provider_id: TV_PROVIDER, provider_name: 'TV Test', logo_path: '/tv.png' }] } } };
+  }
+  const tvDet = path.match(/^\/tv\/(\d+)$/);
+  if (tvDet) return tvDetails(Number(tvDet[1]), params.language);
   const rec = path.match(/^\/movie\/(\d+)\/recommendations$/);
   if (rec) return { page: 1, total_pages: 1, results: [] };
 

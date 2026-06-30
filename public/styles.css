@@ -192,13 +192,14 @@ button.danger:disabled { opacity: .6; cursor: default; }
   touch-action: pan-y; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none;
 }
-/* The blue tray is the stars' backdrop; unlit stars sit on dark cells so they
-   stay legible against it, and the filled run lights up gold on a blue cell. */
+/* The blue tray is the stars' backdrop; every cell sits on the same dark cell so
+   the run reads only through colour — filled stars light up gold, with no
+   background highlight to distinguish them from the unlit cells. */
 .stars span {
   cursor: pointer; color: #6b6b6b; font-size: 18px; line-height: 1;
   text-align: center; padding: 6px 0; border-radius: 4px; background: rgba(0, 0, 0, 0.28);
 }
-.stars span.on { color: var(--accent); background: rgba(90, 162, 255, 0.30); }
+.stars span.on { color: var(--accent); }
 .rating-num {
   align-self: flex-end; min-height: 1.25em; margin-top: 2px;
   font-size: 13px; font-weight: 600; color: var(--accent);

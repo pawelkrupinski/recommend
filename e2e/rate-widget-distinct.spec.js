@@ -40,3 +40,24 @@ test('cards are type-tinted but the rate controls stay a consistent blue', async
   expect(s.tv.tray).toBe(s.movie.tray);
   expect(s.tv.skip).toBe(s.movie.skip);
 });
+
+// A filled (lit) star reads only through its gold colour — its cell keeps the
+// same dark background as an unlit star, so the highlighted run doesn't tint the
+// tray behind it.
+test('a lit star keeps the same cell background as an unlit one', async ({ page }) => {
+  await page.goto('/');
+
+  const s = await page.evaluate(() => {
+    document.querySelector('#app').classList.remove('hidden');
+    const grid = document.querySelector('#recs');
+    grid.innerHTML = '<div class="card"><div class="stars"><span class="on">★</span><span>★</span></div></div>';
+    const spans = document.querySelectorAll('#recs .stars span');
+    return {
+      on: getComputedStyle(spans[0]).backgroundColor,
+      off: getComputedStyle(spans[1]).backgroundColor,
+    };
+  });
+
+  expect(s.on).toBe('rgba(0, 0, 0, 0.28)');
+  expect(s.on).toBe(s.off);
+});

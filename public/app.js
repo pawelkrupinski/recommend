@@ -410,6 +410,40 @@ function renderRecs(results, profileSize, genre) {
     : t('discover.picksSummary', { count: picks.length, profile: profileSize });
   grid.innerHTML = '';
   for (const m of picks) grid.append(recCard(m));
+  enrichVisible();
+}
+
+// IMDb/Metacritic ratings are no longer built into the pool — they're resolved
+// off the recommendation build's critical path so picks paint fast. After cards
+// land, fetch /api/enrich for the ones we haven't resolved yet and patch each
+// card's rating badges in place (and refresh popup tones if newly scraped). The
+// server bounds and TTL-caches the lookups, so this stays cheap as the user
+// advances and refillPicks adds more cards.
+async function enrichVisible() {
+  const grid = $('#recs');
+  const pending = [...grid.querySelectorAll('.card')].filter((c) => c._pick && c._pick.imdbRating === undefined);
+  if (!pending.length) return;
+  let data;
+  try { data = await api('/api/enrich?ids=' + pending.map((c) => c._pick.tmdb_id).join(',')); } catch { return; }
+  for (const c of pending) {
+    const d = data[c._pick.tmdb_id] || {};
+    c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
+    c._pick.metascore = d.metascore ?? null;
+    if (d.tones && d.tones.length) c._pick.tones = d.tones;
+    refreshRatings(c);
+  }
+}
+
+// Patch one card's IMDb/Metacritic badge row from its (now-enriched) pick object,
+// inserting the row before the genres line when the card had no badges yet and
+// removing it when enrichment found none.
+function refreshRatings(el) {
+  const meta = el.querySelector('.meta');
+  if (!meta) return;
+  const html = ratingBadges(el._pick);
+  const existing = meta.querySelector('.ratings');
+  if (existing) existing.outerHTML = html;        // '' removes the row; otherwise replaces it
+  else if (html) meta.querySelector('.genres').insertAdjacentHTML('beforebegin', html);
 }
 // Shown when the last Discover card leaves the grid — whether it was rated,
 // dismissed, or saved to the watchlist. A function (not a const) so it reflects
@@ -419,6 +453,7 @@ function recCard(m) {
   const el = document.createElement('div');
   el.className = 'card';
   el.dataset.id = m.tmdb_id;   // lets refillPicks tell which titles are already on screen
+  el._pick = m;                // the pick object, so deferred /api/enrich can patch this card's badges
   const hi = m.score >= 75 ? 'hi' : '';
   el.innerHTML = `
     <div class="score ${hi}">${m.score}</div>
@@ -625,6 +660,7 @@ async function refillPicks() {
     if (!fresh.length) return;
     if (grid.querySelector('.empty')) grid.innerHTML = '';   // clear a stale empty-state
     for (const m of fresh) grid.append(recCard(m));
+    enrichVisible();
   } catch { /* leave the grid; the next removal retries */ }
   finally { refilling = false; }
 }

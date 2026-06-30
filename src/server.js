@@ -12,7 +12,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmLandingPool, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
@@ -292,6 +292,17 @@ async function api(req, res, url) {
       });
       const out = await recommend({ userId: uid, region, providerIds, genreId, limit: 36, force, language, filters });
       return json(req, res, 200, out);
+    }
+
+    // ---- on-demand pick enrichment (IMDb/Metacritic ratings + tones) --
+    // Deferred off the recommendation build (see taste.enrichPicks): the client
+    // fetches this for the cards it actually shows and patches their rating
+    // badges. The ids are bounded to a screenful; the underlying lookups are
+    // TTL-cached server-side, so a short browser cache is safe.
+    if (p === '/api/enrich' && req.method === 'GET') {
+      const ids = (url.searchParams.get('ids') || '').split(',').map(Number).filter(Boolean).slice(0, 40);
+      const language = tmdbLang(langFor(uid, req));
+      return json(req, res, 200, await enrichPicks(ids, { language }), 'private, max-age=3600');
     }
 
     // ---- learned taste profile (the hidden /insights page) ------------

@@ -11,11 +11,11 @@ import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings } from './ratings.js';
 import { gatherCandidates } from './sources.js';
-import { isTone, orderTones, toneLabel } from './tones.js';
+import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
-import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank, bayesianQuality } from './scoring.js';
+import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
 import { log } from './log.js';
 import { dbCounters } from './perf.js';
 
@@ -226,12 +226,6 @@ const CANDIDATE_CAP = 500;
 // fan out rather than await one title at a time; 8 keeps it well under TMDB's
 // limits (the convention's 5-10 band) while collapsing the fetch phase ~8x.
 const DETAIL_FETCH_CONCURRENCY = 8;
-// How many of each corpus's quality-ranked head get IMDb/Metacritic ratings +
-// tone feeders attached during the (background) build. Wide enough that the ~36
-// any profile actually shows — plus dismissal headroom — fall inside it, so a
-// re-rank serves enriched cards without making those slow web lookups itself.
-const ENRICH_COUNT = 50;
-
 // The recommendation build is split into two layers so a rating doesn't pay for
 // the whole thing. buildCorpus is the expensive, taste-independent layer (gather +
 // ~500 detail fetches + enrichment); it barely moves when a user rates one more
@@ -349,28 +343,18 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
     });
   }
 
-  // Enrich a wide head with IMDb/Metacritic ratings + tone feeders. Because the
-  // corpus outlives any one profile, the head is chosen by a taste-independent
-  // quality proxy (the Bayesian prior) rather than the personalised rank — so the
-  // cache holds across ratings. The tradeoff: a rare niche pick that out-scores
-  // this band on personal match alone may show without its badges until the next
-  // (background) corpus rebuild. attachRatings/resolveToneTags are TTL-skipped
-  // internally, so repeat corpus builds across genres re-fetch nothing.
-  const tEnrich = performance.now();
-  const enrichHead = [...cards]
-    .sort((a, b) => bayesianQuality(b.vote_average, b.voteCount, globalMean) - bayesianQuality(a.vote_average, a.voteCount, globalMean))
-    .slice(0, ENRICH_COUNT);
-  await attachRatings(enrichHead);
-  await resolveToneTags(enrichHead);
-  const enrichMs = performance.now() - tEnrich;
+  // Ratings (IMDb/Metacritic) and freshly-scraped tone tags are deliberately NOT
+  // attached here: those slow web lookups used to enrich a wide head inline, on
+  // the build's critical path. They're now deferred to the on-demand /api/enrich
+  // endpoint (enrichPicks), which the client calls for the cards it actually
+  // shows. The corpus already ships stored tones (tonesForMovie above); enrichPicks
+  // fills the IMDb/Metacritic badges and folds in any newly-scraped tones.
 
   // Phase split for the corpus build: gather (source fan-out, mostly cached
-  // TMDB/Trakt), details (per-candidate detail fetch + sync JSON parse), enrich
-  // (the two web-enrichment passes over the quality head).
+  // TMDB/Trakt) and details (per-candidate detail fetch + sync JSON parse).
   log.info(
     `[perf] corpus phases user=${userId} genre=${genreId ?? 'all'} gatherMs=${gatherMs.toFixed(0)} ` +
-    `detailsMs=${detailsMs.toFixed(0)} enrichMs=${enrichMs.toFixed(0)} ` +
-    `candidates=${pool.length} survivors=${survivors.length}`,
+    `detailsMs=${detailsMs.toFixed(0)} candidates=${pool.length} survivors=${survivors.length}`,
   );
   return { cards, globalMean };
 }
@@ -432,22 +416,6 @@ const poolKey = (...args) => `recpool:${keyTail(...args)}`;
 // prove a rating re-ranks the corpus in place rather than rebuilding it.
 export const corpusKey = (...args) => `corpus:${keyTail(...args)}`;
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
-
-// How many tone resolutions run concurrently — small, so the scraper feeders stay
-// well under IMDb/Letterboxd limits (the model feeder is local/instant).
-const TONE_RESOLVE_CONCURRENCY = 5;
-// Resolve the per-title tone feeders for a batch of cards, then fold the freshly
-// stored slugs into each card's `tones` so the just-built pool reflects them
-// immediately (later builds pick them up via tonesForMovie). resolveTones is
-// TTL-skipped + per-source isolated, so this is cheap on warm titles and never
-// fails a build. A no-op when no feeder is configured (no proxy, untrained model).
-async function resolveToneTags(cards) {
-  await mapPool(cards, TONE_RESOLVE_CONCURRENCY, async (card) => {
-    await resolveTones(card);
-    const slugs = new Set([...(card.tones || []).map((t) => t.slug), ...getMovieToneSlugs(card.tmdb_id)]);
-    card.tones = orderTones([...slugs]);
-  });
-}
 
 // Rebuild a user's corpus from scratch and rank it — the full, expensive build,
 // run on a cold cache, a forced Refresh, and the background prebuild (so frozen
@@ -708,6 +676,39 @@ export async function enrichWatchlistItem({ tmdb_id, region, providerIds, langua
   };
   await attachRatings([item]); // adds imdbRating + metascore (or leaves them null)
   return item;
+}
+
+// How many of the visible cards we resolve ratings/tones for at once — the same
+// small fan-out attachRatings uses, so the scraper feeders stay well under the
+// IMDb/Metacritic/Letterboxd limits.
+const ENRICH_CONCURRENCY = 6;
+
+// On-demand enrichment for the cards the client is about to show: IMDb/Metacritic
+// ratings + freshly-scraped tone tags, resolved OFF the build's critical path so
+// "Building your picks" never waits on those slow web lookups. The client calls
+// /api/enrich with the visible tmdb ids and patches each card's rating badges (and
+// tones) when this returns. Each title's details are already TMDB-cached (the pool
+// was just built from them) and the rating/tone lookups are TTL-cached, so repeat
+// calls as the user advances through picks are cheap. Returns
+// { [tmdb_id]: { imdbRating, metascore, tones } }; a title that fails to resolve is
+// simply omitted, leaving its card to render without badges.
+export async function enrichPicks(ids, { language } = {}) {
+  const out = {};
+  await mapPool(ids, ENRICH_CONCURRENCY, async (id) => {
+    let full;
+    try { full = await details(id, 'movie', language); } catch { return; }
+    const item = {
+      tmdb_id: id,
+      imdb_id: full.external_ids?.imdb_id || null,
+      title: full.title,
+      year: Number((full.release_date || '').slice(0, 4)) || null,
+      overview: full.overview,
+    };
+    await resolveTones(item);    // persist any newly-scraped tone slugs (TTL-skipped)
+    await attachRatings([item]); // imdbRating + metascore (null when unmatched)
+    out[id] = { imdbRating: item.imdbRating ?? null, metascore: item.metascore ?? null, tones: tonesForMovie(full) };
+  });
+  return out;
 }
 
 // Map each displayed credit name (director(s) + top cast) to its IMDb person id,

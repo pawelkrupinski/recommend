@@ -31,6 +31,18 @@ test('homepage exposes Open Graph + Twitter preview tags', async () => {
   assert.match(html, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg"/);
 });
 
+test('the crawler-facing absolute URLs point at the live Fly host', async () => {
+  // og:url / canonical / og:image must be absolute (crawlers reject relative)
+  // and must name the host that's actually serving — the app moved off Render,
+  // so a lingering onrender.com link would 404 the preview image and split the
+  // canonical from where the page really lives.
+  const html = await (await fetch(base + '/')).text();
+  assert.doesNotMatch(html, /onrender\.com/, 'no links to the decommissioned Render host');
+  assert.match(html, /<meta property="og:url" content="https:\/\/filmowo\.fly\.dev\/"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/filmowo\.fly\.dev\/"/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/filmowo\.fly\.dev\/og-home\.png"/);
+});
+
 test('the og:image is served as a PNG', async () => {
   const res = await fetch(base + '/og-home.png');
   assert.equal(res.status, 200);

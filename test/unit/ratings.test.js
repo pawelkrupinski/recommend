@@ -5,8 +5,16 @@ import assert from 'node:assert/strict';
 import { freshDbEnv, readFixture } from '../helpers/env.js';
 
 freshDbEnv();
-const { slugify, foldTitle, parseMetascore, parseMetacriticPage, metacriticMatches } =
+const { slugify, foldTitle, parseMetascore, parseMetacriticPage, metacriticMatches, RATINGS_TTL } =
   await import('../../src/ratings.js');
+const { HOUR, DAY } = await import('../../src/cache.js');
+
+test('ratings cache refreshes within hours, not the old multi-day window', () => {
+  // Scores drift, so a Discover/Watchlist revisit should pick up a newer one
+  // rather than serving a fortnight-stale value.
+  assert.ok(RATINGS_TTL >= HOUR, 'at least an hour so a single session reuses the cache');
+  assert.ok(RATINGS_TTL <= DAY, 'at most a day — hours, not the old 14-day TTL');
+});
 
 test('slugify lowercases, strips apostrophes and collapses separators', () => {
   assert.equal(slugify("Schindler's List"), 'schindlers-list');

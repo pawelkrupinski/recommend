@@ -440,6 +440,11 @@ function renderRecs(results, profileSize, genre) {
 // server bounds and TTL-caches the lookups, so this stays cheap as the user
 // advances and refillPicks adds more cards. Shared by Discover and the Watchlist
 // (both carry `_pick` cards), so a saved title missing a badge fills in too.
+//
+// /api/enrich streams NDJSON — one line per title as it resolves — so each card
+// lights up the moment its rating lands, not after the slowest title in the
+// chunk. We patch per line; once a chunk's stream completes, any title that never
+// streamed a line resolved to nothing, so we mark it badge-less too.
 async function enrichGrid(grid) {
   if (!grid) return;
   const pending = [...grid.querySelectorAll('.card')].filter((c) => c._pick && c._pick.imdbRating === undefined);
@@ -448,21 +453,56 @@ async function enrichGrid(grid) {
   // silently truncated to the first 40.
   for (let i = 0; i < pending.length; i += 40) {
     const chunk = pending.slice(i, i + 40);
-    let data;
     // Ids travel as `media_type:tmdb_id` tokens (a film and a series can share an
-    // id) and the response keys by the same pair — see pickKey.
-    try { data = await api('/api/enrich?ids=' + chunk.map((c) => pickKey(c._pick)).join(',')); } catch { continue; }
-    for (const c of chunk) {
-      const d = data[pickKey(c._pick)] || {};
-      c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
-      c._pick.metascore = d.metascore ?? null;
-      if (d.imdb_id) c._pick.imdb_id = d.imdb_id;   // adopt a freshly-resolved id so the badge deep-links
-      if (d.tones && d.tones.length) c._pick.tones = d.tones;
-      refreshRatings(c);
-    }
+    // id) and each streamed line keys by the same pair — see pickKey.
+    const byKey = new Map(chunk.map((c) => [pickKey(c._pick), c]));
+    try {
+      await streamEnrich(chunk.map((c) => pickKey(c._pick)), (key, d) => {
+        const c = byKey.get(key);
+        if (c) applyEnrichment(c, d);
+      });
+    } catch { continue; } // stream failed: leave cards unresolved so a later pass retries
+    // Stream finished: a title with no line resolved to no badges.
+    for (const c of chunk) if (c._pick.imdbRating === undefined) applyEnrichment(c, {});
   }
 }
 const enrichVisible = () => enrichGrid($('#recs'));
+
+// Patch one card from a streamed enrichment payload (empty `{}` = resolved with
+// no badges). Records the resolution on `_pick` so the card isn't refetched and
+// repaints its badge row.
+function applyEnrichment(c, d) {
+  c._pick.imdbRating = d.imdbRating ?? null;   // mark resolved (even null) so we don't refetch it
+  c._pick.metascore = d.metascore ?? null;
+  if (d.imdb_id) c._pick.imdb_id = d.imdb_id;   // adopt a freshly-resolved id so the badge deep-links
+  if (d.tones && d.tones.length) c._pick.tones = d.tones;
+  refreshRatings(c);
+}
+
+// Fetch /api/enrich for `keys` and invoke `onItem(key, payload)` for each NDJSON
+// line as it arrives. Throws on a non-OK / bodyless response so the caller can
+// leave the chunk for a later retry.
+async function streamEnrich(keys, onItem) {
+  const res = await fetch('/api/enrich?ids=' + keys.join(','));
+  if (!res.ok || !res.body) throw new Error('enrich ' + res.status);
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  const flush = (line) => {
+    if (!line) return;
+    let obj; try { obj = JSON.parse(line); } catch { return; }
+    const { key, ...payload } = obj;
+    onItem(key, payload);
+  };
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) { flush(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+  }
+  flush((buf + decoder.decode()).trim()); // any trailing line without a newline
+}
 
 // Patch one card's IMDb/Metacritic badge row from its (now-enriched) pick object,
 // inserting the row before the genres line when the card had no badges yet and

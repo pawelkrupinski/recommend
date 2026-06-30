@@ -9,13 +9,15 @@
 //                 movie page's schema.org `<script type="application/ld+json">`
 //                 block, reached by probing MC's canonical `/movie/<slug>/` URL.
 //
-// Results are cached hard (14 days; scores barely move) and negative results
-// are cached too, so a title without a match isn't re-fetched every Discover load.
+// Results are cached for a few hours (scores drift slowly but a revisit should
+// pick up a newer one) and negative results are cached too, so a title without a
+// match isn't re-fetched on every Discover load within the window.
 import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
-import { readThroughCapped, DAY } from './cache.js';
+import { readThroughCapped, HOUR } from './cache.js';
 import { resolveImdbId } from './resolve-ratings.js';
 
-const TTL = 14 * DAY; // critic/audience scores barely move
+// Exported so a test can assert the cache refreshes within hours, not days.
+export const RATINGS_TTL = 6 * HOUR;
 // Mirror TMDB/IMDb suppression: a rating backed by <5 votes is noise.
 const MIN_VOTES = 5;
 
@@ -27,7 +29,7 @@ const IMDB_QUERY = 'query Rating($id:ID!){title(id:$id){ratingsSummary{aggregate
 // unknown. Cached; transient network faults are not cached so they retry later.
 export async function imdbRating(imdbId) {
   if (!imdbId) return null;
-  return readThroughCapped(`imdb:rating:${imdbId}`, TTL, async () => {
+  return readThroughCapped(`imdb:rating:${imdbId}`, RATINGS_TTL, async () => {
     const res = await fetchWithTimeout(IMDB_GRAPHQL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'user-agent': BROWSER_UA },
@@ -137,7 +139,7 @@ export function parseMetascore(html) {
 // slug can't lend a wrong score. Cached (capped, regenerable), negatives included.
 export async function metacriticScore(title, year = null) {
   if (!title?.trim()) return null;
-  return readThroughCapped(`mc:score:${slugify(title)}:${year ?? ''}`, TTL, async () => {
+  return readThroughCapped(`mc:score:${slugify(title)}:${year ?? ''}`, RATINGS_TTL, async () => {
     for (const slug of candidateSlugs(title)) {
       const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': BROWSER_UA } });
       if (!res.ok) continue;

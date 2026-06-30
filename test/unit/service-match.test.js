@@ -43,7 +43,8 @@ test('matchServiceLink bridges a Showtime icon to the Paramount+ link', () => {
 });
 
 test('serviceSearchLink builds a per-service search URL for the title', () => {
-  assert.equal(serviceSearchLink('HBO Max', 'Ex Machina'), 'https://play.hbomax.com/search?q=Ex%20Machina');
+  // HBO Max wants spaces as `+`, not `%20`.
+  assert.equal(serviceSearchLink('HBO Max', 'Ex Machina'), 'https://play.hbomax.com/search?q=Ex+Machina');
   assert.equal(serviceSearchLink('Max', 'Dune'), 'https://play.hbomax.com/search?q=Dune');
   assert.equal(serviceSearchLink('Netflix', 'Heat'), 'https://www.netflix.com/search?q=Heat');
   assert.equal(serviceSearchLink('Amazon Prime Video', 'Heat'), 'https://www.primevideo.com/search?q=Heat');

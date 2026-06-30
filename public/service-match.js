@@ -47,8 +47,12 @@ export function serviceSearchLink(sname, title, region) {
   if (n.includes('appletv') || n.includes('apple')) {
     return `https://tv.apple.com/${(region || 'us').toLowerCase()}/search?term=${q}`;
   }
+  // HBO Max's search expects spaces as `+`, not `%20` (a `%20` query lands on an
+  // empty results page). Everyone else below is happy with `%20`.
+  if (n.includes('hbo') || n === 'max') {
+    return `https://play.hbomax.com/search?q=${q.replace(/%20/g, '+')}`;
+  }
   const host =
-    n.includes('hbo') || n === 'max'                  ? 'play.hbomax.com' :
     n.includes('netflix')                             ? 'www.netflix.com' :
     n.includes('primevideo') || n.includes('amazon')  ? 'www.primevideo.com' :
     n.includes('disney')                              ? 'www.disneyplus.com' :

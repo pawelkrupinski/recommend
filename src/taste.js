@@ -256,6 +256,16 @@ const DETAIL_FETCH_CONCURRENCY = 8;
 // by the deeper background rebuild the cold serve schedules. On a cold cache this
 // is the difference between waiting on ~60 detail fetches and ~500.
 const FAST_HEAD = 60;
+// A ceiling on how many candidate details the head build fetches, independent of
+// survivorTarget. The origin/indie/tone hard filters run AFTER the detail fetch
+// (fetchSurvivor), so a view that drops most of what it fetches — the non-US origin
+// toggle over a US-heavy region catalog is the worst case — never reaches
+// survivorTarget and, without this, walks the whole ~500-candidate pool: exactly
+// the full-build latency the head exists to avoid ("non-US picks take ages"). Cap
+// the fetch COUNT too; whatever survived within it serves, the rest is deepened in
+// the background. Comfortably over FAST_HEAD so a healthy (dense) head still stops
+// on survivors, well under CANDIDATE_CAP so a sparse filter stays bounded.
+const HEAD_FETCH_BUDGET = 160;
 // The recommendation build is split into two layers so a rating doesn't pay for
 // the whole thing. buildCorpus is the expensive, taste-independent layer (gather +
 // ~500 detail fetches + enrichment); it barely moves when a user rates one more
@@ -351,7 +361,7 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
     // (a small candidate set is already full depth, nothing to deepen).
     survivors = [];
     let fetched = 0;
-    for (let i = 0; i < pool.length && survivors.length < survivorTarget; i += DETAIL_FETCH_CONCURRENCY) {
+    for (let i = 0; i < pool.length && survivors.length < survivorTarget && fetched < HEAD_FETCH_BUDGET; i += DETAIL_FETCH_CONCURRENCY) {
       const batch = pool.slice(i, i + DETAIL_FETCH_CONCURRENCY);
       for (const s of await Promise.all(batch.map(fetchSurvivor))) if (s) survivors.push(s);
       fetched += batch.length;
@@ -484,9 +494,10 @@ const poolKey = (...args) => `recpool:${keyTail(...args)}`;
 export const corpusKey = (...args) => `corpus:${keyTail(...args)}`;
 const currentGen = (userId) => getUserSetting(userId, 'recGen', 0);
 // The filter signature of the default, unfiltered Discover view — the "landing"
-// pool we both warm ahead of time (prebuild) and serve as a fast head first. A
-// genre or any live origin/indie/tone filter has a different signature, so those
-// take the full build up front rather than the head-then-deepen path.
+// pool, the only one warmed ahead of time (prebuild). Every cold view now serves a
+// fast head first; this signature only distinguishes HOW the head is deepened: the
+// landing pool rides the capped prebuilder, a genre/origin/indie/tone pool deepens
+// its own exact pool (recommend()).
 const LANDING_SIG = filterSig(resolveFilters());
 
 // Rebuild a user's corpus from scratch and rank it — the full, expensive build,
@@ -571,17 +582,25 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
   } else {
     const corpus = force ? null : cacheGet(corpusKey(userId, region, providerIds, genreId, language, filters));
     if (!corpus) {
-      // No corpus yet. For the landing pool (all genres, no live filters) serve a
-      // fast HEAD first — fetch details for just enough candidates to fill a page,
-      // rank those, and serve — then deepen to the full corpus in the background so
-      // the user isn't blocked on the whole ~500-candidate fetch. A forced Refresh,
-      // a selected genre, or a live filter pays the full build up front instead.
-      // Dispatched through runBuild so it runs in the worker (off the main loop) in
-      // prod; the result is read back from the shared DB once it lands.
-      const head = !force && !genreId && filterSig(filters) === LANDING_SIG;
+      // No corpus yet. Serve a fast HEAD for EVERY cold foreground build — the
+      // unfiltered landing pool AND any genre/origin/indie/tone filter: fetch details
+      // for just enough candidates to fill a page, rank those, serve, then deepen to
+      // the full corpus in the background so the user isn't blocked on the whole
+      // ~500-candidate fetch. Gating the head on the landing signature was why any
+      // filter (notably the non-US origin toggle) fell back to the slow full build.
+      // A forced Refresh still pays the full build up front. Dispatched through
+      // runBuild so it runs in the worker (off the main loop) in prod; the result is
+      // read back from the shared DB once it lands.
+      const head = !force;
       await runBuild({ userId, region, providerIds, genreId, language, filters, survivorTarget: head ? FAST_HEAD : undefined });
       cached = cacheGet(poolKey(userId, region, providerIds, genreId, language, filters));
-      if (head && cached?.partial) ensurePrebuild(userId); // deepen the head in the background
+      if (head && cached?.partial) {
+        // Deepen the head in the background. The landing pool is warmed by the capped
+        // prebuilder (shared with the rating-invalidation path); a genre/filter pool
+        // isn't prebuilt, so deepen that exact pool directly.
+        if (!genreId && filterSig(filters) === LANDING_SIG) ensurePrebuild(userId);
+        else deepenPool({ userId, region, providerIds, genreId, language, filters });
+      }
       mode = 'built';
     } else {
       // The ranking is stale but the corpus isn't — re-rank the cached candidates
@@ -679,6 +698,19 @@ function schedulePrebuild(userId, delay = 4000) {
 // — used on the stale-serve path so browsing genres can't starve the refresh.
 function ensurePrebuild(userId) {
   if (!timers.has(userId) && !prebuildRunner.has(userId)) schedulePrebuild(userId);
+}
+
+// Deepen a specific genre- or filter-scoped head pool to the full ~500-candidate
+// corpus in the background; the next serve picks up the complete pool in its place.
+// Unlike the landing pool (warmed by the capped prebuilder), these pools aren't
+// prebuilt, so the cold head serve schedules their own deepen. runBuild coalesces by
+// poolKey, so a reload mid-deepen shares the one in-flight build rather than starting
+// a second. Fire-and-forget: the head already served, this only replaces it. Off in
+// tests/e2e (same gate as prebuild) so the deterministic on-demand build isn't raced.
+function deepenPool(args) {
+  if (PREBUILD_DISABLED) return;
+  Promise.resolve(runBuild({ ...args, survivorTarget: undefined }))
+    .catch((e) => log.error('deepen failed:', e.message));
 }
 
 // Don't build any picks until a user has rated enough films for them to be

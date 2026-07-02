@@ -64,7 +64,7 @@ export async function pageUntilFresh({ fetchPage, want, consumed, mediaType = 'm
   for (let page = 1; page <= ceil; page++) {
     const res = await fetchPage(page);
     for (const m of res.results || []) {
-      out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m) });
+      out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m), genre_ids: m.genre_ids });
       if (!consumed?.has(mediaKey(mediaType, m.id))) fresh++;
     }
     if (fresh >= want || page >= (res.total_pages || 1)) break;
@@ -92,7 +92,7 @@ async function expandSeeds(ratings, language, listFn, mediaType) {
   for (const r of seeds(ratings, mediaType)) {
     try {
       const res = await listFn(r.tmdb_id, mediaType, language);
-      for (const m of res.results || []) out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m) });
+      for (const m of res.results || []) out.push({ id: m.id, media_type: mediaType, title: candidateTitle(m), genre_ids: m.genre_ids });
     } catch { /* skip this seed */ }
   }
   return out;
@@ -247,7 +247,7 @@ export const tmdbTrending = (mediaType) => ({
   configured: tmdbConfigured,
   async fetch({ language }) {
     const res = await trending(mediaType, language);
-    return (res.results || []).map((m) => ({ id: m.id, media_type: mediaType, title: candidateTitle(m) }));
+    return (res.results || []).map((m) => ({ id: m.id, media_type: mediaType, title: candidateTitle(m), genre_ids: m.genre_ids }));
   },
 });
 
@@ -390,7 +390,7 @@ export async function gatherCandidates(ctx, sources = ALL_SOURCES) {
       if (m?.id == null) continue;
       const media_type = m.media_type || 'movie';
       const key = mediaKey(media_type, m.id);
-      if (!candidates.has(key)) candidates.set(key, { id: m.id, media_type, title: m.title, year: m.year });
+      if (!candidates.has(key)) candidates.set(key, { id: m.id, media_type, title: m.title, year: m.year, genre_ids: m.genre_ids });
       if (m.collab) collab.set(key, (collab.get(key) || 0) + m.collab);
     }
   });

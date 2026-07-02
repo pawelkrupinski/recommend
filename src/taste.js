@@ -313,7 +313,19 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // spent on candidates that can actually become picks rather than re-fetching
   // titles we'd only discard. The registry is priority-ordered and the Map
   // preserves it, so the strongest fresh sources fill the budget first.
-  const pool = [...candidates.values()].filter((m) => !consumed.has(mediaKey(m.media_type, m.id))).slice(0, CANDIDATE_CAP);
+  //
+  // When a genre is selected, drop candidates whose list-level genre_ids already
+  // rule it out — BEFORE the detail fetch — for the same "don't spend the budget on
+  // titles we'd only discard" reason. The provider Discover sweeps are already
+  // genre-scoped server-side (with_genres), but the seed/chart sources aren't, so a
+  // sparse genre (Documentary) otherwise fills the whole fetch budget with titles
+  // dropped post-fetch at fetchSurvivor — the "genre takes ages" head. TMDB list
+  // items carry genre_ids; a candidate without them (Trakt/scraped) is kept for the
+  // authoritative full.genres check in fetchSurvivor.
+  const genrePlausible = (m) => !genreId || !Array.isArray(m.genre_ids) || m.genre_ids.includes(genreId);
+  const pool = [...candidates.values()]
+    .filter((m) => !consumed.has(mediaKey(m.media_type, m.id)) && genrePlausible(m))
+    .slice(0, CANDIDATE_CAP);
 
   // Prefetch every candidate's stored tones in ONE query per media type, then read
   // them from the map below (filter, features, scoring). Per-title getMovieToneSlugs()

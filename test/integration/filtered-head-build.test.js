@@ -1,6 +1,6 @@
 // Performance guardrail for the cold recommendation build of a FILTERED Discover
-// view (the non-US origin toggle, indie, a tone). Two properties keep those views
-// as fast as the unfiltered landing pool — both easy to regress silently:
+// view (the non-US origin toggle, indie, a tone, a selected genre). Properties that
+// keep those views as fast as the unfiltered landing pool — all easy to regress:
 //
 //   1. A filtered cold build must serve a fast HEAD (survivorTarget), not the full
 //      ~500-candidate build up front. recommend() used to gate the head on the
@@ -10,6 +10,10 @@
 //      of what it fetches (origin/indie/tone run AFTER the detail fetch). Without a
 //      second bound the head walks the whole pool anyway. HEAD_FETCH_BUDGET caps the
 //      head's fetch COUNT so a sparse filter can't reintroduce full-build latency.
+//   3. A selected genre must pre-filter the pool by each candidate's list-level
+//      genre_ids BEFORE the detail fetch — the seed/chart sources aren't genre-scoped
+//      at source, so a sparse genre (Documentary) otherwise spends the whole fetch
+//      budget on non-genre titles dropped post-fetch: the "genre takes ages" head.
 //
 // Driven over a real (non-stub) fetch fake — the same seam build-performance uses —
 // so the detail-fetch counts reflect the actual source registry and build path.
@@ -114,5 +118,63 @@ test('recommend() serves a fast head for a filtered (non-US) view, not the full 
   assert.ok(
     counts.detail < 150,
     `filtered recommend() fetched ${counts.detail} details — expected the fast head (~60), not the full ~300-candidate build`,
+  );
+});
+
+// (3) A selected genre must drop non-genre candidates by their list-level genre_ids
+// BEFORE the detail fetch. The seed/chart sources aren't genre-scoped, so a sparse
+// genre otherwise fetches the whole HEAD_FETCH_BUDGET of non-genre titles only to
+// drop them post-fetch — the "genre takes ages" head. Install a mixed pool where a
+// small minority carries the target genre; the build must fetch ~only those.
+const DOC_GENRE = 99, ACTION_GENRE = 28, DOC_COUNT = 40;
+// Discover pool whose items carry per-item genre_ids (as TMDB list responses do):
+// the first DOC_COUNT are Documentaries, the rest Action. Details echo the same
+// single genre, so the authoritative post-fetch check agrees with the list tag.
+function installGenreFetch(poolSize, idBase, providerId) {
+  const counts = { detail: 0 };
+  const genreOf = (i) => (i < DOC_COUNT ? DOC_GENRE : ACTION_GENRE);
+  const pool = Array.from({ length: poolSize }, (_, i) => ({ id: idBase + i, title: `M${i}`, genre_ids: [genreOf(i)] }));
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    const path = s.replace('https://api.themoviedb.org/3', '');
+    const m = path.match(/^\/movie\/(\d+)\?/);
+    if (m) { counts.detail++; const id = Number(m[1]); return respond({ ...movieDetail(id, 'FR', providerId), genres: [{ id: genreOf(id - idBase), name: 'G' }] }); }
+    const t = path.match(/^\/tv\/(\d+)\?/); if (t) { counts.detail++; return respond(tvDetail(Number(t[1]), providerId)); }
+    if (s.startsWith('https://api.themoviedb.org')) {
+      if (path.startsWith('/discover/movie')) return respond({ page: 1, total_pages: 1, results: pool });
+      if (path.startsWith('/discover/tv')) return respond({ page: 1, total_pages: 1, results: [] });
+      if (path.startsWith('/genre/movie/list')) return respond({ genres: MOVIE_GENRES });
+      if (path.startsWith('/genre/tv/list')) return respond({ genres: [] });
+      return respond({ page: 1, total_pages: 1, results: [] });
+    }
+    return respond({ page: 1, total_pages: 1, results: [] });
+  };
+  return counts;
+}
+
+test('a genre view pre-filters by genre_ids and fetches ~only the genre, not the whole budget', async () => {
+  setSetting('tmdbKey', 'test-key');
+  // 300 candidates, only DOC_COUNT (40) tagged Documentary. A full head would fetch
+  // the whole HEAD_FETCH_BUDGET (~160) — 40 docs never reach survivorTarget (60).
+  const counts = installGenreFetch(300, 6000, 11);
+
+  const user = createAnonUser();
+  setUserSetting(user.id, 'country', 'PL');
+  setUserSetting(user.id, 'providers', [11]);
+  await buildProfile(user.id);
+  counts.detail = 0;
+
+  const { results } = await recommend({
+    userId: user.id, region: 'PL', providerIds: [11], genreId: DOC_GENRE,
+    language: 'en-US', filters: resolveFilters({ type: 'movie' }),
+  });
+
+  assert.ok(results.length > 0, 'the genre view still returns picks');
+  // With the pre-filter the pool is the 40 docs, so the head fetches ~only those.
+  // Without it, non-doc candidates get fetched then dropped post-fetch until the
+  // budget (~160) — the regression. Allow the 40 docs plus one concurrency batch.
+  assert.ok(
+    counts.detail <= DOC_COUNT + 8,
+    `genre view fetched ${counts.detail} details — expected ~${DOC_COUNT} (pre-filtered to the genre), not the full ~160 fetch budget`,
   );
 });

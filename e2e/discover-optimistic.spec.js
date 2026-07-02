@@ -28,3 +28,29 @@ test('dismissing a pick removes the card without waiting on the server', async (
   await expect(page.locator(`#recs .card[data-id="${id}"]`)).toHaveCount(0, { timeout: 1000 });
   expect(Date.now() - started).toBeLessThan(2000);
 });
+
+// Same regression for the "+" save button, which used to `await` the POST (with the
+// button disabled) before dropping the card — so saving a pick felt frozen for a
+// whole round-trip ("adding to watchlist takes ages") while dismiss/rate on the same
+// card were instant. The save is now optimistic too (commitCard).
+test('saving a pick to the watchlist removes the card without waiting on the server', async ({ page }) => {
+  await login(page, uniqEmail('optimistic-watch'));
+  await enterPicks(page);
+
+  // Hold the watchlist write open for 3s — far longer than any real round-trip.
+  await page.route('**/api/watchlist', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    await new Promise((r) => setTimeout(r, 3000));
+    await route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+  });
+
+  const first = page.locator('#recs .card').first();
+  const id = await first.getAttribute('data-id');
+  const started = Date.now();
+  await first.locator('.watch-btn').click({ force: true });
+
+  // The card must detach while the POST is still in flight. The old blocking code
+  // only removed it after the 3s stall, so a 1s budget fails before the change.
+  await expect(page.locator(`#recs .card[data-id="${id}"]`)).toHaveCount(0, { timeout: 1000 });
+  expect(Date.now() - started).toBeLessThan(2000);
+});

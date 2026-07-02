@@ -761,24 +761,27 @@ function flashTab(tab) {
   btn.addEventListener('animationend', () => btn.classList.remove('flash'), { once: true });
 }
 // Wire the + button inside `el` for movie `m`: saves the title to the watchlist,
-// then drops the card from Discover and pulses the Watchlist tab so it's clear
-// where the title went.
+// drops the card from Discover and pulses the Watchlist tab so it's clear where
+// the title went. Optimistic like rate/dismiss (commitCard): the card leaves the
+// grid the instant you click and the write rides in the background — awaiting the
+// POST first left the + button frozen for a whole round-trip ("adding takes ages").
 function wireWatch(el, m) {
   const btn = el.querySelector('.watch-btn');
   if (!btn) return;
-  btn.onclick = async (ev) => {
+  btn.onclick = (ev) => {
     ev.stopPropagation();
-    btn.disabled = true;
-    try {
-      // Save the whole pick, not just title/year/poster: the card already holds
-      // its services, ratings, genres, runtime and synopsis, so storing them now
-      // lets the Watchlist card + popup render exactly like this one — for free,
-      // spending no extra API quota. The server whitelists which fields persist.
-      await api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: m.media_type || 'movie' }) });
-      watchlistIds.add(pickKey(m));
-      flashTab('watchlist');
-      removePick(el);
-    } finally { btn.disabled = false; }
+    // Reflect the save immediately: mark the id watchlisted so a refill can't
+    // re-surface it, and pulse the tab. Save the whole pick, not just
+    // title/year/poster — the card already holds its services, ratings, genres,
+    // runtime and synopsis, so storing them now lets the Watchlist card + popup
+    // render exactly like this one for free, spending no extra API quota (the
+    // server whitelists which fields persist). If the write fails, commitCard slots
+    // the card back, so undo the optimistic id too.
+    const saving = api('/api/watchlist', { method: 'POST', body: JSON.stringify({ ...m, media_type: m.media_type || 'movie' }) });
+    saving.catch(() => watchlistIds.delete(pickKey(m)));
+    watchlistIds.add(pickKey(m));
+    flashTab('watchlist');
+    commitCard(el, () => removeCard(el, picksEmptyMsg()), saving, refillIfLow);
   };
 }
 

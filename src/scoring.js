@@ -51,7 +51,7 @@ export const SCORING = {
   MATCH_K: 8,          // idf-mass prior that shrinks a thin-overlap match toward neutral
   MATCH_TEMP: 2,       // tanh temperature mapping mean feature-affinity to a 0..100 match
   PRIOR_M: 150,        // vote-count at which the quality prior trusts R over the global mean
-  MC_WEIGHT: 0.25,     // how far the IMDb-based prior is pulled toward the Metacritic critic score
+  MC_WEIGHT: 0.5,      // how far the IMDb-based prior is pulled toward the Metacritic critic score (0.5 = equal weight)
   IMDB_GLOBAL_MEAN: 6.9, // fallback IMDb mean when a corpus carries no IMDb ratings to average
   RERANK_N: 60,        // how many top candidates get the calibrated/diversified re-rank
   RERANK_LAMBDA: 0.75, // re-rank: relevance vs. MMR diversity (1 = pure relevance)

@@ -7,11 +7,12 @@
 // differs only in how it fetches+parses inside `produce`.
 //
 // Two backing stores, same spine: the DURABLE cache (db.js — Litestream-
-// replicated, kept tiny: Trakt + quota-precious MotN) and the EPHEMERAL capped
-// cache (tmdb-cache.js — not replicated). Regenerable values that we never want
-// bloating the replicated DB (IMDb/Metacritic scores, IMDb-id resolutions) use
-// readThroughCapped; only a saved title's ratings persist durably, and then on
-// its own watchlist row, not here.
+// replicated, kept tiny: Trakt, quota-precious MotN, and IMDb/Metacritic scores)
+// and the EPHEMERAL capped cache (tmdb-cache.js — not replicated, for big TMDB
+// detail blobs). IMDb/Metacritic scores persist durably (readThrough): the
+// recommendation prior reads them and a corpus build bakes them from cache, so
+// they must survive a restart — the rows are tiny scalars. Bulky, cheaply
+// regenerable values (IMDb-id resolutions, TMDB details) stay in the capped store.
 import { cacheGet, cacheSet } from './db.js';
 import { tmdbCacheGet, tmdbCacheSet } from './tmdb-cache.js';
 

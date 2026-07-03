@@ -22,6 +22,14 @@
 //    to the prior instead of asserting a confident "meh" at 50. This is also the
 //    cold-start behaviour — a sparse profile overlaps few films, so popular/
 //    acclaimed titles surface until the profile earns trust.
+//  - Quality prior from IMDb + Metacritic, NOT TMDB (qualityPrior): IMDb's
+//    weighted rating (with its vote count) is the backbone, pulled a fixed
+//    fraction toward Metacritic's critic score when we have one. Crucially the
+//    prior is SKIPPED for a film we hold no IMDb/MC rating for — that card scores
+//    on taste match alone rather than borrowing TMDB's crowd number — so quality
+//    only enters the score when a real critic/audience rating backs it. Ratings
+//    are prefetched into the durable cache off the build's critical path (see
+//    taste.js), so coverage grows and fewer films fall through to the skip path.
 //  - Bayesian quality prior (bayesianQuality): IMDb's weighted-rating shrinks a
 //    thinly-voted film toward the global mean, so 8.5-from-40-votes ranks below
 //    8.5-from-400k.
@@ -43,6 +51,8 @@ export const SCORING = {
   MATCH_K: 8,          // idf-mass prior that shrinks a thin-overlap match toward neutral
   MATCH_TEMP: 2,       // tanh temperature mapping mean feature-affinity to a 0..100 match
   PRIOR_M: 150,        // vote-count at which the quality prior trusts R over the global mean
+  MC_WEIGHT: 0.25,     // how far the IMDb-based prior is pulled toward the Metacritic critic score
+  IMDB_GLOBAL_MEAN: 6.9, // fallback IMDb mean when a corpus carries no IMDb ratings to average
   RERANK_N: 60,        // how many top candidates get the calibrated/diversified re-rank
   RERANK_LAMBDA: 0.75, // re-rank: relevance vs. MMR diversity (1 = pure relevance)
   CALIB_WEIGHT: 0.15,  // re-rank: pull toward the user's genre mix (0 = off)
@@ -155,28 +165,53 @@ export function bayesianQuality(voteAverage, voteCount, globalMean, over = {}) {
 // decaying to 0 by DISCOVERY_VOTE_CAP (a widely-seen film needs no help being
 // found). Gated by a rating floor so it lifts hidden gems, not thinly-voted junk.
 // Returns [0, DISCOVERY_MAX].
-export function discoveryBonus(voteAverage, voteCount, over = {}) {
+export function discoveryBonus(rating, votes, over = {}) {
   const { DISCOVERY_MAX, DISCOVERY_MIN_RATING, DISCOVERY_VOTE_CAP } = { ...SCORING, ...over };
-  if (voteAverage == null || voteAverage < DISCOVERY_MIN_RATING) return 0;
-  const v = voteCount || 0;
+  if (rating == null || rating < DISCOVERY_MIN_RATING) return 0;
+  const v = votes || 0;
   if (v >= DISCOVERY_VOTE_CAP) return 0;
-  const obscurity = 1 - v / DISCOVERY_VOTE_CAP;                            // 1 → 0 across [0, CAP)
-  const quality = Math.min(1, (voteAverage - DISCOVERY_MIN_RATING) / 1.5); // saturates +1.5 above the floor
+  const obscurity = 1 - v / DISCOVERY_VOTE_CAP;                       // 1 → 0 across [0, CAP)
+  const quality = Math.min(1, (rating - DISCOVERY_MIN_RATING) / 1.5); // saturates +1.5 above the floor
   return DISCOVERY_MAX * obscurity * quality;
 }
 
-// Blend the personalised match with the quality prior by per-film confidence.
-// No feature overlap → c≈0 → score ≈ prior (acclaim shows through); strong
-// overlap → c≈1 → personal taste dominates. An exploration bonus then lifts
-// acclaimed-but-obscure films so the prior's shrinkage doesn't bury them — but
-// only when the profile doesn't predict a dislike (match ≥ neutral 50), so we
-// never push a film the user's taste rejects. Returns an unrounded score.
-export function scoreCandidate({ profileVec, itemFeatures, idf, voteAverage, voteCount, globalMean }, over = {}) {
+// The quality prior in [0,100], from IMDb and Metacritic ONLY — never TMDB.
+// Returns null when we hold neither rating, the caller's signal to skip the prior
+// and let the film score on taste match alone. IMDb (0–10 audience rating + its
+// vote count) is the backbone, run through the Bayesian shrink and rescaled ×10;
+// a Metacritic critic score (already 0–100) then pulls the prior a fixed fraction
+// (MC_WEIGHT) toward the critics. With only Metacritic, the prior is the raw
+// critic score (no vote count to shrink on).
+export function qualityPrior({ imdbRating, imdbVotes, metascore, globalMean }, over = {}) {
+  const { MC_WEIGHT } = { ...SCORING, ...over };
+  const hasImdb = imdbRating != null;
+  const hasMc = metascore != null;
+  if (!hasImdb && !hasMc) return null;
+  if (!hasImdb) return metascore;
+  const q = bayesianQuality(imdbRating, imdbVotes, globalMean, over);
+  return hasMc ? (1 - MC_WEIGHT) * q + MC_WEIGHT * metascore : q;
+}
+
+// Blend the personalised match with the IMDb/Metacritic quality prior by per-film
+// confidence. No feature overlap → c≈0 → score ≈ prior (acclaim shows through);
+// strong overlap → c≈1 → personal taste dominates. An exploration bonus then lifts
+// acclaimed-but-obscure films so the prior's shrinkage doesn't bury them — but only
+// when the profile doesn't predict a dislike (match ≥ neutral 50), so we never push
+// a film the user's taste rejects.
+//
+// When we hold NO IMDb/Metacritic rating for the film (qualityPrior → null) the
+// prior is skipped entirely: the score is the taste match alone (plus any bonus,
+// which is itself 0 without an IMDb rating). So an unrated film the profile has no
+// opinion on lands at neutral ~50 and sinks, while a rated one keeps its quality
+// anchor — quality only moves the score when a real rating backs it. Returns an
+// unrounded score.
+export function scoreCandidate({ profileVec, itemFeatures, idf, imdbRating, imdbVotes, metascore, globalMean }, over = {}) {
   const mass = overlapMass(profileVec, itemFeatures, idf);
   const c = confidence(mass, over);
   const match = affinityMatch(profileVec, itemFeatures, idf, over);
-  const prior = bayesianQuality(voteAverage, voteCount, globalMean, over);
-  const bonus = match >= 50 ? discoveryBonus(voteAverage, voteCount, over) : 0;
+  const prior = qualityPrior({ imdbRating, imdbVotes, metascore, globalMean }, over);
+  const bonus = match >= 50 ? discoveryBonus(imdbRating, imdbVotes, over) : 0;
+  if (prior == null) return match + bonus;
   return c * match + (1 - c) * prior + bonus;
 }
 

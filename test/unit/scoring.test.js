@@ -7,8 +7,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildIdf, buildProfileVector, affinityMatch, overlapMass, confidence,
-  bayesianQuality, scoreCandidate, discoveryBonus, genreDistribution, klDivergence,
-  itemSimilarity, rerank, SCORING,
+  bayesianQuality, qualityPrior, scoreCandidate, discoveryBonus, genreDistribution,
+  klDivergence, itemSimilarity, rerank, SCORING,
 } from '../../src/scoring.js';
 
 // A profile vector with one strongly-liked feature (a) and one strongly-disliked
@@ -104,6 +104,60 @@ test('bayesianQuality shrinks a thinly-voted film toward the global mean', () =>
   assert.ok(manyVotes > 84.9, 'a heavily-voted 8.5 sits near 85');
 });
 
+// ---- quality prior from IMDb + Metacritic, never TMDB -----------------------
+
+test('qualityPrior uses IMDb as the backbone and pulls it toward Metacritic', () => {
+  const imdbOnly = qualityPrior({ imdbRating: 8.0, imdbVotes: 500000, globalMean: 6.9 });
+  const withHighMc = qualityPrior({ imdbRating: 8.0, imdbVotes: 500000, metascore: 95, globalMean: 6.9 });
+  const withLowMc = qualityPrior({ imdbRating: 8.0, imdbVotes: 500000, metascore: 50, globalMean: 6.9 });
+  assert.ok(withHighMc > imdbOnly, 'a strong critic score lifts the IMDb-backed prior');
+  assert.ok(withLowMc < imdbOnly, 'a weak critic score drags it down');
+  // The pull is exactly MC_WEIGHT of the gap between the IMDb prior and the metascore.
+  assert.ok(Math.abs(withHighMc - ((1 - SCORING.MC_WEIGHT) * imdbOnly + SCORING.MC_WEIGHT * 95)) < 1e-9);
+});
+
+test('qualityPrior falls back to the raw critic score with only Metacritic, and is null with neither', () => {
+  assert.equal(qualityPrior({ metascore: 82, globalMean: 6.9 }), 82, 'MC-only prior is the critic score');
+  assert.equal(qualityPrior({ globalMean: 6.9 }), null, 'no IMDb and no MC → no prior (skip signal)');
+  assert.equal(qualityPrior({ imdbRating: null, metascore: null, globalMean: 6.9 }), null);
+});
+
+test('scoreCandidate never reads TMDB: a vote_average passed in cannot move the score', () => {
+  // The old prior was TMDB-driven; the new one must ignore it entirely. Same
+  // IMDb/MC-less card with a wildly different TMDB vote_average scores identically.
+  const idf = new Map([['a', 2]]);
+  const profileVec = buildProfileVector(
+    { pos: new Map([['a', 3]]), neg: new Map(), counts: new Map([['a', 5]]) }, idf);
+  const base = { profileVec, itemFeatures: ['a'], idf, globalMean: 6.9 };
+  const lowTmdb = scoreCandidate({ ...base, vote_average: 2.0, voteCount: 500000 });
+  const highTmdb = scoreCandidate({ ...base, vote_average: 9.5, voteCount: 500000 });
+  assert.equal(lowTmdb, highTmdb, 'TMDB fields are inert — quality comes from IMDb/MC only');
+});
+
+test('scoreCandidate skips the prior when unrated: the score is the taste match alone', () => {
+  // A film with no IMDb/MC and no feature overlap sits at neutral 50 (not ~80),
+  // so it can never outrank a rated film on borrowed crowd quality.
+  const idf = new Map([['a', 2], ['x', 2]]);
+  const profileVec = buildProfileVector(
+    { pos: new Map([['a', 6]]), neg: new Map(), counts: new Map([['a', 10]]) }, idf);
+  const unratedUnknown = scoreCandidate({ profileVec, itemFeatures: ['x'], idf, globalMean: 6.9 });
+  assert.equal(unratedUnknown, 50, 'unrated + no taste opinion → neutral, no quality anchor');
+  // But taste still moves an unrated film the profile likes.
+  const unratedLiked = scoreCandidate({ profileVec, itemFeatures: ['a'], idf, globalMean: 6.9 });
+  assert.ok(unratedLiked > 60, `an unrated but well-matched film still rises on taste, got ${unratedLiked}`);
+});
+
+test('scoreCandidate ranks a high-IMDb / low-Metacritic film by its IMDb backbone', () => {
+  // No overlap → the score tracks the prior. A film critics panned but audiences
+  // love still scores respectably because IMDb leads and MC only nudges.
+  const idf = new Map([['x', 3]]);
+  const profileVec = buildProfileVector(
+    { pos: new Map([['x', 3]]), neg: new Map(), counts: new Map([['x', 5]]) }, idf);
+  const beloved = scoreCandidate({ profileVec, itemFeatures: ['unknown'], idf, imdbRating: 8.4, imdbVotes: 800000, metascore: 55, globalMean: 6.9 });
+  const meh = scoreCandidate({ profileVec, itemFeatures: ['unknown'], idf, imdbRating: 6.2, imdbVotes: 800000, metascore: 55, globalMean: 6.9 });
+  assert.ok(beloved > meh, 'the higher-IMDb film wins despite equal critic scores');
+});
+
 // ---- confidence blend: acclaimed-but-unfamiliar films (pathology #2) --------
 
 test('scoreCandidate defers to the quality prior when there is no feature overlap', () => {
@@ -114,7 +168,7 @@ test('scoreCandidate defers to the quality prior when there is no feature overla
     { pos: new Map([['a', 3], ['b', 3]]), neg: new Map(), counts: new Map([['a', 5], ['b', 5]]) }, idf);
   const score = scoreCandidate({
     profileVec, itemFeatures: ['classic'], idf,
-    voteAverage: 8.5, voteCount: 500000, globalMean: 6.5,
+    imdbRating: 8.5, imdbVotes: 500000, globalMean: 6.5,
   });
   assert.ok(score > 70, `unfamiliar acclaimed film scores on quality, got ${score}`);
 });
@@ -128,7 +182,7 @@ test('scoreCandidate lets a strong personal match lift a mediocre-but-liked film
     { pos: new Map(ids.map((id) => [id, 6])), neg: new Map(), counts: new Map(ids.map((id) => [id, 10])) }, idf);
   const score = scoreCandidate({
     profileVec, itemFeatures: ids, idf,
-    voteAverage: 5.0, voteCount: 100000, globalMean: 6.5,
+    imdbRating: 5.0, imdbVotes: 100000, globalMean: 6.5,
   });
   assert.ok(score > 60, `strong taste match lifts a low-rated film, got ${score}`);
 });
@@ -156,7 +210,7 @@ test('scoreCandidate lifts an obscure acclaimed film above its bare prior', () =
   const idf = new Map([['x', 3]]);
   const profileVec = buildProfileVector(
     { pos: new Map([['x', 3]]), neg: new Map(), counts: new Map([['x', 5]]) }, idf);
-  const gem = scoreCandidate({ profileVec, itemFeatures: ['unknown'], idf, voteAverage: 7.8, voteCount: 90, globalMean: 6.5 });
+  const gem = scoreCandidate({ profileVec, itemFeatures: ['unknown'], idf, imdbRating: 7.8, imdbVotes: 90, globalMean: 6.5 });
   const bare = bayesianQuality(7.8, 90, 6.5); // the same film scored on prior alone
   assert.ok(gem > bare, `discovery bonus lifts the obscure gem above its bare prior (${gem} > ${bare})`);
   assert.ok(gem - bare <= SCORING.DISCOVERY_MAX, 'but only by a bounded amount');
@@ -172,7 +226,7 @@ test('scoreCandidate withholds the discovery bonus from a predicted-disliked fil
   assert.ok(affinityMatch(profileVec, feats, idf) < 50, 'premise: the profile predicts a dislike');
   const c = confidence(overlapMass(profileVec, feats, idf));
   const prior = bayesianQuality(7.8, 90, 6.5);
-  const score = scoreCandidate({ profileVec, itemFeatures: feats, idf, voteAverage: 7.8, voteCount: 90, globalMean: 6.5 });
+  const score = scoreCandidate({ profileVec, itemFeatures: feats, idf, imdbRating: 7.8, imdbVotes: 90, globalMean: 6.5 });
   assert.equal(score, c * affinityMatch(profileVec, feats, idf) + (1 - c) * prior,
     'score equals the bonus-free blend — no discovery lift for a below-neutral film');
 });

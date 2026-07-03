@@ -12,8 +12,16 @@
 // Results are cached for a few hours (scores drift slowly but a revisit should
 // pick up a newer one) and negative results are cached too, so a title without a
 // match isn't re-fetched on every Discover load within the window.
+//
+// The scores are cached DURABLY (db.js, not the ephemeral capped store): the
+// recommendation prior now reads them (see scoring.qualityPrior), and a corpus
+// build bakes them onto cards from cache with no fetch (taste.buildCorpus), so
+// they must survive a restart and a prefetch pass's writes must persist. The rows
+// are tiny scalars ({rating,votes} or a 0–100 score), so this stays within the
+// "keep the durable DB tiny" rule — the capped store remains for big TMDB blobs.
 import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
-import { readThroughCapped, HOUR } from './cache.js';
+import { readThrough, HOUR } from './cache.js';
+import { cacheGet } from './db.js';
 import { resolveImdbId } from './resolve-ratings.js';
 
 // Exported so a test can assert the cache refreshes within hours, not days.
@@ -25,11 +33,16 @@ const MIN_VOTES = 5;
 const IMDB_GRAPHQL = 'https://caching.graphql.imdb.com/';
 const IMDB_QUERY = 'query Rating($id:ID!){title(id:$id){ratingsSummary{aggregateRating voteCount}}}';
 
-// Live IMDb rating (0–10) for a tt-id, or null when unrated / too few votes /
-// unknown. Cached; transient network faults are not cached so they retry later.
-export async function imdbRating(imdbId) {
+const imdbRatingKey = (imdbId) => `imdb:rating:${imdbId}`;
+
+// Live IMDb rating detail for a tt-id: `{ rating (0–10), votes }`, or null when
+// unrated / too few votes / unknown. The vote count is kept (not just the rating)
+// because the quality prior shrinks a thinly-voted rating toward the mean
+// (scoring.bayesianQuality). Cached durably; transient faults are not cached so
+// they retry later.
+export async function imdbRatingDetail(imdbId) {
   if (!imdbId) return null;
-  return readThroughCapped(`imdb:rating:${imdbId}`, RATINGS_TTL, async () => {
+  return readThrough(imdbRatingKey(imdbId), RATINGS_TTL, async () => {
     const res = await fetchWithTimeout(IMDB_GRAPHQL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'user-agent': BROWSER_UA },
@@ -40,8 +53,28 @@ export async function imdbRating(imdbId) {
     const s = json?.data?.title?.ratingsSummary;
     const r = Number(s?.aggregateRating);
     const votes = Number(s?.voteCount) || 0;
-    return Number.isFinite(r) && r > 0 && votes >= MIN_VOTES ? r : null;
+    return Number.isFinite(r) && r > 0 && votes >= MIN_VOTES ? { rating: r, votes } : null;
   });
+}
+
+// The IMDb rating alone (0–10), for the badge callers that don't need the vote
+// count. Shares the same cached lookup as imdbRatingDetail.
+export async function imdbRating(imdbId) {
+  return (await imdbRatingDetail(imdbId))?.rating ?? null;
+}
+
+// Cache-only reads (no fetch) for the corpus build's rating bake: return whatever
+// the durable cache already holds — `{rating,votes}` / a 0–100 score, or null when
+// we hold nothing fresh (a miss and a cached negative both mean "no rating", the
+// signal for scoring to skip the quality prior). Synchronous (SQLite), so the
+// build loop can call them per card without awaiting the network.
+export function cachedImdbDetail(imdbId) {
+  if (!imdbId) return null;
+  return cacheGet(imdbRatingKey(imdbId), RATINGS_TTL) ?? null;
+}
+export function cachedMetascore(title, year = null) {
+  if (!title?.trim()) return null;
+  return cacheGet(mcScoreKey(title, year), RATINGS_TTL) ?? null;
 }
 
 // ---- Metacritic -----------------------------------------------------------
@@ -137,9 +170,11 @@ export function parseMetascore(html) {
 // verifiably matches it. Probes each candidate slug and accepts the first whose
 // page's name+year confirm it's this film (metacriticMatches) — so a colliding
 // slug can't lend a wrong score. Cached (capped, regenerable), negatives included.
+const mcScoreKey = (title, year) => `mc:score:${slugify(title)}:${year ?? ''}`;
+
 export async function metacriticScore(title, year = null) {
   if (!title?.trim()) return null;
-  return readThroughCapped(`mc:score:${slugify(title)}:${year ?? ''}`, RATINGS_TTL, async () => {
+  return readThrough(mcScoreKey(title, year), RATINGS_TTL, async () => {
     for (const slug of candidateSlugs(title)) {
       const res = await fetchWithTimeout(`${MC_SITE}/movie/${slug}/`, { headers: { 'user-agent': BROWSER_UA } });
       if (!res.ok) continue;
@@ -170,12 +205,12 @@ export async function attachRatings(items, concurrency = 6) {
   async function worker() {
     while (next < items.length) {
       const it = items[next++];
-      let [imdb, mc] = await Promise.all([imdbRating(it.imdb_id), metacriticScore(it.title, it.year)]);
+      let [imdb, mc] = await Promise.all([imdbRatingDetail(it.imdb_id), metacriticScore(it.title, it.year)]);
       if (imdb == null) {
         const match = await resolveImdbId(it); // strict title·year·people match, or null
         if (match) {
           it.imdb_id = match.id;
-          imdb = await imdbRating(match.id);
+          imdb = await imdbRatingDetail(match.id);
           // Retry MC under IMDb's canonical title when ours was localised (the
           // probe still verifies name+year, so this stays a zero-false-positive hit).
           if (mc == null && foldTitle(match.title) !== foldTitle(it.title)) {
@@ -183,7 +218,8 @@ export async function attachRatings(items, concurrency = 6) {
           }
         }
       }
-      it.imdbRating = imdb;
+      it.imdbRating = imdb?.rating ?? null;
+      it.imdbVotes = imdb?.votes ?? null;
       it.metascore = mc;
     }
   }

@@ -9,13 +9,13 @@ import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetti
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
-import { attachRatings } from './ratings.js';
+import { attachRatings, cachedImdbDetail, cachedMetascore } from './ratings.js';
 import { gatherCandidates, sourcesFor, mediaKey } from './sources.js';
 import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
-import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
+import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank, SCORING } from './scoring.js';
 import { log } from './log.js';
 import { dbCounters } from './perf.js';
 
@@ -155,15 +155,16 @@ export async function buildProfile(userId, { labels } = {}) {
   return { pos, neg, counts, mean, count: ratings.length, ratedFeatureSets, genreLists };
 }
 
-// Mean community rating across the candidates that have votes — the global prior
-// C the Bayesian quality term shrinks thin-voted films toward. Falls back to a
-// neutral 6.5 when nothing in the pool has votes.
-function meanVoteAverage(movies) {
+// Mean IMDb rating across the candidates we hold a rating for — the global prior
+// C the Bayesian quality term shrinks thin-voted films toward. IMDb, not TMDB, is
+// what the quality prior is built on now (scoring.qualityPrior). Falls back to
+// IMDB_GLOBAL_MEAN when no card in the pool carries an IMDb rating yet.
+function meanImdbRating(cards) {
   let sum = 0, n = 0;
-  for (const m of movies) {
-    if ((m.vote_count || 0) > 0 && m.vote_average != null) { sum += m.vote_average; n += 1; }
+  for (const c of cards) {
+    if (c.imdbRating != null) { sum += c.imdbRating; n += 1; }
   }
-  return n ? sum / n : 6.5;
+  return n ? sum / n : SCORING.IMDB_GLOBAL_MEAN;
 }
 
 // ---- origin / indie candidate filters -------------------------------------
@@ -392,11 +393,10 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   }
   const detailsMs = performance.now() - tDetails;
 
-  const globalMean = meanVoteAverage(survivors.map((s) => s.full));
   // Scoring-ready cards: everything the ranking pass and the UI need, minus the
-  // score itself (recomputed per profile in rankCorpus). features/genreIds/
-  // voteCount/collab are scoring inputs that rankCorpus strips before serving.
-  // A breathe()-yielding loop because building a card per survivor (up to
+  // score itself (recomputed per profile in rankCorpus). features/collab and the
+  // baked IMDb/Metacritic rating inputs are scoring-only — rankCorpus strips them
+  // before serving. A breathe()-yielding loop because building a card per survivor (up to
   // CANDIDATE_CAP) is otherwise an unbroken synchronous block — with node:sqlite
   // synchronous and warm cache hits resolving without real I/O — that starves
   // /health and live traffic. storedTonesFor keeps the tone reads batched.
@@ -405,20 +405,34 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   for (const s of survivors) {
     if (++built % YIELD_EVERY === 0) await breathe();
     const crew = s.full.credits?.crew || [];
+    const imdbId = s.full.external_ids?.imdb_id || null;
+    const year = Number((s.full.release_date || '').slice(0, 4)) || null;
+    // Bake the quality prior's inputs — IMDb (rating + vote count) and the
+    // Metacritic score — from the DURABLE cache only, no network: whatever a past
+    // enrich or the background prefetch pass has already resolved. A miss leaves
+    // them null and the film scores on taste alone (scoring.qualityPrior skips the
+    // prior). imdb_id keys IMDb reliably; a localised title may miss its MC key
+    // (indexed under the English title), which only costs the MC nudge, not IMDb.
+    const imdb = cachedImdbDetail(imdbId);
     cards.push({
       tmdb_id: s.full.id,
       media_type: s.full.media_type,
-      imdb_id: s.full.external_ids?.imdb_id || null,
+      imdb_id: imdbId,
       title: s.full.title,
-      year: Number((s.full.release_date || '').slice(0, 4)) || null,
+      year,
       runtime: s.full.runtime || null,
       // TV-only: shown on the card in place of a film's runtime.
       seasons: s.full.seasons ?? null,
       episodes: s.full.episodes ?? null,
       overview: s.full.overview,
       poster_path: s.full.poster_path,
-      vote_average: s.full.vote_average,
-      voteCount: s.full.vote_count,
+      vote_average: s.full.vote_average, // displayed as the ⭐ meta line; NOT a scoring input
+      // Scoring-only rating inputs, baked from the durable cache; rankCorpus strips
+      // them before serving so the client still enriches badges live (its trigger is
+      // imdbRating===undefined), now hitting the warm cache these writes filled.
+      imdbRating: imdb?.rating ?? null,
+      imdbVotes: imdb?.votes ?? null,
+      metascore: cachedMetascore(s.full.title, year),
       genres: (s.full.genres || []).map((g) => g.name),
       genreIds: (s.full.genres || []).map((g) => g.id),
       tones: tonesForMovie(s.full, s.full.media_type, storedTonesFor),
@@ -430,13 +444,13 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
       collab: s.collab,
     });
   }
+  const globalMean = meanImdbRating(cards);
 
-  // Ratings (IMDb/Metacritic) and freshly-scraped tone tags are deliberately NOT
-  // attached here: those slow web lookups used to enrich a wide head inline, on
-  // the build's critical path. They're now deferred to the on-demand /api/enrich
-  // endpoint (enrichPicks), which the client calls for the cards it actually
-  // shows. The corpus already ships stored tones (tonesForMovie above); enrichPicks
-  // fills the IMDb/Metacritic badges and folds in any newly-scraped tones.
+  // Ratings baked above are cache-only; the LIVE IMDb/Metacritic fetch (and any
+  // freshly-scraped tones) still happen off the critical path in the on-demand
+  // /api/enrich endpoint (enrichPicks) for the cards the client shows, and in the
+  // background prefetch pass (prefetchCorpusRatings) that fills the durable cache
+  // for the next build to bake. Both persist durably, so coverage compounds.
 
   // Phase split for the corpus build: gather (source fan-out, mostly cached
   // TMDB/Trakt) and details (per-candidate detail fetch + sync JSON parse).
@@ -468,7 +482,7 @@ export async function rankCorpus({ cards, globalMean }, profile) {
     // bonus still rides additively on top (1 hit ≈ +7, ~+15 cap).
     const base = scoreCandidate({
       profileVec, itemFeatures: c.features, idf,
-      voteAverage: c.vote_average, voteCount: c.voteCount, globalMean,
+      imdbRating: c.imdbRating, imdbVotes: c.imdbVotes, metascore: c.metascore, globalMean,
     });
     const collabBonus = COLLAB_WEIGHT * Math.tanh(c.collab / 2);
     scored.push({ ...c, score: Math.min(100, Math.round(base + collabBonus)) });
@@ -476,16 +490,18 @@ export async function rankCorpus({ cards, globalMean }, profile) {
 
   // Order by relevance, then re-rank the served head for genre calibration (keep
   // the mix close to the user's history) and diversity (no near-duplicate
-  // neighbours). features/voteCount/collab are scoring-only — strip them before
-  // returning, keeping the score. genreIds stays: it's the canonical, language-
-  // independent genre key the watchlist filter consolidates on once a pick is saved.
+  // neighbours). features/collab and the IMDb/MC scoring inputs are scoring-only —
+  // strip them before returning, keeping the score. Stripping the ratings also
+  // keeps the client's badge enrichment firing (its trigger is imdbRating===
+  // undefined). genreIds stays: it's the canonical, language-independent genre key
+  // the watchlist filter consolidates on once a pick is saved.
   scored.sort((a, b) => b.score - a.score);
   const profileGenreDist = genreDistribution(profile.genreLists);
   const ranked = rerank(
     scored.map((s) => ({ score: s.score, features: s.features, genres: s.genreIds, card: s })),
     profileGenreDist, idf,
   ).map((r) => r.card);
-  return ranked.slice(0, POOL_SIZE).map(({ features, voteCount, collab, ...card }) => card);
+  return ranked.slice(0, POOL_SIZE).map(({ features, imdbRating, imdbVotes, metascore, collab, ...card }) => card);
 }
 
 // ---- recommendation cache + prebuild --------------------------------------
@@ -646,6 +662,10 @@ export async function recommend({ userId, region, providerIds, genreId, limit = 
     `[perf] recommend build user=${userId} ms=${(performance.now() - t0).toFixed(0)} ` +
     `dbMs=${dbMs.toFixed(0)} dbCalls=${dbCalls} items=${results.length} mode=${mode}`,
   );
+  // Off the critical path: top up this corpus's IMDb/Metacritic ratings in the
+  // durable cache so the next build bakes them into the quality prior. No-op unless
+  // a complete corpus exists and it hasn't been swept recently.
+  schedulePrefetchRatings(userId, region, providerIds, genreId, language, filters);
   return { profileSize: cached.profileSize, results };
 }
 
@@ -723,6 +743,57 @@ function deepenPool(args) {
   if (PREBUILD_DISABLED) return;
   Promise.resolve(runBuild({ ...args, survivorTarget: undefined }))
     .catch((e) => log.error('deepen failed:', e.message));
+}
+
+// ---- background rating prefetch -------------------------------------------
+// The quality prior is built from IMDb/Metacritic (scoring.qualityPrior), and
+// buildCorpus bakes those onto cards from the DURABLE cache only — so a candidate
+// nobody has enriched yet has no rating and scores on taste alone. This pass fills
+// that gap proactively: for a freshly-built corpus it resolves every candidate's
+// IMDb/Metacritic rating into the durable cache, so the NEXT build of that corpus
+// bakes them into the prior. It runs OFF the request critical path (fire-and-forget)
+// — the whole reason ratings were pulled out of the build — and attachRatings is
+// cache-first, so a corpus that's already covered costs no network.
+
+// Resolve+persist IMDb/Metacritic for a corpus's candidates. attachRatings writes
+// each score to the durable cache (readThrough) as a side effect; the mutated items
+// are throwaway. Best-effort: attachRatings isolates per-title failures itself.
+export async function prefetchCorpusRatings(cards) {
+  const items = cards.map((c) => ({
+    tmdb_id: c.tmdb_id, imdb_id: c.imdb_id, title: c.title, year: c.year,
+    director: c.director, cast: c.cast,
+  }));
+  await attachRatings(items, ENRICH_CONCURRENCY);
+}
+
+// The prefetcher is injected through this seam (same pattern as setBuildRunner) so a
+// test can swap in a spy and assert the pass is scheduled off the critical path.
+let ratingPrefetcher = prefetchCorpusRatings;
+export function setRatingPrefetcher(fn) { ratingPrefetcher = fn; }
+export function resetRatingPrefetcher() { ratingPrefetcher = prefetchCorpusRatings; }
+
+// One prefetch at a time (it fans out to IMDb/Metacritic internally); re-submitting
+// a corpus already in flight collapses. Reads the corpus straight from its cache key
+// so no large data is threaded through the runner.
+const RATING_PREFETCH_TTL = 6 * 60 * 60 * 1000; // re-sweep a corpus at most once per few hours
+const lastRatingPrefetch = new Map(); // corpusKey -> ms of last sweep
+const ratingPrefetchRunner = boundedRunner(1, async (key) => {
+  const corpus = cacheGet(key);
+  if (corpus?.cards?.length) await ratingPrefetcher(corpus.cards);
+});
+
+// Fire-and-forget top-up of a corpus's ratings after it's served. Gated off in
+// tests/e2e (same switch as prebuild), skipped without TMDB or for a still-partial
+// corpus, and rate-limited per corpus so a burst of requests can't re-sweep it.
+// Returns whether a sweep was scheduled (testable, like warmLandingPool).
+function schedulePrefetchRatings(userId, region, providerIds, genreId, language, filters) {
+  if (PREBUILD_DISABLED || !tmdbConfigured()) return false;
+  const key = corpusKey(userId, region, providerIds, genreId, language, filters);
+  const corpus = cacheGet(key);
+  if (!corpus?.complete) return false;
+  if (Date.now() - (lastRatingPrefetch.get(key) || 0) < RATING_PREFETCH_TTL) return false;
+  lastRatingPrefetch.set(key, Date.now());
+  return ratingPrefetchRunner.submit(key);
 }
 
 // Don't build any picks until a user has rated enough films for them to be

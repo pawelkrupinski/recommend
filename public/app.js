@@ -788,15 +788,15 @@ function wireWatch(el, m) {
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
-  // Each credit name links to a lookup for that person: Filmweb for a Polish
-  // audience (REGION === 'PL'), IMDb everywhere else. Filmweb exposes no id we
-  // can resolve, so it's always a name search there. On IMDb the card carries
-  // only names, so we open with a name search; once /api/where resolves the
-  // title's person ids (see openWhere) `m.credits` maps name → nm-id and we
-  // link straight to the person.
+  // Each credit name links to a lookup for that person: Filmweb for a
+  // Polish-language interface (getLanguage() === 'pl'), IMDb everywhere else.
+  // Filmweb exposes no id we can resolve, so it's always a name search there.
+  // On IMDb the card carries only names, so we open with a name search; once
+  // /api/where resolves the title's person ids (see openWhere) `m.credits` maps
+  // name → nm-id and we link straight to the person.
   const personLink = (name) => {
     const id = m.credits?.[name];
-    const href = REGION === 'PL'
+    const href = getLanguage() === 'pl'
       ? `https://www.filmweb.pl/search#/person?query=${encodeURIComponent(name)}`
       : id
         ? `https://www.imdb.com/name/${id}/`

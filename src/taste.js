@@ -15,7 +15,8 @@ import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
 import { boundedRunner, mapPool } from './concurrency.js';
-import { buildIdf, buildProfileVector, scoreCandidate, genreDistribution, rerank, SCORING } from './scoring.js';
+import { buildProfileVector, scoreCandidate, genreDistribution, rerank } from './scoring.js';
+import { recordSeen, globalIdf, globalMeanRating } from './global-stats.js';
 import { log } from './log.js';
 import { dbCounters } from './perf.js';
 
@@ -115,9 +116,10 @@ const EMPTY_PROFILE = () => ({
 // Accumulate raw per-feature evidence from a user's rated films. Splits each
 // film's rating delta (rating − user_mean) into positive/negative buckets so the
 // scoring layer can damp negatives (feedback asymmetry), and keeps the rated
-// films' feature sets and genre lists so the pool builder can derive IDF weights
-// and the calibration target. No weighting/squashing happens here — that's
-// scoring.js, which needs the candidate corpus to compute IDF.
+// films' feature sets and genre lists — the feature sets seed which features the
+// ranking pass looks up an IDF for (weights come from the global corpus stats,
+// global-stats.js), the genre lists are the calibration target. No weighting/
+// squashing happens here — that's scoring.js.
 // Pass a `labels` Map to also capture each feature's human label (id → name) as
 // the films are walked — the insights page needs it; the hot scoring path omits
 // it and pays nothing.
@@ -153,18 +155,6 @@ export async function buildProfile(userId, { labels } = {}) {
     }
   }
   return { pos, neg, counts, mean, count: ratings.length, ratedFeatureSets, genreLists };
-}
-
-// Mean IMDb rating across the candidates we hold a rating for — the global prior
-// C the Bayesian quality term shrinks thin-voted films toward. IMDb, not TMDB, is
-// what the quality prior is built on now (scoring.qualityPrior). Falls back to
-// IMDB_GLOBAL_MEAN when no card in the pool carries an IMDb rating yet.
-function meanImdbRating(cards) {
-  let sum = 0, n = 0;
-  for (const c of cards) {
-    if (c.imdbRating != null) { sum += c.imdbRating; n += 1; }
-  }
-  return n ? sum / n : SCORING.IMDB_GLOBAL_MEAN;
 }
 
 // ---- origin / indie candidate filters -------------------------------------
@@ -444,7 +434,20 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
       collab: s.collab,
     });
   }
-  const globalMean = meanImdbRating(cards);
+  // Feed the global corpus statistics that IDF and the quality-prior baseline are
+  // derived from — but only from a COMPLETE build, so partial "head" builds don't
+  // skew the document frequencies with a truncated candidate set. recordSeen dedups
+  // by title, so a title recurring across builds counts once. The global mean IMDb
+  // rating is then read back from those accumulated stats (pool-independent),
+  // replacing the old per-pool average that made a title's prior drift with the
+  // filter. Best-effort: a DB hiccup writing stats (e.g. SQLITE_BUSY under a
+  // Litestream checkpoint) must degrade to slightly staler stats, never fail the
+  // build.
+  if (complete) {
+    try { await recordSeen(cards); }
+    catch (e) { log.warn(`global-stats recordSeen failed for user ${userId}:`, e.message); }
+  }
+  const globalMean = globalMeanRating();
 
   // Ratings baked above are cache-only; the LIVE IMDb/Metacritic fetch (and any
   // freshly-scraped tones) still happen off the critical path in the on-demand
@@ -461,17 +464,24 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   return { cards, globalMean, complete };
 }
 
-// Rank a cached corpus for one profile: IDF over the user's rated features + the
-// corpus, a profile vector, per-card score, then the genre-calibration/diversity
-// rerank. No I/O — this is the cheap pass a rating re-runs over the cached corpus,
-// in place of the whole buildCorpus. Still yields the event loop every YIELD_EVERY
-// scores: even alone it's a synchronous stretch over up to CANDIDATE_CAP cards
-// that would otherwise starve /health on the per-rating path.
+// Rank a cached corpus for one profile: IDF from the global corpus stats, a
+// profile vector, per-card score, then the genre-calibration/diversity rerank.
+// The only I/O is a handful of indexed reads for the IDF lookup — this is still
+// the cheap pass a rating re-runs over the cached corpus, in place of the whole
+// buildCorpus. Yields the event loop every YIELD_EVERY scores: even alone it's a
+// synchronous stretch over up to CANDIDATE_CAP cards that would otherwise starve
+// /health on the per-rating path.
 export async function rankCorpus({ cards, globalMean }, profile) {
-  // IDF over the corpus the user's rated films + these candidates form, so a
-  // feature's weight is its rarity (broad tags weak, distinctive tags strong) —
-  // data-derived, not a hand-tuned family table.
-  const idf = buildIdf([...profile.ratedFeatureSets, ...cards.map((c) => c.features)]);
+  // IDF from the accumulated global document frequencies (global-stats.js), so a
+  // feature's weight is its rarity across every title we've scored — broad tags
+  // weak, distinctive tags strong — and, crucially, INDEPENDENT of which titles
+  // this particular pool holds. That pool-independence is what keeps a title's
+  // score stable across the type/genre/origin filters. We look up only the
+  // features the profile and these candidates actually use.
+  const featureUniverse = new Set();
+  for (const feats of profile.ratedFeatureSets) for (const f of feats) featureUniverse.add(f);
+  for (const c of cards) for (const f of c.features) featureUniverse.add(f);
+  const idf = globalIdf(featureUniverse);
   const profileVec = buildProfileVector(profile, idf);
   const scored = [];
   let processed = 0;

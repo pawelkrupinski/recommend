@@ -62,10 +62,21 @@ export const SCORING = {
   DISCOVERY_VOTE_CAP: 1000,  // vote count at/above which a film needs no discovery help
 };
 
-// Smoothed inverse document frequency over a corpus of feature sets (each set =
-// one film's features). The sklearn "smooth_idf" form: never zero or negative,
-// so a feature in every film still contributes a little and a feature in one
-// film contributes a lot. Returns Map<feature, idf>.
+// Smoothed inverse document frequency for one feature: the sklearn "smooth_idf"
+// form log((n+1)/(d+1))+1, never zero or negative, so a feature in every film
+// still contributes a little and one in a single film (or none: d=0 → the maximal
+// weight) contributes a lot. The single source of the IDF formula — shared by
+// buildIdf (per-corpus) and the persisted global-stats path (global-stats.js), so
+// a feature's weight scales identically whichever corpus it's derived from.
+export function idfValue(docFreq, corpusSize) {
+  return Math.log((corpusSize + 1) / (docFreq + 1)) + 1;
+}
+
+// Smoothed IDF over a corpus of feature sets (each set = one film's features).
+// Returns Map<feature, idf>. Used where the corpus is small and self-contained
+// (insights over a user's own ratings); the recommendation ranking path derives
+// IDF from accumulated global document frequencies instead (global-stats.js), so
+// a title's score doesn't depend on which filter shaped its candidate pool.
 export function buildIdf(corpusFeatureSets) {
   const df = new Map();
   for (const feats of corpusFeatureSets) {
@@ -73,7 +84,7 @@ export function buildIdf(corpusFeatureSets) {
   }
   const n = corpusFeatureSets.length;
   const idf = new Map();
-  for (const [f, d] of df) idf.set(f, Math.log((n + 1) / (d + 1)) + 1);
+  for (const [f, d] of df) idf.set(f, idfValue(d, n));
   return idf;
 }
 

@@ -857,7 +857,11 @@ function trailerSection(m) {
 // country's availability.
 function whereUrl(m) {
   const region = REGION ? `&region=${encodeURIComponent(REGION)}` : '';
-  return `/api/where?id=${m.tmdb_id}&media_type=${m.media_type || 'movie'}${region}`;
+  // Fold the chosen services into the cache key: /api/where filters availability to
+  // them, so a Settings change must miss the week-long cache and refetch (same trick
+  // REGION uses above) rather than serve the previously-filtered set.
+  const sv = (ME.services || []).length ? `&sv=${[...ME.services].map(Number).sort((a, b) => a - b).join('.')}` : '';
+  return `/api/where?id=${m.tmdb_id}&media_type=${m.media_type || 'movie'}${region}${sv}`;
 }
 async function openWhere(m, { dismissable = true } = {}) {
   const modal = $('#modal'), body = $('#modal-body');
@@ -1129,8 +1133,11 @@ async function loadProviders(region, selected = [], box = $('#provider-list'), o
 }
 // Each service toggle persists immediately — no save button. We send the full
 // set of chosen ids on every change so the server need not track diffs.
-const saveProviders = (box = $('#provider-list')) =>
-  saveSetting('providers', [...box.querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id)));
+const saveProviders = (box = $('#provider-list')) => {
+  const ids = [...box.querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
+  ME.services = ids; // keep the where-to-watch cache key (whereUrl) in sync
+  return saveSetting('providers', ids);
+};
 const saveSetting = (k, v) => api('/api/settings', { method: 'POST', body: JSON.stringify({ [k]: v }) });
 
 // Wipe all of the current account's data and reload (the server clears the
@@ -1213,6 +1220,7 @@ async function startOnboarding() {
   $('#ob-continue').onclick = async () => {
     const btn = $('#ob-continue');
     const ids = [...$('#ob-provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));
+    ME.services = ids; // keep the where-to-watch cache key (whereUrl) in sync
     btn.disabled = true;
     try {
       await api('/api/settings', { method: 'POST', body: JSON.stringify({

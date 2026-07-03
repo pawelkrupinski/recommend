@@ -140,6 +140,10 @@ async function api(req, res, url) {
         anonymous: user.provider === 'anon',
         onboarded: !!getUserSetting(uid, 'onboarded', false),
         providers: enabledProviders(),
+        // The user's chosen streaming services (TMDB provider ids). The client
+        // folds these into the /api/where cache key so changing them in Settings
+        // busts the week-long popup cache instead of serving a stale filtered set.
+        services: getUserSetting(uid, 'providers', []),
         // The user's country (saved choice, else detected) — the client uses it to
         // aim a service icon's search link at the right regional storefront.
         country: getUserSetting(uid, 'country', detectedCountry),
@@ -367,22 +371,32 @@ async function api(req, res, url) {
       // provider lookup so the popup can link each name straight to IMDb.
       const [wp, credits] = await Promise.all([tmdb.watchProviders(id, mt), creditImdbIds(id, mt)]);
       const r = wp.results?.[region] || {};
-      const flatrate = (r.flatrate || []).map((x) => ({ name: x.provider_name, logo: x.logo_path }));
+      // Only surface services the user actually subscribes to — the popup must not
+      // advertise providers they never chose in Settings. Mirrors userServices
+      // (taste.js): an empty chosen set means "nothing streamable for this user".
+      const chosen = new Set(getUserSetting(uid, 'providers', []).map(Number));
+      const flatrate = (r.flatrate || [])
+        .filter((x) => chosen.has(x.provider_id))
+        .map((x) => ({ name: x.provider_name, logo: x.logo_path }));
       // Tag each availability deep link with the matching TMDB provider id
       // (matched by name against this title's own region providers) so a Discover
       // card's service icon — keyed by TMDB id — can find its link without
       // name-matching.
       const regionProviders = [...(r.flatrate || []), ...(r.free || []), ...(r.ads || [])];
-      // Keep only options that carry a real per-service deep link. JustWatch/MotN
-      // supply those; the free TMDB source (availability.js) returns link-less
-      // options purely to assert availability and spare MotN's quota — those render
-      // via `flatrate` below (logos + per-service search links), not as deep links.
+      // Keep only options that carry a real per-service deep link AND resolve to a
+      // provider the user chose. JustWatch/MotN supply the links; the free TMDB
+      // source (availability.js) returns link-less options purely to assert
+      // availability and spare MotN's quota — those render via `flatrate` above
+      // (logos + per-service search links), not as deep links.
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .filter((o) => o.link)
-        .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }));
+        .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }))
+        .filter((o) => o.providerId != null && chosen.has(o.providerId));
       // Cache in the browser for a week (private — it's per-user/region). Availability
       // barely moves, the sources are cached 30 days server-side, and the URL carries
-      // the region, so this is safe and stops the popup re-fetching on every open.
+      // both the region and the chosen-services signature (sv), so a country or
+      // service change fetches fresh — this is safe and stops the popup re-fetching
+      // on every open.
       return json(req, res, 200, { region, tmdbLink: r.link || null, flatrate, deepLinks, credits }, 'private, max-age=604800');
     }
 

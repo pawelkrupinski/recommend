@@ -54,6 +54,14 @@ test('GET /api/me mints an anonymous session for a first-time visitor', async ()
   assert.equal(data.user.email, null, 'anonymous users have no email');
   assert.ok(c.cookie, 'a session cookie was set so the identity persists');
   assert.ok(Array.isArray(data.providers));
+  assert.deepEqual(data.services, [], 'a fresh user has chosen no streaming services yet');
+});
+
+test('GET /api/me reports the chosen streaming services so the popup cache keys on them', async () => {
+  const c = await client().login({ email: 'me-services@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [8, 337] } });
+  const { data } = await c.json('/api/me');
+  assert.deepEqual(data.services, [8, 337], 'the chosen TMDB provider ids travel on /api/me');
 });
 
 test('data endpoints work anonymously — no login required', async () => {
@@ -259,14 +267,25 @@ test('where-to-watch reports the user region so search links can target the righ
 
 test('where-to-watch surfaces TMDB availability via flatrate and keeps link-less options out of deepLinks', async () => {
   const c = await client().login({ email: 'where-tmdb@example.com' });
-  await c.json('/api/settings', { method: 'POST', body: { country: 'PL' } });
-  // PL has stub provider data, so the free TMDB source reports the title as
-  // streamable on Netflix Test — sparing a MotN call. TMDB carries no per-service
-  // deep link, so that option must NOT leak into deepLinks (it'd render as a broken
-  // link); it surfaces through flatrate instead (logos + per-service search links).
+  // The user subscribes to Netflix (id 8). PL has stub provider data, so the free
+  // TMDB source reports the title as streamable on Netflix Test — sparing a MotN
+  // call. TMDB carries no per-service deep link, so that option must NOT leak into
+  // deepLinks (it'd render as a broken link); it surfaces through flatrate instead
+  // (logos + per-service search links).
+  await c.json('/api/settings', { method: 'POST', body: { country: 'PL', providers: [8] } });
   const { data } = await c.json('/api/where?id=201&media_type=movie');
   assert.deepEqual(data.deepLinks, [], 'a link-less TMDB option is filtered out of deepLinks');
   assert.ok(data.flatrate.some((f) => f.name === 'Netflix Test'), 'TMDB providers still surface via flatrate');
+});
+
+test('where-to-watch hides streaming services the user did not choose', async () => {
+  const c = await client().login({ email: 'where-unchosen@example.com' });
+  // Title 201 streams on Netflix (id 8) in the stub. The user picks only Disney
+  // (337), which this title is NOT on, so its Netflix availability must not leak
+  // into the popup — the popup only advertises services the user subscribes to.
+  await c.json('/api/settings', { method: 'POST', body: { country: 'PL', providers: [337] } });
+  const { data } = await c.json('/api/where?id=201&media_type=movie');
+  assert.deepEqual(data.flatrate, [], 'a service the user did not choose is filtered out of the popup');
 });
 
 test('where-to-watch is browser-cacheable for a week so the popup stops reloading availability', async () => {

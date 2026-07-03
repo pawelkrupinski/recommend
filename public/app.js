@@ -788,17 +788,22 @@ function wireWatch(el, m) {
 // ---- where to watch modal -------------------------------------------------
 // Poster + title/year/director/cast/overview header shared by both render passes.
 function movieHeader(m) {
-  // Each credit name links to IMDb. The card carries only names, so we open with
-  // an IMDb name search; once /api/where resolves the title's person ids (see
-  // openWhere) `m.credits` maps name → nm-id and we link straight to the person.
-  const imdbName = (name) => {
+  // Each credit name links to a lookup for that person: Filmweb for a Polish
+  // audience (REGION === 'PL'), IMDb everywhere else. Filmweb exposes no id we
+  // can resolve, so it's always a name search there. On IMDb the card carries
+  // only names, so we open with a name search; once /api/where resolves the
+  // title's person ids (see openWhere) `m.credits` maps name → nm-id and we
+  // link straight to the person.
+  const personLink = (name) => {
     const id = m.credits?.[name];
-    const href = id
-      ? `https://www.imdb.com/name/${id}/`
-      : `https://www.imdb.com/find/?s=nm&q=${encodeURIComponent(name)}`;
-    return `<a class="imdb-name" href="${href}" target="_blank" rel="noopener">${esc(name)}</a>`;
+    const href = REGION === 'PL'
+      ? `https://www.filmweb.pl/search#/person?query=${encodeURIComponent(name)}`
+      : id
+        ? `https://www.imdb.com/name/${id}/`
+        : `https://www.imdb.com/find/?s=nm&q=${encodeURIComponent(name)}`;
+    return `<a class="credit-name" href="${href}" target="_blank" rel="noopener">${esc(name)}</a>`;
   };
-  const names = (list) => list.map(imdbName).join(', ');
+  const names = (list) => list.map(personLink).join(', ');
   const director = m.director ? `<p class="credit"><span class="lbl">${t('modal.director')}</span> ${names(m.director.split(', '))}</p>` : '';
   const cast = (m.cast && m.cast.length)
     ? `<p class="credit"><span class="lbl">${t('modal.cast')}</span> ${names(m.cast)}</p>` : '';

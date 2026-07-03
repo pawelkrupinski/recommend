@@ -286,8 +286,8 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .detail-info h2 { margin-top: 0; padding-right: 34px; } /* clear the close button */
 .credit { margin: 6px 0 0; font-size: 13px; }
 .credit .lbl { color: var(--muted); margin-right: 6px; }
-.credit a.imdb-name { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--muted); }
-.credit a.imdb-name:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.credit a.credit-name { color: var(--fg); text-decoration: none; border-bottom: 1px dotted var(--muted); }
+.credit a.credit-name:hover { color: var(--accent); border-bottom-color: var(--accent); }
 /* Tone chips in the detail popup — each links to Discover filtered to that tone. */
 .tone-tags { margin: 8px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .tone-tags a.tone-tag { display: inline-block; background: var(--panel2); border: 1px solid var(--line);

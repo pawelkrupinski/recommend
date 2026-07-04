@@ -24,6 +24,10 @@ import pl.filmowo.net.SettingsPayload
 
 private const val RATE_GOAL = 10
 
+// Sentinel for DiscoverState.error — the UI maps it to a localized "couldn't
+// reach the server" message with a Retry button (see DiscoverScreen).
+const val LOAD_ERROR = "load_error"
+
 /** Discover is adaptive: a rate-queue until the goal, then personalized picks. */
 enum class DiscoverMode { LOADING, ONBOARDING, PICKS }
 
@@ -99,24 +103,35 @@ class FilmowoViewModel(
     private val _toast = MutableStateFlow<String?>(null)
     val toast: StateFlow<String?> = _toast.asStateFlow()
 
+    // True when the very first /api/me failed and there's no account yet, so the
+    // app can show an error+retry screen instead of hanging on the boot spinner.
+    private val _bootFailed = MutableStateFlow(false)
+    val bootFailed: StateFlow<Boolean> = _bootFailed.asStateFlow()
+
     private var queuePage = 1
 
     init {
         refreshAll()
     }
 
-    /** Boot / post-auth: reload the account, then everything keyed to it. */
+    /** Boot / post-auth: reload the account, then everything keyed to it. If
+     *  /api/me can't be reached and we have no account yet, surface a boot error
+     *  (a later refresh failure keeps the already-loaded app up instead). */
     fun refreshAll() {
         viewModelScope.launch {
-            runCatching { api.me() }.onSuccess { me ->
-                _me.value = me
-                prefs.setLanguage(me.language)
+            val loaded = runCatching { api.me() }.getOrNull()
+            if (loaded != null) {
+                _me.value = loaded
+                _bootFailed.value = false
+                prefs.setLanguage(loaded.language)
+                loadGenres()
+                loadTones()
+                loadDiscover()
+                loadWatchlist()
+                loadRatings()
+            } else if (_me.value == null) {
+                _bootFailed.value = true
             }
-            loadGenres()
-            loadTones()
-            loadDiscover()
-            loadWatchlist()
-            loadRatings()
         }
     }
 
@@ -124,10 +139,16 @@ class FilmowoViewModel(
     fun loadDiscover(refresh: Boolean = false) {
         viewModelScope.launch {
             _discover.update { it.copy(loading = true, error = null) }
-            val ratedCount = runCatching { api.ratings().ratings.size }.getOrDefault(_discover.value.ratedCount)
+            val ratedCount = runCatching { api.ratings().ratings.size }.getOrElse {
+                _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
+                return@launch
+            }
             if (ratedCount < RATE_GOAL) {
                 queuePage = 1
-                val items = runCatching { api.rateQueue(queuePage).items }.getOrDefault(emptyList())
+                val items = runCatching { api.rateQueue(queuePage).items }.getOrElse {
+                    _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
+                    return@launch
+                }
                 _discover.update {
                     it.copy(mode = DiscoverMode.ONBOARDING, queue = items, ratedCount = ratedCount, loading = false)
                 }
@@ -145,9 +166,12 @@ class FilmowoViewModel(
             if (s.tone.isNotEmpty()) put("tag", s.tone)
             if (refresh) put("refresh", "1")
         }
-        val picks = runCatching { api.recommend(params).results }.getOrDefault(emptyList())
+        val picks = runCatching { api.recommend(params).results }.getOrElse {
+            _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
+            return
+        }
         _discover.update {
-            it.copy(mode = DiscoverMode.PICKS, picks = picks, ratedCount = ratedCount, loading = false)
+            it.copy(mode = DiscoverMode.PICKS, picks = picks, ratedCount = ratedCount, loading = false, error = null)
         }
         enrichPicks(picks)
     }

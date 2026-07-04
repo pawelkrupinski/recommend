@@ -34,8 +34,12 @@ class MainActivity : ComponentActivity() {
         val cookieJar = PersistentCookieJar(applicationContext)
         val httpClient = OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(20, TimeUnit.SECONDS)
+            // A short connect timeout so an unreachable server fails fast (→ the
+            // boot error screen), but a generous read timeout because a cold
+            // /api/recommend picks-build takes ~15s+ on the shared-CPU host — too
+            // tight a read timeout was turning that slow build into a failure.
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
             .build()
         val api = FilmowoApi(httpClient, BuildConfig.BASE_URL)
         val auth = AuthRepository(httpClient, cookieJar, BuildConfig.BASE_URL)

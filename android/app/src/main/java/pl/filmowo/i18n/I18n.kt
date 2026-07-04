@@ -62,6 +62,7 @@ object I18n {
         "onboarding.intro" to "Pick your language, country and streaming services to get started.",
         "onboarding.start" to "Get started",
         "common.retry" to "Retry",
+        "error.offline" to "Couldn't reach the server. Check your connection and try again.",
         "common.close" to "Close",
     )
 
@@ -109,6 +110,7 @@ object I18n {
         "onboarding.intro" to "Wybierz język, kraj i serwisy, aby zacząć.",
         "onboarding.start" to "Zaczynajmy",
         "common.retry" to "Ponów",
+        "error.offline" to "Nie można połączyć się z serwerem. Sprawdź połączenie i spróbuj ponownie.",
         "common.close" to "Zamknij",
     )
 }

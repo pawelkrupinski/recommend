@@ -14,7 +14,9 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -24,6 +26,7 @@ import pl.filmowo.data.LanguageStore
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.FilmowoViewModel
+import pl.filmowo.ui.LOAD_ERROR
 
 /**
  * The view model against the real [FilmowoApi] over a path-matching MockWebServer
@@ -200,6 +203,55 @@ class FilmowoViewModelTest {
             false
         }
         assertTrue("expected DELETE then GET on /api/watchlist; saw $requests", synced)
+    }
+
+    @Test
+    fun `a failed boot probe surfaces an error and retry recovers`() {
+        // First /api/me fails (server unreachable): the app must show a boot error,
+        // not hang on the spinner. Then the server recovers and retry loads it.
+        var meFails = true
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                if (path == "/api/me" && meFails) return MockResponse().setResponseCode(503)
+                val body = when (path) {
+                    "/api/me" -> me
+                    "/api/ratings" -> """{"ratings":[]}"""
+                    "/api/rate-queue" -> """{"items":[{"tmdb_id":1,"title":"X"}],"totalPages":1}"""
+                    "/api/watchlist" -> """{"watchlist":[]}"""
+                    else -> "{}"
+                }
+                return MockResponse().setBody(body)
+            }
+        }
+        val vm = viewModel()
+        await(vm.bootFailed) { it }
+        assertNull(vm.me.value)
+
+        meFails = false
+        vm.refreshAll()
+        await(vm.me) { it != null }
+        assertFalse(vm.bootFailed.value)
+    }
+
+    @Test
+    fun `a discover load failure surfaces an error state, not a stuck spinner`() {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                if (path == "/api/ratings") return MockResponse().setResponseCode(500)
+                val body = when (path) {
+                    "/api/me" -> me
+                    "/api/watchlist" -> """{"watchlist":[]}"""
+                    else -> "{}"
+                }
+                return MockResponse().setBody(body)
+            }
+        }
+        val vm = viewModel()
+        val d = await(vm.discover) { it.error != null }
+        assertEquals(LOAD_ERROR, d.error)
+        assertFalse("must not stay stuck in the loading state", d.loading)
     }
 
     private class FakeAuth : SessionAuth {

@@ -28,6 +28,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import pl.filmowo.i18n.LocalLanguage
 import pl.filmowo.i18n.t
+import pl.filmowo.ui.common.ErrorRetry
 import pl.filmowo.ui.detail.DetailSheet
 import pl.filmowo.ui.discover.DiscoverScreen
 import pl.filmowo.ui.onboarding.OnboardingScreen
@@ -47,12 +48,16 @@ private val TABS = listOf(
 @Composable
 fun FilmowoApp(vm: FilmowoViewModel) {
     val me by vm.me.collectAsStateWithLifecycle()
+    val bootFailed by vm.bootFailed.collectAsStateWithLifecycle()
 
     CompositionLocalProvider(LocalLanguage provides (me?.language ?: "en")) {
         when {
-            me == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             me?.onboarded == false -> FirstRunOnboarding(vm)
-            else -> MainScaffold(vm)
+            me != null -> MainScaffold(vm)
+            // No account yet AND the boot probe failed → error + Retry instead of
+            // hanging on the spinner forever when the server is unreachable.
+            bootFailed -> ErrorRetry(t("error.offline"), onRetry = vm::refreshAll)
+            else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
     }
 }

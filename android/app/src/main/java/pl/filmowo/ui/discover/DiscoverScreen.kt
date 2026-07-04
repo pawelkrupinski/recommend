@@ -48,6 +48,7 @@ import pl.filmowo.model.RateQueueItem
 import pl.filmowo.model.Tone
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.DiscoverState
+import pl.filmowo.ui.common.ErrorRetry
 import pl.filmowo.ui.common.PosterImage
 import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RateStars
@@ -72,10 +73,13 @@ fun DiscoverScreen(
     onRateQueue: (RateQueueItem, Int) -> Unit,
     onSkipQueue: (RateQueueItem) -> Unit,
 ) {
-    when (state.mode) {
-        DiscoverMode.LOADING -> Centered { CircularProgressIndicator() }
-        DiscoverMode.ONBOARDING -> OnboardingQueue(state, onRateQueue, onSkipQueue)
-        DiscoverMode.PICKS -> Picks(state, genres, tones, onType, onGenre, onTone, onRefresh, onOpen, onRatePick, onSave, onDismiss)
+    when {
+        // A load failure short-circuits every mode: show an error + Retry rather
+        // than a misleading empty grid or a perpetual spinner (onRefresh retries).
+        state.error != null -> ErrorRetry(t("error.offline"), onRetry = onRefresh)
+        state.mode == DiscoverMode.LOADING -> Building()
+        state.mode == DiscoverMode.ONBOARDING -> OnboardingQueue(state, onRateQueue, onSkipQueue, onRefresh)
+        else -> Picks(state, genres, tones, onType, onGenre, onTone, onRefresh, onOpen, onRatePick, onSave, onDismiss)
     }
 }
 
@@ -84,10 +88,12 @@ private fun OnboardingQueue(
     state: DiscoverState,
     onRate: (RateQueueItem, Int) -> Unit,
     onSkip: (RateQueueItem) -> Unit,
+    onRetry: () -> Unit,
 ) {
     val item = state.queue.firstOrNull()
     if (item == null) {
-        Centered { CircularProgressIndicator() }
+        // Still fetching → spinner; fetched-but-empty → Retry (never hang).
+        if (state.loading) Centered { CircularProgressIndicator() } else ErrorRetry(t("error.offline"), onRetry)
         return
     }
     Column(
@@ -127,7 +133,7 @@ private fun Picks(
     Column(Modifier.fillMaxSize()) {
         FilterBar(state, genres, tones, onType, onGenre, onTone, onRefresh)
         when {
-            state.loading && state.picks.isEmpty() -> Centered { CircularProgressIndicator() }
+            state.loading && state.picks.isEmpty() -> Building()
             state.picks.isEmpty() ->
                 Centered { Text(t("discover.empty"), color = TextMuted, modifier = Modifier.padding(24.dp)) }
             else -> PicksGrid(state, onOpen, onRatePick, onSave, onDismiss, onRefresh)
@@ -282,4 +288,19 @@ private fun FilterDropdown(current: String, selected: String, options: List<Pair
 @Composable
 private fun Centered(content: @Composable () -> Unit) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+}
+
+// The picks build is slow on a cold server (~15s+), so label the spinner instead
+// of showing a bare, frozen-looking wheel.
+@Composable
+private fun Building() {
+    Centered {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            CircularProgressIndicator()
+            Text(t("discover.building"), color = TextMuted, fontSize = 13.sp)
+        }
+    }
 }

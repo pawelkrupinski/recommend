@@ -39,7 +39,11 @@ class FilmowoApi(
     private val client: OkHttpClient,
     private val baseUrl: String,
 ) {
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
+    // coerceInputValues: an explicit `null` from the server on a non-null field
+    // that has a default falls back to that default instead of throwing (which
+    // would abort the whole response parse and silently strand the UI). Belt and
+    // braces alongside the wire types' own nullability.
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false; coerceInputValues = true }
 
     // ---- reads ----
     suspend fun me(): Me = get("/api/me", serializer = Me.serializer())

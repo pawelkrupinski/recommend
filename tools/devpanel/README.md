@@ -13,9 +13,9 @@ close button quits; the yellow button hides the panel.
   launch it on the cabled Android device (`net.pawel.filmowo/.MainActivity`).
   `releaseFast` is the release build type (non-debuggable, R8 off for speed),
   signed with the debug keystore so it installs without a release keystore. By
-  default the build points at the Mac's local dev server, reached over
-  `adb reverse tcp:9002`, so you test your local server changes; set
-  `FILMOWO_BASE_URL=https://filmowo.fly.dev` to deploy a prod-pointed build.
+  default the build points at prod (`https://filmowo.fly.dev`) so the installed
+  app always loads; set `FILMOWO_BASE_URL=http://localhost:9002` to point it at
+  the Mac's local dev server instead (wired over `adb reverse tcp:9002`).
   Handles the unauthorized/locked device wait and the signature-mismatch reinstall.
 - **Android tests** — `./gradlew testDebugUnitTest` (JVM + Robolectric, no emulator).
 - **Dev server** — `npm run dev` with `ALLOW_DEV_LOGIN=1` (long-running; its

@@ -75,6 +75,26 @@ class FilmowoViewModelTest {
         flow.value
     }
 
+    // The prod /api/me body: the app hits filmowo.fly.dev directly (no Cloudflare
+    // CF-IPCountry header), so the server can't detect a country and sends null.
+    private val meNullCountry = """{"user":{"id":41,"email":null,"name":null,"picture":null},
+        "anonymous":true,"onboarded":false,"providers":["google","facebook"],"services":[],
+        "country":null,"language":"en","watchlistSort":"added","detectedCountry":null,
+        "detectedLanguage":"en"}"""
+
+    @Test
+    fun `me with a null country still parses so the spinner clears`() {
+        // Regression: `country` was a non-null String, and kotlinx throws on an
+        // explicit null there even with a default — /api/me failed to parse, `me`
+        // stayed null, and the app hung on its loading spinner forever.
+        serve(mapOf("/api/me" to meNullCountry))
+        val vm = viewModel()
+        val me = await(vm.me) { it != null }!!
+        assertEquals(null, me.country)
+        assertTrue(me.anonymous)
+        assertEquals(false, me.onboarded)
+    }
+
     @Test
     fun `few ratings put Discover into onboarding with a rate queue`() {
         serve(

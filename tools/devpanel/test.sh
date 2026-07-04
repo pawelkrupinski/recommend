@@ -23,9 +23,12 @@ export DEVPANEL_PRINT_ONLY=1 DEVPANEL_REPO_ROOT="$REPO_ROOT" DEVPANEL_ADB=adb
 
 d="$(bash "$HERE/scripts/deploy-android.sh")"
 check "deploy builds the releaseFast APK"  "$d" "assembleReleaseFast"
-check "deploy sets up adb reverse :9002"   "$d" "reverse tcp:9002 tcp:9002"
+check "deploy points at prod by default"   "$d" "target base URL: https://filmowo.fly.dev"
 check "deploy installs the releaseFast APK" "$d" "install -r -d app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 check "deploy launches the main activity"  "$d" "am start -n net.pawel.filmowo/pl.filmowo.MainActivity"
+
+dl="$(FILMOWO_BASE_URL=http://localhost:9002 bash "$HERE/scripts/deploy-android.sh")"
+check "localhost base still reverses :9002" "$dl" "reverse tcp:9002 tcp:9002"
 
 s="$(bash "$HERE/scripts/run-server.sh")"
 check "server runs npm run dev"            "$s" "npm run dev"

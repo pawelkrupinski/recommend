@@ -14,7 +14,12 @@ data class Me(
     val onboarded: Boolean = false,
     val providers: List<String> = emptyList(),
     val services: List<Int> = emptyList(),
-    val country: String = "PL",
+    // Nullable: the server sends `"country": null` when it can't detect one (the
+    // app talks to filmowo.fly.dev directly, so there's no Cloudflare CF-IPCountry
+    // header). kotlinx.serialization throws on an explicit null for a non-null
+    // field even when it has a default — which used to make /api/me fail to parse,
+    // leaving `me` null and the app stuck on its loading spinner forever.
+    val country: String? = null,
     val language: String = "en",
     val watchlistSort: String = "added",
     val detectedCountry: String? = null,

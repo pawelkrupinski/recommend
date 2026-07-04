@@ -22,7 +22,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +32,7 @@ import pl.filmowo.i18n.t
 import pl.filmowo.model.Pick
 import pl.filmowo.ui.WatchlistState
 import pl.filmowo.ui.common.PosterImage
+import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RatingBadges
 import pl.filmowo.ui.theme.TextMuted
 
@@ -90,8 +90,8 @@ private fun SortDropdown(sort: String, onSort: (String) -> Unit) {
     Box {
         TextButton(onClick = { open = true }) { Text(label, fontSize = 12.sp) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            DropdownMenuItem(text = { Text(t("watchlist.sortAdded")) }, onClick = { open = false; onSort("added") })
-            DropdownMenuItem(text = { Text(t("watchlist.sortRating")) }, onClick = { open = false; onSort("rating") })
+            SelectableMenuItem(t("watchlist.sortAdded"), selected = sort != "rating", onClick = { open = false; onSort("added") })
+            SelectableMenuItem(t("watchlist.sortRating"), selected = sort == "rating", onClick = { open = false; onSort("rating") })
         }
     }
 }

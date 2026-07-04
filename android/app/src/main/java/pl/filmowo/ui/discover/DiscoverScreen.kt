@@ -19,7 +19,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -44,6 +43,7 @@ import pl.filmowo.model.Tone
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.DiscoverState
 import pl.filmowo.ui.common.PosterImage
+import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RateStars
 import pl.filmowo.ui.common.RatingBadges
 import pl.filmowo.ui.theme.Panel
@@ -190,16 +190,19 @@ private fun FilterBar(
     ) {
         FilterDropdown(
             current = typeLabel(state.type),
+            selected = state.type,
             options = listOf("" to t("filter.allTypes"), "movie" to t("filter.movie"), "tv" to t("filter.tv")),
             onSelect = onType,
         )
         FilterDropdown(
             current = state.genre.ifEmpty { t("filter.allGenres") },
+            selected = state.genre,
             options = listOf("" to t("filter.allGenres")) + genres.map { it.name to it.name },
             onSelect = onGenre,
         )
         FilterDropdown(
             current = tones.firstOrNull { it.slug == state.tone }?.label ?: t("filter.allTones"),
+            selected = state.tone,
             options = listOf("" to t("filter.allTones")) + tones.map { it.slug to it.label },
             onSelect = onTone,
         )
@@ -215,13 +218,13 @@ private fun typeLabel(type: String): String = when (type) {
 }
 
 @Composable
-private fun FilterDropdown(current: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
+private fun FilterDropdown(current: String, selected: String, options: List<Pair<String, String>>, onSelect: (String) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         TextButton(onClick = { open = true }) { Text(current, fontSize = 12.sp, maxLines = 1) }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             options.forEach { (value, label) ->
-                DropdownMenuItem(text = { Text(label) }, onClick = { open = false; onSelect(value) })
+                SelectableMenuItem(label, selected = value == selected, onClick = { open = false; onSelect(value) })
             }
         }
     }

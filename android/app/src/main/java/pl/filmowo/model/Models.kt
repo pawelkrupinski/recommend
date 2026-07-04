@@ -21,7 +21,7 @@ data class Me(
     // leaving `me` null and the app stuck on its loading spinner forever.
     val country: String? = null,
     val language: String = "en",
-    val watchlistSort: String = "added",
+    // (watchlist sort is remembered device-locally now, not read from /api/me)
     val detectedCountry: String? = null,
     val detectedLanguage: String? = null,
 )

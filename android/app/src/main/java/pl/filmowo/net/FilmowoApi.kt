@@ -163,7 +163,6 @@ data class SettingsPayload(
     val providers: List<Int>? = null,
     val language: String? = null,
     val onboarded: Boolean? = null,
-    val watchlistSort: String? = null,
 )
 
 class ApiException(val code: Int, val bodyText: String) : Exception("HTTP $code: $bodyText")

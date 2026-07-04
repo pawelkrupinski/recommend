@@ -22,7 +22,9 @@ import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import pl.filmowo.auth.SessionAuth
-import pl.filmowo.data.LanguageStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import pl.filmowo.data.AppPreferences
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.FilmowoViewModel
@@ -64,9 +66,9 @@ class FilmowoViewModelTest {
         }
     }
 
-    private fun viewModel(): FilmowoViewModel {
+    private fun viewModel(prefs: FakePrefs = FakePrefs()): FilmowoViewModel {
         val api = FilmowoApi(OkHttpClient(), server.url("/").toString())
-        return FilmowoViewModel(api, FakeAuth(), FakeLang())
+        return FilmowoViewModel(api, FakeAuth(), prefs)
     }
 
     private fun <T> await(flow: StateFlow<T>, timeoutMs: Long = 5_000, predicate: (T) -> Boolean): T = runBlocking {
@@ -304,6 +306,53 @@ class FilmowoViewModelTest {
         assertEquals(ratingsCallsBefore, ratingsCallsAfter)
     }
 
+    @Test
+    fun `the watchlist sort is restored from local prefs on launch`() {
+        serve(
+            mapOf(
+                "/api/me" to me,
+                "/api/ratings" to """{"ratings":[]}""",
+                "/api/watchlist" to """{"watchlist":[]}""",
+                "/api/rate-queue" to """{"items":[],"totalPages":1}""",
+            ),
+        )
+        val vm = viewModel(FakePrefs(initialSort = "rating"))
+        val state = await(vm.watchlist) { it.sort == "rating" }
+        assertEquals("rating", state.sort)
+    }
+
+    @Test
+    fun `setting the watchlist sort saves it locally and never syncs to the server`() {
+        val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                requests.add("${request.method} $path")
+                val body = when (path) {
+                    "/api/me" -> me
+                    "/api/ratings" -> """{"ratings":[]}"""
+                    "/api/watchlist" -> """{"watchlist":[]}"""
+                    "/api/rate-queue" -> """{"items":[],"totalPages":1}"""
+                    else -> "{}"
+                }
+                return MockResponse().setBody(body)
+            }
+        }
+        val prefs = FakePrefs()
+        val vm = viewModel(prefs)
+        await(vm.me) { it != null }
+
+        vm.setWatchlistSort("rating")
+
+        val persisted = await(vm.watchlist) { it.sort == "rating" }
+        assertEquals("rating", persisted.sort)
+        assertEquals("rating", prefs.sort.value) // remembered on the device
+        assertTrue(
+            "watchlist sort must not sync to the server; saw ${synchronized(requests) { requests.toList() }}",
+            synchronized(requests) { requests.none { it.startsWith("POST /api/settings") } },
+        )
+    }
+
     private class FakeAuth : SessionAuth {
         override fun startWebSignIn(context: Context, provider: String) {}
         override suspend fun exchangeCode(code: String) = true
@@ -311,7 +360,10 @@ class FilmowoViewModelTest {
         override suspend fun deleteAccount() {}
     }
 
-    private class FakeLang : LanguageStore {
+    private class FakePrefs(initialSort: String? = null) : AppPreferences {
+        val sort = MutableStateFlow(initialSort)
         override suspend fun setLanguage(code: String) {}
+        override val watchlistSort: Flow<String?> get() = sort
+        override suspend fun setWatchlistSort(sort: String) { this.sort.value = sort }
     }
 }

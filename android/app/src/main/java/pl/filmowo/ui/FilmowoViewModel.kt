@@ -8,10 +8,11 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import pl.filmowo.auth.SessionAuth
-import pl.filmowo.data.LanguageStore
+import pl.filmowo.data.AppPreferences
 import pl.filmowo.model.Genre
 import pl.filmowo.model.Me
 import pl.filmowo.model.Pick
@@ -74,7 +75,7 @@ data class SettingsData(
 class FilmowoViewModel(
     private val api: FilmowoApi,
     private val auth: SessionAuth,
-    private val prefs: LanguageStore,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     private val _me = MutableStateFlow<Me?>(null)
@@ -117,7 +118,12 @@ class FilmowoViewModel(
     private var queuePage = 1
 
     init {
-        refreshAll()
+        viewModelScope.launch {
+            // Restore the locally-remembered watchlist sort before the first load so
+            // the watchlist paints in the chosen order (it's device-local, not synced).
+            prefs.watchlistSort.firstOrNull()?.let { saved -> _watchlist.update { it.copy(sort = saved) } }
+            refreshAll()
+        }
     }
 
     /** Boot / post-auth: reload the account, then everything keyed to it. If
@@ -328,7 +334,8 @@ class FilmowoViewModel(
 
     fun setWatchlistSort(sort: String) {
         _watchlist.update { it.copy(sort = sort, items = sortWatchlist(it.items, sort)) }
-        viewModelScope.launch { runCatching { api.saveSettings(SettingsPayload(watchlistSort = sort)) } }
+        // Remembered on the device only — a display choice not worth a server sync.
+        viewModelScope.launch { prefs.setWatchlistSort(sort) }
     }
 
     fun removeFromWatchlist(pick: Pick) {
@@ -431,7 +438,7 @@ class FilmowoViewModel(
     class Factory(
         private val api: FilmowoApi,
         private val auth: SessionAuth,
-        private val prefs: LanguageStore,
+        private val prefs: AppPreferences,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =

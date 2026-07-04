@@ -16,7 +16,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import pl.filmowo.model.EnrichRow
 import pl.filmowo.model.GenresResponse
 import pl.filmowo.model.Me
+import pl.filmowo.model.OriginsResponse
 import pl.filmowo.model.Pick
+import pl.filmowo.model.ProvidersResponse
 import pl.filmowo.model.RateQueue
 import pl.filmowo.model.RatingsResponse
 import pl.filmowo.model.Recommendations
@@ -52,6 +54,11 @@ class FilmowoApi(
     suspend fun genres(): GenresResponse = get("/api/genres", serializer = GenresResponse.serializer())
 
     suspend fun tones(): TonesResponse = get("/api/tones", serializer = TonesResponse.serializer())
+
+    suspend fun providers(region: String): ProvidersResponse =
+        get("/api/providers", mapOf("region" to region), ProvidersResponse.serializer())
+
+    suspend fun origins(): OriginsResponse = get("/api/origins", serializer = OriginsResponse.serializer())
 
     suspend fun rateQueue(page: Int): RateQueue =
         get("/api/rate-queue", mapOf("page" to page.toString()), RateQueue.serializer())
@@ -98,10 +105,6 @@ class FilmowoApi(
 
     suspend fun saveSettings(settings: SettingsPayload) =
         send("/api/settings", "POST", json.encodeToString(settings))
-
-    suspend fun deleteAccount() = withContext(Dispatchers.IO) {
-        client.newCall(Request.Builder().url(urlFor("/api/me")).header("User-Agent", UA).delete().build()).execute().close()
-    }
 
     // ---- plumbing ----
     private suspend fun <T> get(path: String, params: Map<String, String> = emptyMap(), serializer: KSerializer<T>): T =

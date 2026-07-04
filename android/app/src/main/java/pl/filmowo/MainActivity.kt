@@ -1,26 +1,79 @@
 package pl.filmowo
 
+import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
+import okhttp3.OkHttpClient
+import pl.filmowo.auth.AuthRepository
+import pl.filmowo.data.UserPreferences
+import pl.filmowo.net.FilmowoApi
+import pl.filmowo.net.PersistentCookieJar
+import pl.filmowo.ui.FilmowoApp
+import pl.filmowo.ui.FilmowoViewModel
 import pl.filmowo.ui.theme.Background
 import pl.filmowo.ui.theme.FilmowoTheme
+import java.util.concurrent.TimeUnit
 
-// Placeholder composition root — the full app (OkHttp client + cookie jar + api +
-// auth + view model + navigation) is wired in here in the next stage.
+/**
+ * Single-activity entry point and composition root (manual DI — no framework, the
+ * movies app's convention). One shared OkHttp client with a disk-backed cookie
+ * jar carries the `rid` session across every call and app restarts; the API
+ * client, auth repository, DataStore prefs, and the view model hang off it.
+ */
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: FilmowoViewModel by viewModels {
+        val cookieJar = PersistentCookieJar(applicationContext)
+        val httpClient = OkHttpClient.Builder()
+            .cookieJar(cookieJar)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(20, TimeUnit.SECONDS)
+            .build()
+        val api = FilmowoApi(httpClient, BuildConfig.BASE_URL)
+        val auth = AuthRepository(httpClient, cookieJar, BuildConfig.BASE_URL)
+        val prefs = UserPreferences(applicationContext)
+        FilmowoViewModel.Factory(api, auth, prefs)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Dark-only UI: force light system-bar icons so they stay visible against
+        // the near-black background regardless of the device's night mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
+        handleAuthDeepLink(intent)
         setContent {
             FilmowoTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
-                    Text("Filmowo")
+                    FilmowoApp(viewModel)
                 }
             }
+        }
+    }
+
+    // The OAuth callback bounces back as filmowo://auth-done?code=…. singleTask
+    // means a redirect into the running app lands here; a cold start lands in
+    // onCreate's intent — both funnel through handleAuthDeepLink.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAuthDeepLink(intent)
+    }
+
+    private fun handleAuthDeepLink(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme == "filmowo" && data.host == "auth-done") {
+            data.getQueryParameter("code")?.let { viewModel.handleAuthRedirect(it) }
         }
     }
 }

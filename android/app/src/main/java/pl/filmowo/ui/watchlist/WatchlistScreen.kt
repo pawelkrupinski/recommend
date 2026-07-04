@@ -71,7 +71,7 @@ fun WatchlistScreen(
                             modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
                                 .clip(RoundedCornerShape(10.dp)).clickable { onOpen(pick) },
                         )
-                        Text("${pick.title} ${pick.year ?: ""}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2)
+                        Text("${pick.title} ${pick.year ?: ""}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, minLines = 2, maxLines = 2)
                         RatingBadges(pick)
                         OutlinedButton(onClick = { onRemove(pick) }, modifier = Modifier.fillMaxWidth()) {
                             Text(t("watchlist.remove"), fontSize = 12.sp)

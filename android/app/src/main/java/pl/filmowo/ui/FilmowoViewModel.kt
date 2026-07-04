@@ -318,7 +318,10 @@ class FilmowoViewModel(
     fun loadWatchlist() {
         viewModelScope.launch {
             _watchlist.update { it.copy(loading = true) }
-            val items = runCatching { api.watchlist().watchlist }.getOrDefault(emptyList())
+            val items = runCatching { api.watchlist().watchlist }
+                .onFailure { Log.w("Filmowo", "watchlist fetch failed: ${it.javaClass.simpleName}: ${it.message}") }
+                .getOrDefault(emptyList())
+            Log.i("Filmowo", "watchlist fetched ${items.size} items")
             _watchlist.update { it.copy(items = sortWatchlist(items, it.sort), loading = false) }
         }
     }

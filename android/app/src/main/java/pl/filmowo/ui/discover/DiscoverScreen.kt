@@ -212,7 +212,15 @@ private fun PickCard(
                 )
             }
         }
-        Text("${pick.title} ${pick.year ?: ""}", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, maxLines = 2)
+        // minLines = 2 so a one-line title reserves the same height as a two-line
+        // one, keeping side-by-side cards in a row the same height.
+        Text(
+            "${pick.title} ${pick.year ?: ""}",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            minLines = 2,
+            maxLines = 2,
+        )
         RatingBadges(pick)
         RateStars(onRate = { star -> onRate(pick, star) })
         OutlinedButton(onClick = { onDismiss(pick) }, modifier = Modifier.fillMaxWidth()) {

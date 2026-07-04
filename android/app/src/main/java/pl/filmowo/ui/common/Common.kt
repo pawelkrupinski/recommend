@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -124,7 +125,14 @@ private fun starAt(x: Float, width: Int): Int {
 /** IMDb + Metacritic badges, mirroring the web `.rb.imdb` / `.rb.mc` pills. */
 @Composable
 fun RatingBadges(pick: Pick, modifier: Modifier = Modifier) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Reserve a constant height so a card with no badges (or one still awaiting
+    // enrichment) is exactly as tall as one with them — keeps cards in a grid row
+    // the same height instead of shifting the stars/buttons below.
+    Row(
+        modifier = modifier.height(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         pick.imdbRating?.let { Badge("IMDb ${trim1(it)}", ImdbYellow, Color.Black) }
         pick.metascore?.let { Badge("MC $it", metaColor(it), Color.White) }
     }

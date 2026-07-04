@@ -131,7 +131,7 @@ private fun Picks(
     onDismiss: (Pick) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        FilterBar(state, genres, tones, onType, onGenre, onTone, onRefresh)
+        FilterBar(state, genres, tones, onType, onGenre, onTone)
         when {
             state.loading && state.picks.isEmpty() -> Building()
             state.picks.isEmpty() ->
@@ -230,8 +230,8 @@ private fun FilterBar(
     onType: (String) -> Unit,
     onGenre: (String) -> Unit,
     onTone: (String) -> Unit,
-    onRefresh: () -> Unit,
 ) {
+    // No Refresh button — pull down on the grid to refresh (PullToRefreshBox).
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -255,13 +255,6 @@ private fun FilterBar(
             options = listOf("" to t("filter.allTones")) + tones.map { it.slug to it.label },
             onSelect = onTone,
         )
-        TextButton(onClick = onRefresh, enabled = !state.loading) {
-            if (state.loading) {
-                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-            } else {
-                Text(t("discover.refresh"), fontSize = 12.sp)
-            }
-        }
     }
 }
 

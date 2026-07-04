@@ -257,6 +257,12 @@ const FAST_HEAD = 60;
 // the background. Comfortably over FAST_HEAD so a healthy (dense) head still stops
 // on survivors, well under CANDIDATE_CAP so a sparse filter stays bounded.
 const HEAD_FETCH_BUDGET = 160;
+// The full (background) build bails once it has probed STARVATION_PROBE candidates
+// and fewer than STARVATION_MIN survived — the pool is starved (a heavy account
+// whose streamable catalogue is all consumed), so fetching the rest of the
+// CANDIDATE_CAP just wastes tens of seconds finding nothing and pins the shared CPU.
+const STARVATION_PROBE = 160;
+const STARVATION_MIN = 12;
 // The recommendation build is split into two layers so a rating doesn't pay for
 // the whole thing. buildCorpus is the expensive, taste-independent layer (gather +
 // ~500 detail fetches + enrichment); it barely moves when a user rates one more
@@ -387,9 +393,27 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
     // survivor into its candidate slot so the corpus keeps source-priority order no
     // matter which fetch lands first. mapPool isolates failures and yields the loop
     // at every await, so the build keeps the event loop breathing.
+    //
+    // BUT bail if the pool is starved: a heavy account whose streamable candidates
+    // are all already consumed yields almost no survivors, and walking the whole
+    // CANDIDATE_CAP to find nothing wastes tens of seconds and pins the shared CPU
+    // (prod: ~94s of detail fetches for 0 survivors). After probing STARVATION_PROBE
+    // candidates, if fewer than STARVATION_MIN survived, skip the rest — later
+    // fetchSurvivor calls return null without a network round-trip, so the pool
+    // completes fast. A healthy (dense) pool clears the probe and walks the lot.
     const slots = new Array(pool.length);
-    await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m, i) => { slots[i] = await fetchSurvivor(m); });
+    let fetched = 0, survived = 0, starved = false;
+    await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m, i) => {
+      if (starved) return; // probe already found the pool hopeless — don't fetch
+      const s = await fetchSurvivor(m);
+      slots[i] = s;
+      fetched += 1;
+      if (s) survived += 1;
+      if (!starved && fetched >= STARVATION_PROBE && survived < STARVATION_MIN) starved = true;
+    });
     survivors = slots.filter(Boolean);
+    // A bailed (starved) pool is treated as fully explored — deepening it would just
+    // re-waste the fetches — so it's `complete`, not a partial head to deepen.
     complete = true;
   }
   const detailsMs = performance.now() - tDetails;

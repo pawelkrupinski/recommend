@@ -98,3 +98,53 @@ test('the fast head gathers lean (no per-genre fan-out); the full build keeps it
   // full build and roughly doubling its cold gather cost.
   assert.ok(genreFanoutCalls < 25, `full build genre fan-out unexpectedly large (${genreFanoutCalls})`);
 });
+
+test('a starved full build bails after a probe instead of walking the whole pool', async () => {
+  setSetting('tmdbKey', 'test-key');
+
+  // Every candidate streams NOWHERE, so none survive the streamability gate — the
+  // heavy-account starvation, in miniature. Before the bail, the full build walks
+  // all ~400 details finding nothing (tens of wasted seconds, pinning the CPU).
+  // Fresh candidate ids (the file shares one TMDB detail cache across tests, and the
+  // lean-head test above cached its ids as streamable — reusing them would hit those
+  // warm, non-starved details). Every candidate streams NOWHERE, so none survive.
+  const nowhere = { results: {} };
+  const STARVED_MOVIES = Array.from({ length: 300 }, (_, i) => ({ id: 40000 + i, title: `SM${i}`, genre_ids: [100] }));
+  const STARVED_TV = Array.from({ length: 300 }, (_, i) => ({ id: 45000 + i, name: `ST${i}`, genre_ids: [200] }));
+  let detailCalls = 0;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    const path = s.replace('https://api.themoviedb.org/3', '');
+    const m = path.match(/^\/movie\/(\d+)\?/); if (m) { detailCalls++; return respond({ ...movieDetail(Number(m[1])), 'watch/providers': nowhere }); }
+    const t = path.match(/^\/tv\/(\d+)\?/); if (t) { detailCalls++; return respond({ ...tvDetail(Number(t[1])), 'watch/providers': nowhere }); }
+    if (s.startsWith('https://api.themoviedb.org')) {
+      if (path.startsWith('/discover/movie')) return respond({ page: 1, total_pages: 1, results: STARVED_MOVIES });
+      if (path.startsWith('/discover/tv')) return respond({ page: 1, total_pages: 1, results: STARVED_TV });
+      if (path.startsWith('/genre/movie/list')) return respond({ genres: MOVIE_GENRES });
+      if (path.startsWith('/genre/tv/list')) return respond({ genres: TV_GENRES });
+      return respond({ page: 1, total_pages: 1, results: [] });
+    }
+    return respond({ page: 1, total_pages: 1, results: [] });
+  };
+
+  // A distinct region/provider so the discover URL misses the file's shared TMDB
+  // cache (the streamable ids the earlier test cached under PL/provider-8).
+  const user = createAnonUser();
+  setUserSetting(user.id, 'country', 'US');
+  setUserSetting(user.id, 'providers', [999]);
+  const profile = await buildProfile(user.id);
+  detailCalls = 0;
+
+  const full = await buildAndCache({
+    userId: user.id, region: 'US', providerIds: [999], genreId: undefined,
+    profile, ratings: [], language: 'en-US', filters: {}, // no survivorTarget → full build
+  });
+
+  assert.equal(full.pool.length, 0, 'a starved pool yields no survivors');
+  // Bailed after ~the probe (160) + up to one concurrency wave — NOT the whole
+  // ~400-candidate pool (the 94s-of-wasted-fetches regression this guards against).
+  assert.ok(
+    detailCalls <= 200,
+    `starved full build fetched ${detailCalls} details — expected it to bail after the ~160 probe, not walk all ~400`,
+  );
+});

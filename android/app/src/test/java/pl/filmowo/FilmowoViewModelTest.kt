@@ -254,6 +254,52 @@ class FilmowoViewModelTest {
         assertFalse("must not stay stuck in the loading state", d.loading)
     }
 
+    @Test
+    fun `switching type narrows the loaded picks instantly, then the server refetch fills in`() {
+        val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val tenRatings = (1..10).joinToString(",") { "{\"tmdb_id\":$it,\"rating\":7}" }
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val full = request.path.orEmpty()
+                requests.add("${request.method} $full")
+                val path = full.substringBefore('?')
+                return when {
+                    path == "/api/me" -> MockResponse().setBody(me)
+                    path == "/api/ratings" -> MockResponse().setBody("""{"ratings":[$tenRatings]}""")
+                    path == "/api/watchlist" -> MockResponse().setBody("""{"watchlist":[]}""")
+                    path == "/api/enrich" -> MockResponse().setBody("\n")
+                    path == "/api/recommend" && full.contains("type=movie") ->
+                        // A DIFFERENT movie than the loaded ones, delayed so the
+                        // instant (optimistic) state is observable before it lands.
+                        MockResponse().setBody("""{"profileSize":10,"results":[{"tmdb_id":200,"media_type":"movie","title":"Fresh"}]}""")
+                            .setBodyDelay(300, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    path == "/api/recommend" ->
+                        MockResponse().setBody("""{"profileSize":10,"results":[
+                            {"tmdb_id":99,"media_type":"movie","title":"M"},
+                            {"tmdb_id":100,"media_type":"tv","title":"T"}]}""")
+                    else -> MockResponse().setBody("{}")
+                }
+            }
+        }
+        val vm = viewModel()
+        await(vm.discover) { it.mode == DiscoverMode.PICKS && it.picks.size == 2 }
+        val ratingsCallsBefore = synchronized(requests) { requests.count { it == "GET /api/ratings" } }
+
+        vm.setType("movie")
+
+        // Instant: only the movie among the already-loaded picks (id 99) shows,
+        // before the delayed type=movie refetch returns.
+        val instant = await(vm.discover) { it.picks.size == 1 && it.picks.first().tmdbId == 99 }
+        assertEquals("movie", instant.type)
+
+        // Then the server's fuller type-scoped set (id 200) replaces it.
+        await(vm.discover) { it.picks.any { p -> p.tmdbId == 200 } }
+
+        // The filter change reused the known rate count — no extra /api/ratings call.
+        val ratingsCallsAfter = synchronized(requests) { requests.count { it == "GET /api/ratings" } }
+        assertEquals(ratingsCallsBefore, ratingsCallsAfter)
+    }
+
     private class FakeAuth : SessionAuth {
         override fun startWebSignIn(context: Context, provider: String) {}
         override suspend fun exchangeCode(code: String) = true

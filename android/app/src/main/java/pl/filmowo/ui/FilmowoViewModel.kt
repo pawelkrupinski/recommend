@@ -139,9 +139,15 @@ class FilmowoViewModel(
     fun loadDiscover(refresh: Boolean = false) {
         viewModelScope.launch {
             _discover.update { it.copy(loading = true, error = null) }
-            val ratedCount = runCatching { api.ratings().ratings.size }.getOrElse {
-                _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
-                return@launch
+            // Once in picks mode the rate goal is met for good (ratings only grow),
+            // so skip the extra /api/ratings round-trip on filter changes / refreshes.
+            val ratedCount = if (_discover.value.mode == DiscoverMode.PICKS) {
+                _discover.value.ratedCount
+            } else {
+                runCatching { api.ratings().ratings.size }.getOrElse {
+                    _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
+                    return@launch
+                }
             }
             if (ratedCount < RATE_GOAL) {
                 queuePage = 1
@@ -199,7 +205,15 @@ class FilmowoViewModel(
         }
     }
 
-    fun setType(type: String) { _discover.update { it.copy(type = type) }; loadDiscover() }
+    // Optimistically narrow the already-loaded picks by media type so the switch
+    // feels instant (the type-scoped server pool — a possibly-slow cold build —
+    // then replaces them with a fuller set in the background via loadDiscover).
+    fun setType(type: String) {
+        _discover.update {
+            it.copy(type = type, picks = it.picks.filter { p -> type.isEmpty() || p.mediaType == type })
+        }
+        loadDiscover()
+    }
     fun setGenre(genre: String) { _discover.update { it.copy(genre = genre) }; loadDiscover() }
     fun setTone(tone: String) { _discover.update { it.copy(tone = tone) }; loadDiscover() }
 

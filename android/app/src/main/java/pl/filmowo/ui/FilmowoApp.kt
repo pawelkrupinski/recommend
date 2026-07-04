@@ -49,14 +49,20 @@ private val TABS = listOf(
 fun FilmowoApp(vm: FilmowoViewModel) {
     val me by vm.me.collectAsStateWithLifecycle()
     val bootFailed by vm.bootFailed.collectAsStateWithLifecycle()
+    val bootError by vm.bootError.collectAsStateWithLifecycle()
 
     CompositionLocalProvider(LocalLanguage provides (me?.language ?: "en")) {
         when {
             me?.onboarded == false -> FirstRunOnboarding(vm)
             me != null -> MainScaffold(vm)
             // No account yet AND the boot probe failed → error + Retry instead of
-            // hanging on the spinner forever when the server is unreachable.
-            bootFailed -> ErrorRetry(t("error.offline"), onRetry = vm::refreshAll)
+            // hanging on the spinner forever when the server is unreachable. The
+            // exact failure reason rides under the message so a field report is
+            // self-diagnosing.
+            bootFailed -> ErrorRetry(
+                listOfNotNull(t("error.offline"), bootError).joinToString("\n\n"),
+                onRetry = vm::refreshAll,
+            )
             else -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
     }

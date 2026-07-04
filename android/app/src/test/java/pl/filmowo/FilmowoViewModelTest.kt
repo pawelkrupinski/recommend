@@ -227,11 +227,15 @@ class FilmowoViewModelTest {
         val vm = viewModel()
         await(vm.bootFailed) { it }
         assertNull(vm.me.value)
+        // The exact failure reason is captured so the error screen is self-diagnosing.
+        val reason = await(vm.bootError) { it != null }!!
+        assertTrue("expected the exception detail, got '$reason'", reason.contains("ApiException"))
 
         meFails = false
         vm.refreshAll()
         await(vm.me) { it != null }
         assertFalse(vm.bootFailed.value)
+        assertNull("a recovered boot clears the error detail", vm.bootError.value)
     }
 
     @Test

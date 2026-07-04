@@ -1,6 +1,7 @@
 package pl.filmowo.ui
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -108,6 +109,11 @@ class FilmowoViewModel(
     private val _bootFailed = MutableStateFlow(false)
     val bootFailed: StateFlow<Boolean> = _bootFailed.asStateFlow()
 
+    // The exact reason the boot /api/me probe failed (exception class + message),
+    // surfaced under the error screen so a field failure is self-diagnosing.
+    private val _bootError = MutableStateFlow<String?>(null)
+    val bootError: StateFlow<String?> = _bootError.asStateFlow()
+
     private var queuePage = 1
 
     init {
@@ -119,10 +125,16 @@ class FilmowoViewModel(
      *  (a later refresh failure keeps the already-loaded app up instead). */
     fun refreshAll() {
         viewModelScope.launch {
-            val loaded = runCatching { api.me() }.getOrNull()
+            val loaded = runCatching { api.me() }
+                .onFailure {
+                    Log.w("Filmowo", "boot /api/me failed: ${it.javaClass.simpleName}: ${it.message}", it)
+                    _bootError.value = "${it.javaClass.simpleName}: ${it.message}"
+                }
+                .getOrNull()
             if (loaded != null) {
                 _me.value = loaded
                 _bootFailed.value = false
+                _bootError.value = null
                 prefs.setLanguage(loaded.language)
                 loadGenres()
                 loadTones()

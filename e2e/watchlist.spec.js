@@ -178,6 +178,29 @@ test('rating a saved title in its popup records the rating and drops it from the
   expect(rated[0]).toMatchObject({ tmdb_id: 555, rating: 8 });
 });
 
+// The popup lives in a scrollable modal-card; on mobile the shared stars widget's
+// touch-action: pan-y let a rate-drag scroll the card under the finger (the stars
+// "jitter"). In the popup the strip must opt out of native panning entirely.
+test.describe('mobile', () => {
+  test.use({ viewport: { width: 390, height: 620 }, hasTouch: true, isMobile: true });
+
+  test('the popup rate stars opt out of touch panning so dragging to rate never scrolls the card', async ({ page }) => {
+    await login(page, uniqEmail('watch-jitter'));
+    await page.evaluate(async () => {
+      await fetch('/api/watchlist', { method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tmdb_id: 555, title: 'Seen It', year: 2010 }) });
+    });
+
+    await page.goto('/watchlist');
+    await page.locator('#watchlist-grid .card', { hasText: 'Seen It' }).locator('> img').click();
+    const stars = page.locator('#modal-body .rate-watched .stars');
+    await expect(stars).toBeVisible();
+    // The rating strip takes no native pan (unlike the Discover card's pan-y stars).
+    await expect(stars).toHaveCSS('touch-action', 'none');
+  });
+});
+
 test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
   await login(page, uniqEmail('watch-hide'));
   await enterPicks(page);

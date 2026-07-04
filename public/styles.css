@@ -388,6 +388,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rate-watched { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .rate-watched > .sub { margin: 0 0 8px; }
 .rate-watched .rate-stars { margin: 0; }
+/* The popup sits in a scrollable modal-card (max-height: 86vh). The shared stars
+   widget carries touch-action: pan-y so a vertical finger-drag scrolls; inside a
+   scroll container that means dragging to rate scrolls the card under your finger
+   — the stars visibly jitter on mobile. Here the strip is a pure rating control,
+   so opt out of native panning entirely: every drag on it rates, none scrolls. */
+.rate-watched .stars { touch-action: none; }
 /* The popup is wide enough on desktop to lay all 10 stars in a single row
    (the card widget wraps to two rows of 5 for its narrow column). */
 @media (min-width: 641px) {

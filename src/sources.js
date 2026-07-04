@@ -393,6 +393,30 @@ export function sourcesFor(type) {
   return type === 'tv' ? [...ofType, tmdbDiscoverByGenre('tv'), tmdbDiscoverByTone('tv')] : ofType;
 }
 
+// A lean, TMDB-only source set for the FAST foreground HEAD build (the "Building
+// your picks…" wait). It keeps only the provider-scoped Discover sweeps (already
+// streamable, so a high survivor rate) plus the trending charts, and deliberately
+// drops the gather's slow / high-fan-out sources — the per-genre Discover fan-out
+// (~16-19 calls), the per-rated-title seed sweeps (recommendations/similar), and
+// the network-heavy scraper/Trakt sources (letterboxd ~1s/call, trakt) — which
+// together dominate a cold gather's wall time. The head still fetches details, so
+// ranking quality is unchanged; the background full build (ALL_SOURCES) then adds
+// the seed/scraper breadth and replaces the head. Used only for the unfiltered /
+// type-only view (see buildCorpus); genre/tone/origin heads keep sourcesFor.
+export const HEAD_SOURCES = [
+  tmdbDiscover('movie'),
+  tmdbDiscover('tv'),
+  tmdbDiscoverTopRated('movie'),
+  tmdbDiscoverTopRated('tv'),
+  tmdbTrending('movie'),
+  tmdbTrending('tv'),
+];
+
+export function headSourcesFor(type) {
+  if (type !== 'movie' && type !== 'tv') return HEAD_SOURCES;
+  return HEAD_SOURCES.filter((s) => (s.mediaType || 'movie') === type);
+}
+
 // Run every configured source concurrently and merge their candidates into a
 // single de-duplicated Map (insertion order = source priority). Sources are
 // independent: one that throws or times out is logged and skipped, never taking

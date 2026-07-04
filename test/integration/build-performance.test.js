@@ -38,11 +38,12 @@ const TV_POOL = Array.from({ length: 200 }, (_, i) => ({ id: 5000 + i, name: `T$
 const MOVIE_GENRES = Array.from({ length: 19 }, (_, i) => ({ id: 100 + i, name: `MG${i}` }));
 const TV_GENRES = Array.from({ length: 16 }, (_, i) => ({ id: 200 + i, name: `TG${i}` }));
 
-test('the foreground head build stops early and its gather fan-out stays bounded', async () => {
+test('the fast head gathers lean (no per-genre fan-out); the full build keeps it', async () => {
   setSetting('tmdbKey', 'test-key');
 
-  let detailCalls = 0;     // /movie/:id + /tv/:id — the dominant cost
-  let tmdbListCalls = 0;   // TMDB discover/genre/trending — the gather fan-out
+  let detailCalls = 0;      // /movie/:id + /tv/:id — the dominant per-title cost
+  let tmdbListCalls = 0;    // TMDB discover/genre/trending — the gather fan-out
+  let genreFanoutCalls = 0; // per-genre Discover sweeps (with_genres=…) — the priciest
   globalThis.fetch = async (url) => {
     const s = String(url);
     const path = s.replace('https://api.themoviedb.org/3', '');
@@ -50,8 +51,14 @@ test('the foreground head build stops early and its gather fan-out stays bounded
     const t = path.match(/^\/tv\/(\d+)\?/); if (t) { detailCalls++; return respond(tvDetail(Number(t[1]))); }
     if (s.startsWith('https://api.themoviedb.org')) {
       tmdbListCalls++;
-      if (path.startsWith('/discover/movie')) return respond({ page: 1, total_pages: 1, results: MOVIE_POOL });
-      if (path.startsWith('/discover/tv')) return respond({ page: 1, total_pages: 1, results: TV_POOL });
+      if (path.startsWith('/discover/movie')) {
+        if (path.includes('with_genres=')) genreFanoutCalls++;
+        return respond({ page: 1, total_pages: 1, results: MOVIE_POOL });
+      }
+      if (path.startsWith('/discover/tv')) {
+        if (path.includes('with_genres=')) genreFanoutCalls++;
+        return respond({ page: 1, total_pages: 1, results: TV_POOL });
+      }
       if (path.startsWith('/genre/movie/list')) return respond({ genres: MOVIE_GENRES });
       if (path.startsWith('/genre/tv/list')) return respond({ genres: TV_GENRES });
       return respond({ page: 1, total_pages: 1, results: [] });
@@ -63,27 +70,31 @@ test('the foreground head build stops early and its gather fan-out stays bounded
   setUserSetting(user.id, 'country', 'PL');
   setUserSetting(user.id, 'providers', [8]);
   const profile = await buildProfile(user.id);
-  detailCalls = 0; tmdbListCalls = 0;
 
-  const result = await buildAndCache({
+  // ── fast foreground HEAD build: lean HEAD_SOURCES, stops early ──────────────
+  detailCalls = 0; tmdbListCalls = 0; genreFanoutCalls = 0;
+  const head = await buildAndCache({
     userId: user.id, region: 'PL', providerIds: [8], genreId: undefined,
     profile, ratings: [], language: 'en-US', filters: {}, survivorTarget: 60,
   });
+  assert.ok(head.pool.length >= 60, `head build filled a page (pool=${head.pool.length})`);
+  // Stops near survivorTarget, not the whole ~400-candidate pool (the slow regression).
+  assert.ok(detailCalls < 120, `head build fetched ${detailCalls} details — expected it to stop near 60`);
+  // The head gathers from the lean HEAD_SOURCES (provider-scoped Discover + trending
+  // only), so it does the priciest source — the per-genre Discover fan-out — ZERO
+  // times. This is the cold-build speedup; a regression re-adds the fan-out here.
+  assert.equal(genreFanoutCalls, 0, `head must skip the per-genre fan-out (did ${genreFanoutCalls})`);
+  const headListCalls = tmdbListCalls;
 
-  assert.ok(result.pool.length >= 60, `head build filled a page (pool=${result.pool.length})`);
-  // 400 candidates are available; the head must fetch a small fraction, not all.
-  // ~64 in practice (survivorTarget + one concurrency batch). A full-pool fetch
-  // would be ~400 — the slow regression this guards against.
-  assert.ok(
-    detailCalls < 120,
-    `head build fetched ${detailCalls} details — expected it to stop near survivorTarget (60), ` +
-    'not walk the whole ~400-candidate pool (the slow-build regression)',
-  );
-  // Post-fix the cold gather is ~29 TMDB list calls (one per-genre MOVIE fan-out +
-  // the broad movie/TV sweeps). Re-registering a second full per-genre fan-out
-  // (e.g. for TV) pushes it past ~45 — the cap catches that before it ships.
-  assert.ok(
-    tmdbListCalls < 38,
-    `cold gather made ${tmdbListCalls} TMDB list calls — a second per-genre fan-out likely crept back in`,
-  );
+  // ── deep background FULL build: rich ALL_SOURCES, keeps the fan-out ──────────
+  detailCalls = 0; tmdbListCalls = 0; genreFanoutCalls = 0;
+  await buildAndCache({
+    userId: user.id, region: 'PL', providerIds: [8], genreId: undefined,
+    profile, ratings: [], language: 'en-US', filters: {}, // no survivorTarget → full build
+  });
+  assert.ok(genreFanoutCalls > 0, 'the full build still does the per-genre fan-out for breadth');
+  assert.ok(headListCalls < tmdbListCalls, `head gather (${headListCalls}) must be leaner than full (${tmdbListCalls})`);
+  // Guard against a SECOND full per-genre fan-out (e.g. for TV) creeping into the
+  // full build and roughly doubling its cold gather cost.
+  assert.ok(genreFanoutCalls < 25, `full build genre fan-out unexpectedly large (${genreFanoutCalls})`);
 });

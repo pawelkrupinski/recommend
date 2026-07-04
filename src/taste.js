@@ -10,7 +10,7 @@ import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetti
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings, cachedImdbDetail, cachedMetascore } from './ratings.js';
-import { gatherCandidates, sourcesFor, mediaKey } from './sources.js';
+import { gatherCandidates, sourcesFor, headSourcesFor, mediaKey } from './sources.js';
 import { isTone, toneLabel } from './tones.js';
 import { toneSlugs, tonesForMovie } from './tone-store.js';
 import { resolveTones } from './tone-sources.js';
@@ -239,7 +239,7 @@ const CANDIDATE_CAP = 500;
 // fetch is the build's dominant cost (~95% of cold-cache wall time), so it must
 // fan out rather than await one title at a time; 8 keeps it well under TMDB's
 // limits (the convention's 5-10 band) while collapsing the fetch phase ~8x.
-const DETAIL_FETCH_CONCURRENCY = 8;
+const DETAIL_FETCH_CONCURRENCY = 16;
 // How many survivors the fast foreground "head" build stops at before serving (see
 // buildCorpus survivorTarget). Comfortably over the 36 a page shows — with margin
 // for rate/dismiss/watchlist exclusions and the diversity rerank — so the first
@@ -296,8 +296,19 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // A media-type filter narrows the source set HERE — before the cap — so a
   // one-type pool fills entirely with the wanted type instead of starving (see
   // sourcesFor). No filter keeps the full mixed registry.
+  //
+  // The fast foreground HEAD build (survivorTarget) of the unfiltered / type-only
+  // view gathers from the lean HEAD_SOURCES — the provider-scoped Discover + trending
+  // sweeps only — skipping the gather's slow, high-fan-out sources (per-genre
+  // Discover, per-rated seeds, letterboxd/Trakt scrapers) that dominate a cold
+  // build's wall time. The background full build (no survivorTarget) keeps the rich
+  // ALL_SOURCES for breadth and replaces the head. A genre/tone/origin/indie head
+  // still needs those source-scoped sweeps, so it keeps sourcesFor.
+  const leanHead = survivorTarget && !genreId && !filters.tone
+    && !filters.excludeUs && !filters.indie && !(filters.allowed && filters.allowed.length);
+  const sources = leanHead ? headSourcesFor(filters.type) : sourcesFor(filters.type);
   const { candidates, collab } = await gatherCandidates(
-    { region, providerIds, genreId, tone: filters.tone, ratings, language, consumed }, sourcesFor(filters.type));
+    { region, providerIds, genreId, tone: filters.tone, ratings, language, consumed }, sources);
   const gatherMs = performance.now() - tGather;
 
   // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is

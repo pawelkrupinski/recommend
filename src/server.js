@@ -13,7 +13,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
@@ -493,6 +493,13 @@ if (isMain) {
     // Warm each user's per-genre recommendation caches in the background so the
     // first Discover load and genre switches are instant.
     warmRecommendations();
+    // Pre-fetch the shared popular head-candidate details (once per distinct
+    // region/providers/language config), so cold builds after a deploy — which
+    // wipes the ephemeral, cross-user TMDB detail cache — hit warm details instead
+    // of re-paying the ~15s fetch. Re-warm periodically (details cache a day).
+    const WARM_SHARED_INTERVAL_MS = 3 * 60 * 60 * 1000;
+    warmSharedDetails();
+    setInterval(warmSharedDetails, WARM_SHARED_INTERVAL_MS).unref();
     // Backfill rich card fields for titles saved before save-time capture so the
     // Watchlist tab matches Discover. Fire-and-forget; only touches stale rows.
     backfillWatchlistCards().catch((e) => log.warn('watchlist backfill failed:', e.message));

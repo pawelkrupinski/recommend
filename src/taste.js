@@ -863,6 +863,68 @@ export function warmRecommendations() {
   for (const u of listUsers()) if (readyForRecs(u.id)) schedulePrebuild(u.id, 1500);
 }
 
+// ---- shared detail warming (cross-user prefetch) --------------------------
+// The TMDB detail cache is GLOBAL (keyed by request URL) and shared across every
+// user — but it's ephemeral, wiped on each deploy/restart, so a cold build re-
+// fetches the same popular titles' details (the ~95% of a build's wall time that
+// another user just paid for). This pass warms it IN ADVANCE and ONCE per distinct
+// (region, providers, language) config: it fetches the lean head candidates'
+// details for each config, so every user on that config then gets cache-hit-fast
+// head builds (the gather is already ~0.1s; the details were the cost). One config
+// at a time so warming never stampedes TMDB or the shared CPU.
+const WARM_DETAILS_POOL = 200;
+const warmConfigs = new Map(); // key -> { region, providerIds, language }
+
+// Fetch (and cache) the lean head candidates' details for one config. Awaitable so
+// a test can prove the warm makes a subsequent build cache-hit-fast; the runner
+// below fires it in the background.
+export async function warmConfigDetails({ region, providerIds, language }) {
+  const { candidates } = await gatherCandidates(
+    { region, providerIds, language, consumed: new Set() }, headSourcesFor(''),
+  );
+  const pool = [...candidates.values()].slice(0, WARM_DETAILS_POOL);
+  await mapPool(pool, DETAIL_FETCH_CONCURRENCY, async (m) => {
+    try { await details(m.id, m.media_type, language); } catch { /* best effort — a miss just re-fetches later */ }
+  });
+  return pool.length;
+}
+
+const sharedWarmRunner = boundedRunner(1, async (key) => {
+  const cfg = warmConfigs.get(key);
+  if (cfg) await warmConfigDetails(cfg);
+});
+
+// The distinct (region, providers, language) configs across ready users — the
+// working set worth warming. Users with no chosen services are skipped (nothing
+// streamable to warm). Exported for the driver + tests.
+export function distinctWarmConfigs() {
+  const out = new Map();
+  for (const u of listUsers()) {
+    if (!readyForRecs(u.id)) continue;
+    const providerIds = (getUserSetting(u.id, 'providers', []) || []).map(Number).sort((a, b) => a - b);
+    if (!providerIds.length) continue;
+    const region = getUserSetting(u.id, 'country', 'PL');
+    const language = tmdbLang(getUserSetting(u.id, 'language', DEFAULT_LANGUAGE));
+    const key = `${region}:${providerIds.join('-')}:${language}`;
+    if (!out.has(key)) out.set(key, { region, providerIds, language });
+  }
+  return out;
+}
+
+// Queue a shared-detail warm for every distinct ready-user config. Returns how many
+// configs were queued (testable). Call at boot and on an interval; the details TTL
+// is a day, so re-warming every few hours keeps the working set hot and refreshes
+// what a deploy or an eviction dropped. Off under the prebuild gate (tests/e2e).
+export function warmSharedDetails() {
+  if (PREBUILD_DISABLED || !tmdbConfigured()) return 0;
+  let queued = 0;
+  for (const [key, cfg] of distinctWarmConfigs()) {
+    warmConfigs.set(key, cfg);
+    if (sharedWarmRunner.submit(key)) queued += 1;
+  }
+  return queued;
+}
+
 // True when the user's default "all genres" landing pool is already cached and
 // current (built, and not invalidated since) — the same check recommend()'s `hit`
 // path makes. warmLandingPool uses it to avoid rebuilding a pool that's ready to

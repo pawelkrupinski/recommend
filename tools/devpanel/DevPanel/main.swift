@@ -307,8 +307,8 @@ private struct ButtonGroup {
 }
 
 private let groups: [ButtonGroup] = [
-    ButtonGroup(title: "Android → device", subtitle: "build · install · launch", defaultsKey: nil,
-                options: [Action(title: "Android → device", subtitle: "build · install · launch",
+    ButtonGroup(title: "Android → device", subtitle: "releaseFast · install · launch", defaultsKey: nil,
+                options: [Action(title: "Android → device", subtitle: "releaseFast · install · launch",
                                  script: "deploy-android.sh", console: .device)]),
     ButtonGroup(title: "Android tests", subtitle: "gradlew testDebugUnitTest", defaultsKey: nil,
                 options: [Action(title: "Android tests", subtitle: "gradlew testDebugUnitTest",

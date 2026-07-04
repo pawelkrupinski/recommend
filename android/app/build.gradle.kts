@@ -40,6 +40,19 @@ android {
                 "proguard-rules.pro",
             )
         }
+        // The build the DevPanel installs over cable: the release build type (so
+        // it's a non-debug, non-debuggable build) but with R8/resource shrinking
+        // OFF so it builds fast for a local smoke test, and signed with the
+        // auto-managed debug keystore so it actually installs without a release
+        // keystore (this variant is never shipped). Mirrors the movies app's
+        // `releaseFast`. A `src/releaseFast` manifest overlay re-enables cleartext
+        // so it can still reach the local dev server (see that file).
+        create("releaseFast") {
+            initWith(getByName("release"))
+            isMinifyEnabled = false
+            isShrinkResources = false
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {

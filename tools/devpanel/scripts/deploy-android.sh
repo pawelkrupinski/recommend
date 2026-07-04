@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Build the debug APK and install+launch it on the cabled Android device
-# (net.pawel.filmowo/pl.filmowo.MainActivity). By default the build points at the
-# Mac's local dev server, reached over `adb reverse tcp:9002`; set
+# Build the non-debug `releaseFast` APK and install+launch it on the cabled
+# Android device (net.pawel.filmowo/pl.filmowo.MainActivity). releaseFast is the
+# release build type (non-debuggable) with R8 off for speed, signed with the
+# debug keystore so it installs without a release keystore. By default the build
+# points at the Mac's local dev server, reached over `adb reverse tcp:9002`; set
 # FILMOWO_BASE_URL=https://filmowo.fly.dev to deploy a prod-pointed build instead.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +11,7 @@ source "$SCRIPT_DIR/lib.sh"
 
 APP_ID="net.pawel.filmowo"
 COMPONENT="net.pawel.filmowo/pl.filmowo.MainActivity"
-APK="app/build/outputs/apk/debug/app-debug.apk"
+APK="app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 PORT="${FILMOWO_PORT:-9002}"
 export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-http://localhost:$PORT}"
 
@@ -36,7 +38,7 @@ install_apk() {
 wait_for_android_unlock "$serial"
 cd "$REPO_ROOT/android"
 
-step ./gradlew --no-daemon assembleDebug
+step ./gradlew --no-daemon assembleReleaseFast
 # Point the device's localhost at the Mac's dev server (no-op for a remote base).
 case "$FILMOWO_BASE_URL" in
   *localhost*|*127.0.0.1*) step "$adb" ${sflag[@]+"${sflag[@]}"} reverse "tcp:$PORT" "tcp:$PORT" ;;

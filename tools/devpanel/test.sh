@@ -22,9 +22,9 @@ echo "▶ Script command shapes (DEVPANEL_PRINT_ONLY)"
 export DEVPANEL_PRINT_ONLY=1 DEVPANEL_REPO_ROOT="$REPO_ROOT" DEVPANEL_ADB=adb
 
 d="$(bash "$HERE/scripts/deploy-android.sh")"
-check "deploy builds the debug APK"        "$d" "assembleDebug"
+check "deploy builds the releaseFast APK"  "$d" "assembleReleaseFast"
 check "deploy sets up adb reverse :9002"   "$d" "reverse tcp:9002 tcp:9002"
-check "deploy installs the debug APK"      "$d" "install -r -d app/build/outputs/apk/debug/app-debug.apk"
+check "deploy installs the releaseFast APK" "$d" "install -r -d app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 check "deploy launches the main activity"  "$d" "am start -n net.pawel.filmowo/pl.filmowo.MainActivity"
 
 s="$(bash "$HERE/scripts/run-server.sh")"

@@ -453,11 +453,23 @@ function pickCard(src) {
   for (const k of CARD_FIELDS) if (src[k] != null) card[k] = src[k];
   return Object.keys(card).length ? JSON.stringify(card) : null;
 }
+// A count-ish card field (seasons/episodes) is occasionally stored as the raw
+// TMDB array rather than the season/episode COUNT the card contract promises.
+// Coerce it to a number so the served JSON stays numeric — a strict client (the
+// Android app) throws on the whole watchlist response when one field is an array
+// where a number is declared.
+export function toCount(v) {
+  return Array.isArray(v) ? v.length : (v ?? null);
+}
 // Flatten a stored row back into the shape the frontend card expects: the `card`
 // JSON blob spread to top level (services/genres as arrays, ratings as numbers),
-// the raw column dropped.
+// the raw column dropped. seasons/episodes are healed to counts in case an older
+// save stored the raw TMDB array.
 function rowToWatchItem({ card, ...row }) {
-  return { ...row, ...(card ? JSON.parse(card) : {}) };
+  const c = card ? JSON.parse(card) : {};
+  if ('seasons' in c) c.seasons = toCount(c.seasons);
+  if ('episodes' in c) c.episodes = toCount(c.episodes);
+  return { ...row, ...c };
 }
 
 const _addToWatchlist = db.prepare(`

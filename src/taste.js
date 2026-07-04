@@ -6,7 +6,7 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { details, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
-  watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch } from './db.js';
+  watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch, toCount } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
 import { allowedOriginFromValue } from './geo.js';
 import { attachRatings, cachedImdbDetail, cachedMetascore } from './ratings.js';
@@ -446,9 +446,10 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
       title: s.full.title,
       year,
       runtime: s.full.runtime || null,
-      // TV-only: shown on the card in place of a film's runtime.
-      seasons: s.full.seasons ?? null,
-      episodes: s.full.episodes ?? null,
+      // TV-only: shown on the card in place of a film's runtime. Coerce to a
+      // count — a raw TMDB seasons array here would poison a strict client's parse.
+      seasons: toCount(s.full.seasons),
+      episodes: toCount(s.full.episodes),
       overview: s.full.overview,
       poster_path: s.full.poster_path,
       vote_average: s.full.vote_average, // displayed as the ⭐ meta line; NOT a scoring input

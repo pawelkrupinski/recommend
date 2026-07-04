@@ -189,6 +189,21 @@ test('watchlist persists rich card fields and returns them flattened', () => {
   assert.equal(w.card, undefined, 'the raw JSON column is not leaked to callers');
 });
 
+test('watchlist heals a seasons array (older TV save) into a count', () => {
+  // A TV title saved with the raw TMDB `seasons` array in its card must serve
+  // `seasons` as a number — an array where the card contract promises a count
+  // throws a strict client (the Android app), dropping the whole watchlist.
+  const u = newUser();
+  db.addToWatchlist({
+    user_id: u.id, tmdb_id: 1399, media_type: 'tv', title: 'Rome', year: 2005,
+    seasons: [{ air_date: '2005-08-01' }, { air_date: '2007-01-14' }],
+    episodes: 22,
+  });
+  const [w] = db.getWatchlist(u.id);
+  assert.equal(w.seasons, 2, 'a stored seasons array is served as its count');
+  assert.equal(w.episodes, 22, 'a numeric count passes through unchanged');
+});
+
 test('a sparse re-save keeps the existing rich card (COALESCE)', () => {
   const u = newUser();
   db.addToWatchlist({ user_id: u.id, tmdb_id: 7, title: 'Rich', genres: ['Drama'], vote_average: 7.0 });

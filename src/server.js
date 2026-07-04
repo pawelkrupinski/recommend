@@ -493,12 +493,13 @@ if (isMain) {
     // Warm each user's per-genre recommendation caches in the background so the
     // first Discover load and genre switches are instant.
     warmRecommendations();
-    // Pre-fetch the shared popular head-candidate details (once per distinct
-    // region/providers/language config), so cold builds after a deploy — which
-    // wipes the ephemeral, cross-user TMDB detail cache — hit warm details instead
-    // of re-paying the ~15s fetch. Re-warm periodically (details cache a day).
+    // Keep the shared, cross-user TMDB detail cache hot for each distinct
+    // region/providers/language config, so builds stay cache-hit-fast as the cache
+    // evicts over the day (details cache a day). NOT run at boot: warmRecommendations
+    // above already re-fetches those details per user right after a deploy, and
+    // piling the shared warm onto that boot storm only worsens the single CPU's
+    // contention — this runs first one interval later, as steady-state maintenance.
     const WARM_SHARED_INTERVAL_MS = 3 * 60 * 60 * 1000;
-    warmSharedDetails();
     setInterval(warmSharedDetails, WARM_SHARED_INTERVAL_MS).unref();
     // Backfill rich card fields for titles saved before save-time capture so the
     // Watchlist tab matches Discover. Fire-and-forget; only touches stale rows.

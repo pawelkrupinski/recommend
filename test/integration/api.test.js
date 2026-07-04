@@ -517,6 +517,26 @@ test('tag query param narrows recommendations to titles carrying that tone', asy
     'the pick carries its tone tags');
 });
 
+test('a tone view is seeded at the source with titles a generic sweep never surfaces', async () => {
+  // Provider 532 carries only the tone-only title (5911), which the stub surfaces
+  // solely for a keyword-scoped (with_keywords) sweep — never a generic one. So a
+  // heartfelt tone view that includes it proves a tone-SCOPED candidate source ran:
+  // without it this user's pool is empty (the heavy-account starvation — the generic
+  // popularity/trending sweeps can't reach a tone title the user hasn't consumed).
+  const { recommend, resolveFilters } = await import('../../src/taste.js');
+  const c = await client().login({ email: 'tone-source@example.com' });
+  await c.json('/api/settings', { method: 'POST', body: { providers: [532] } });
+  const me = (await c.json('/api/me')).data;
+  const { results } = await recommend({
+    userId: me.user.id, region: 'PL', providerIds: [532], genreId: undefined,
+    limit: 1000, force: true, language: 'en-US', filters: resolveFilters({ tone: 'heartfelt' }),
+  });
+  const ids = new Set(results.map((m) => m.tmdb_id));
+  assert.ok(ids.has(5911), 'a heartfelt title only a keyword-scoped sweep reaches made it into the tone pool');
+  const pick = results.find((m) => m.tmdb_id === 5911);
+  assert.deepEqual(pick.tones, [{ slug: 'heartfelt', label: 'Heartfelt' }], 'the seeded pick carries the heartfelt tone');
+});
+
 test('an unknown tag is ignored rather than emptying the pool', async () => {
   const c = await client().login({ email: 'tone-bogus@example.com' });
   await c.json('/api/settings', { method: 'POST', body: { providers: [8] } });

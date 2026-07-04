@@ -72,6 +72,18 @@ const GENRE_ONLY = [
 ];
 const GENRE_ONLY_IDS = new Set(GENRE_ONLY.map((m) => m.id));
 
+// Titles a TONE-scoped Discover sweep (with_keywords) surfaces that no un-keyword'd
+// sweep does — the tone long tail. `keywordId` 319357 ("heartwarming") is in the
+// heartfelt crosswalk, so the title both matches the with_keywords sweep AND passes
+// the post-fetch tone drop. It streams on its own TONE_ONLY_PROVIDER (nothing else
+// does), so a user on just that service has an EMPTY tone view unless the tone source
+// seeds it — the heavy-account starvation the tone source fixes, in miniature.
+const TONE_ONLY_PROVIDER = 532;
+const TONE_ONLY = [
+  { id: 5911, title: 'Stub Tone-Only Heartfelt', genreId: 18, country: 'FR', companyId: 99999, keywordId: 319357 },
+];
+const TONE_ONLY_IDS = new Set(TONE_ONLY.map((m) => m.id));
+
 const PROVIDERS = [
   { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png', display_priority: 1 },
   { provider_id: 337, provider_name: 'Disney Plus Test', logo_path: '/disney.png', display_priority: 2 },
@@ -169,18 +181,20 @@ const card = (m, language) => ({
 
 // Full /movie/:id detail with the appended blocks taste.js reads.
 function details(id, language) {
-  const known = [...POPULAR, ...DISCOVER, ...TRENDING, ...GENRE_ONLY].find((m) => m.id === id);
+  const known = [...POPULAR, ...DISCOVER, ...TRENDING, ...GENRE_ONLY, ...TONE_ONLY].find((m) => m.id === id);
   const title = known?.title || `Stub Movie ${id}`;
   const genreId = known?.genreId || 28;
   const country = known?.country || 'US';
   const companyId = known?.companyId || 99999;
-  // Genre-only titles stream on GENRE_ONLY_PROVIDER; the backfill pool on
-  // BACKFILL_PROVIDER; everything else on the default 8.
+  // Genre-only titles stream on GENRE_ONLY_PROVIDER; tone-only on TONE_ONLY_PROVIDER;
+  // the backfill pool on BACKFILL_PROVIDER; everything else on the default 8.
   const provider = GENRE_ONLY_IDS.has(id)
     ? { provider_id: GENRE_ONLY_PROVIDER, provider_name: 'Paramount Plus Test', logo_path: '/paramount.png' }
-    : id >= DEEP_DISCOVER[0].id
-      ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
-      : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
+    : TONE_ONLY_IDS.has(id)
+      ? { provider_id: TONE_ONLY_PROVIDER, provider_name: 'Apple TV Test', logo_path: '/apple.png' }
+      : id >= DEEP_DISCOVER[0].id
+        ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
+        : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
   return {
     id,
     title,
@@ -192,11 +206,12 @@ function details(id, language) {
     genres: [{ id: genreId, name: genreName(genreId, language) || 'Action' }],
     production_countries: [{ iso_3166_1: country, name: country }],
     production_companies: [{ id: companyId, name: `Company ${companyId}` }],
-    // Title 202 carries TMDB keyword 319357 ("heartwarming"), which the tone map
-    // resolves to the "heartfelt" tone — so the tone filter / chips have exactly
-    // one matching fixture to assert against (the others carry only the inert stub
-    // keyword and so have no tone).
-    keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }, ...(id === 202 ? [{ id: 319357, name: 'heartwarming' }] : [])] },
+    // TMDB keyword 319357 ("heartwarming") resolves to the "heartfelt" tone. Title
+    // 202 carries it so the tone filter / chips have a matching Discover fixture; the
+    // tone-only title (keywordId 319357) carries it too so it both matches the
+    // with_keywords sweep and survives the post-fetch tone drop. Every other title
+    // carries only the inert stub keyword and so has no tone.
+    keywords: { keywords: [{ id: 9000, name: 'stub-keyword' }, ...((id === 202 || known?.keywordId) ? [{ id: 319357, name: 'heartwarming' }] : [])] },
     credits: {
       crew: [{ id: 500, job: 'Director', name: 'Stub Director' }],
       cast: [{ id: 600, name: 'Stub Actor' }],
@@ -247,7 +262,14 @@ export function stub(path, params = {}) {
     const genreOnly = params.with_genres
       ? GENRE_ONLY.filter((m) => String(m.genreId) === String(params.with_genres))
       : [];
-    return { page, total_pages: 1, results: [...DISCOVER, ...deep, ...genreOnly].map((m) => card(m, params.language)) };
+    // Tone-only titles surface ONLY for a keyword-scoped sweep (with_keywords set,
+    // OR-joined by | or ,) whose id set covers the title's keyword — so they reach
+    // the pool only via the tone source, never a generic sweep.
+    const keywordIds = new Set(String(params.with_keywords || '').split(/[,|]/).map(Number));
+    const toneOnly = params.with_keywords
+      ? TONE_ONLY.filter((m) => keywordIds.has(m.keywordId))
+      : [];
+    return { page, total_pages: 1, results: [...DISCOVER, ...deep, ...genreOnly, ...toneOnly].map((m) => card(m, params.language)) };
   }
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };

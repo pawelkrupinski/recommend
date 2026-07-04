@@ -10,8 +10,8 @@
 //   {
 //     name: string,                       // for logging / dedup attribution
 //     configured(): boolean,              // is its backend usable right now?
-//     fetch(ctx): Promise<Candidate[]>,   // ctx = { region, providerIds,
-//                                         //         genreId, ratings, language }
+//     fetch(ctx): Promise<Candidate[]>,   // ctx = { region, providerIds, genreId,
+//                                         //         tone, ratings, language }
 //   }
 // where Candidate = { id, title?, year?, collab? }. `id` is the TMDB movie id.
 // `collab` (optional) is a crowd-co-watch hit count that the scorer folds in as
@@ -20,6 +20,7 @@
 // Adding a source is open/closed: write one object, drop it in ALL_SOURCES. No
 // switch to edit, no change to buildCorpus.
 import { discover, recommendations, similar, trending, details, genres as tmdbGenres, tmdbConfigured } from './tmdb.js';
+import { tmdbKeywordIdsForTone } from './tones.js';
 import { traktConfigured, relatedMovies, traktChart } from './trakt.js';
 import { letterboxdCandidates } from './letterboxd.js';
 import { filmwebCandidates } from './filmweb.js';
@@ -71,10 +72,10 @@ export async function pageUntilFresh({ fetchPage, want, consumed, mediaType = 'm
   }
   return out;
 }
-const discoverFresh = ({ region, providerIds, genreId, mediaType = 'movie', language, sortBy, voteCountGte, voteCountLte, withCompanies, want, consumed }) =>
+const discoverFresh = ({ region, providerIds, genreId, mediaType = 'movie', language, sortBy, voteCountGte, voteCountLte, withCompanies, withKeywords, want, consumed }) =>
   pageUntilFresh({
     want, consumed, mediaType,
-    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType, page, sortBy, voteCountGte, voteCountLte, withCompanies, language }),
+    fetchPage: (page) => discover({ region, providerIds, genreId, mediaType, page, sortBy, voteCountGte, voteCountLte, withCompanies, withKeywords, language }),
   });
 
 // How many not-yet-handled candidates each provider-scoped sweep aims to surface
@@ -149,6 +150,30 @@ export const tmdbDiscoverByGenre = (mediaType) => ({
       out.push(...await discoverFresh({ ...ctx, mediaType, genreId, sortBy: 'popularity.desc', voteCountGte: 50, want: PER_GENRE_TARGET }));
     }
     return out;
+  },
+});
+
+// Tone-scoped depth for a tone view (?tag=heartfelt / the Discover "tone" control).
+// The tone filter is otherwise applied ONLY as a post-fetch hard drop (taste.js), so
+// a tone view relies on the generic popularity/top-rated/trending sweeps happening
+// to surface tone-carrying titles — and a heavy user has already rated/dismissed/
+// shelved exactly those popular heads, so the head build finds zero survivors and the
+// grid comes up empty. This seeds the pool at the SOURCE with titles that actually
+// carry the tone's TMDB keywords (with_keywords, the with_genres analog), so a tone
+// view runs as deep as the keyword catalogue does. Gated on ctx.tone (set only when a
+// tone filter is active) and on having providers to scope by; a no-op otherwise, so a
+// non-tone build issues no extra TMDB call. Keywords are OR-joined (pipe) — a title
+// carrying ANY of the tone's keywords qualifies (comma would AND them → nothing).
+const TONE_FRESH_TARGET = 60;
+export const tmdbDiscoverByTone = (mediaType) => ({
+  name: `tmdb-discover-by-tone-${mediaType}`,
+  mediaType,
+  configured: tmdbConfigured,
+  fetch(ctx) {
+    if (!ctx.tone || !ctx.providerIds?.length) return Promise.resolve([]);
+    const withKeywords = tmdbKeywordIdsForTone(ctx.tone).join('|');
+    if (!withKeywords) return Promise.resolve([]);
+    return discoverFresh({ ...ctx, mediaType, withKeywords, sortBy: 'popularity.desc', voteCountGte: 50, want: TONE_FRESH_TARGET });
   },
 });
 
@@ -335,6 +360,7 @@ export const ALL_SOURCES = [
   tmdbDiscoverTopRated('movie'),
   tmdbDiscoverTopRated('tv'),
   tmdbDiscoverByGenre('movie'),
+  tmdbDiscoverByTone('movie'),
   tmdbIndieDistributors,
   tmdbCuratedProviders,
   tmdbHiddenGems,
@@ -364,7 +390,7 @@ export const ALL_SOURCES = [
 export function sourcesFor(type) {
   if (type !== 'movie' && type !== 'tv') return ALL_SOURCES;
   const ofType = ALL_SOURCES.filter((s) => (s.mediaType || 'movie') === type);
-  return type === 'tv' ? [...ofType, tmdbDiscoverByGenre('tv')] : ofType;
+  return type === 'tv' ? [...ofType, tmdbDiscoverByGenre('tv'), tmdbDiscoverByTone('tv')] : ofType;
 }
 
 // Run every configured source concurrently and merge their candidates into a

@@ -244,14 +244,17 @@ export const providersForRegion = (region, mediaType = 'movie') =>
 // (with a higher vote floor) for the acclaimed-but-less-watched pool.
 // `voteCountLte` caps the rating base (the "hidden gems" band where indie films
 // live); `withCompanies` is a pipe-joined OR of production-company ids that scopes
-// the sweep to art-house distributors (the indie-distributor source).
-export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, voteCountLte, withCompanies, language }) {
+// the sweep to art-house distributors (the indie-distributor source); `withKeywords`
+// is a pipe-joined OR of TMDB keyword ids that scopes the sweep to a tone's keywords
+// (the tone source) — the with_genres analog for the tone filter.
+export function discover({ region, providerIds, genreId, mediaType = 'movie', page = 1, sortBy = 'popularity.desc', voteCountGte = 50, voteCountLte, withCompanies, withKeywords, language }) {
   return tmdb(`/discover/${mediaType}`, {
     watch_region: region,
     with_watch_providers: providerIds.join('|'),
     with_watch_monetization_types: 'flatrate',
     ...(genreId ? { with_genres: String(genreId) } : {}),
     ...(withCompanies ? { with_companies: withCompanies } : {}),
+    ...(withKeywords ? { with_keywords: withKeywords } : {}),
     sort_by: sortBy,
     page,
     'vote_count.gte': voteCountGte,

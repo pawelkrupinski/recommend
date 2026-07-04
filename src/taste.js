@@ -297,7 +297,7 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
   // one-type pool fills entirely with the wanted type instead of starving (see
   // sourcesFor). No filter keeps the full mixed registry.
   const { candidates, collab } = await gatherCandidates(
-    { region, providerIds, genreId, ratings, language, consumed }, sourcesFor(filters.type));
+    { region, providerIds, genreId, tone: filters.tone, ratings, language, consumed }, sourcesFor(filters.type));
   const gatherMs = performance.now() - tGather;
 
   // Drop handled titles BEFORE the cap, so the (capped) detail-fetch budget is

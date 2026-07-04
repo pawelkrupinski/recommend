@@ -62,6 +62,27 @@ export const crosswalks = {
   letterboxd: loadMap('map-letterboxd.json'), // { "<nanogenre name>": ["slug", …] }
 };
 
+// Inverted TMDB crosswalk: tone slug → the TMDB keyword ids that map onto it.
+// The tone filter itself is applied post-fetch (a hard drop in taste.js), but a
+// tone-scoped candidate SOURCE needs these ids to seed a TMDB /discover sweep via
+// with_keywords — the exact mirror of the genre source's with_genres. Built once
+// from the same crosswalk the live/feeder tone derivation reads.
+const TMDB_KEYWORD_IDS_BY_TONE = (() => {
+  const byTone = new Map();
+  for (const [keywordId, slugs] of Object.entries(TMDB_KEYWORD_MAP)) {
+    for (const s of slugs) {
+      if (!LABELS.has(s)) continue;
+      if (!byTone.has(s)) byTone.set(s, []);
+      byTone.get(s).push(keywordId);
+    }
+  }
+  return byTone;
+})();
+
+// The TMDB keyword ids a tone-scoped Discover sweep should match (OR-joined by the
+// caller). Empty for an unknown slug or a tone with no TMDB-keyword crosswalk.
+export const tmdbKeywordIdsForTone = (slug) => TMDB_KEYWORD_IDS_BY_TONE.get(slug) || [];
+
 // A known tone slug? Guards the ?tag= filter so an unknown value is ignored
 // (no pool built for it) rather than silently returning an empty grid.
 export const isTone = (slug) => LABELS.has(slug);

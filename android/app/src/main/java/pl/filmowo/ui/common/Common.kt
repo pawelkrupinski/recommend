@@ -5,7 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -20,10 +21,15 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -75,22 +81,44 @@ private fun PlaceholderGlyph() {
     )
 }
 
-/** Ten tap-to-rate stars (1–10 → the web's rating/10). Tapping a star commits it. */
+/**
+ * Ten 1–10 rating stars. Tap a star to rate, or — like the web widget — drag
+ * horizontally across the row to preview the rating under your finger and lift
+ * to commit. A vertical drag is left to the enclosing scroll container.
+ */
 @Composable
-fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier, filledUpTo: Int = 0) {
-    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
+    var preview by remember { mutableStateOf(0) }
+    Row(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { off -> preview = starAt(off.x, size.width) },
+                    onDragEnd = { if (preview > 0) onRate(preview); preview = 0 },
+                    onDragCancel = { preview = 0 },
+                ) { change, _ -> preview = starAt(change.position.x, size.width) }
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { off -> starAt(off.x, size.width).takeIf { it > 0 }?.let(onRate) }
+            },
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
         for (n in 1..10) {
             Icon(
-                imageVector = if (n <= filledUpTo) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                imageVector = if (n <= preview) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 contentDescription = "Rate $n",
-                tint = if (n <= filledUpTo) Accent else TextMuted,
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable { onRate(n) },
+                tint = if (n <= preview) Accent else TextMuted,
+                modifier = Modifier.size(24.dp),
             )
         }
     }
+}
+
+/** Which star (1–10) a horizontal offset `x` falls on within a row `width` px
+ *  wide; 0 when the finger is off the left edge (clears the preview). */
+private fun starAt(x: Float, width: Int): Int {
+    if (width <= 0 || x < 0f) return 0
+    return ((x / width) * 10f).toInt().coerceIn(0, 9) + 1
 }
 
 /** IMDb + Metacritic badges, mirroring the web `.rb.imdb` / `.rb.mc` pills. */

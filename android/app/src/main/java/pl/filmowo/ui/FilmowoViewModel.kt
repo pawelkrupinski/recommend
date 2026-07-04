@@ -280,7 +280,10 @@ class FilmowoViewModel(
 
     fun removeFromWatchlist(pick: Pick) {
         _watchlist.update { it.copy(items = it.items.filterNot { p -> p.key == pick.key }) }
-        viewModelScope.launch { runCatching { api.removeFromWatchlist(pick.tmdbId, pick.mediaType) } }
+        viewModelScope.launch {
+            runCatching { api.removeFromWatchlist(pick.tmdbId, pick.mediaType) }
+            loadWatchlist() // re-sync with the server after the mutation lands
+        }
     }
 
     private fun sortWatchlist(items: List<Pick>, sort: String): List<Pick> =

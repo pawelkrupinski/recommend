@@ -160,6 +160,48 @@ class FilmowoViewModelTest {
         assertNotNull(after.picks.firstOrNull { it.tmdbId == 100 })
     }
 
+    @Test
+    fun `removing a watchlist item re-syncs from the server`() {
+        val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
+        var removed = false
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                requests.add("${request.method} $path")
+                val body = when (path) {
+                    "/api/me" -> me
+                    "/api/watchlist" -> {
+                        if (request.method == "DELETE") removed = true
+                        if (removed) """{"watchlist":[]}""" else """{"watchlist":[{"tmdb_id":7,"media_type":"movie","title":"Amelie"}]}"""
+                    }
+                    "/api/ratings" -> """{"ratings":[${(1..10).joinToString(",") { "{\"tmdb_id\":$it,\"rating\":7}" }}]}"""
+                    "/api/recommend" -> """{"profileSize":10,"results":[]}"""
+                    else -> "{}"
+                }
+                return MockResponse().setBody(body)
+            }
+        }
+        val vm = viewModel()
+        val loaded = await(vm.watchlist) { it.items.size == 1 }
+        vm.removeFromWatchlist(loaded.items.first())
+
+        // The optimistic removal clears the list immediately, so poll the request
+        // log for proof the mutation hit the server AND a fresh GET followed it to
+        // re-sync (both run on IO threads behind the optimistic update).
+        val synced = runBlocking {
+            val start = System.currentTimeMillis()
+            while (System.currentTimeMillis() - start < 5_000) {
+                val snap = synchronized(requests) { requests.toList() }
+                val delete = snap.indexOfLast { it == "DELETE /api/watchlist" }
+                val getAfter = snap.withIndex().firstOrNull { (i, r) -> i > delete && r == "GET /api/watchlist" }?.index ?: -1
+                if (delete >= 0 && getAfter > delete) return@runBlocking true
+                delay(15)
+            }
+            false
+        }
+        assertTrue("expected DELETE then GET on /api/watchlist; saw $requests", synced)
+    }
+
     private class FakeAuth : SessionAuth {
         override fun startWebSignIn(context: Context, provider: String) {}
         override suspend fun exchangeCode(code: String) = true

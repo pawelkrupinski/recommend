@@ -16,6 +16,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -127,6 +128,10 @@ private fun DiscoverTab(vm: FilmowoViewModel) {
 @Composable
 private fun WatchlistTab(vm: FilmowoViewModel) {
     val state by vm.watchlist.collectAsStateWithLifecycle()
+    val me by vm.me.collectAsStateWithLifecycle()
+    // Pull the watchlist from the server whenever the tab is opened and whenever
+    // the account changes (e.g. right after signing in), so it stays in sync.
+    LaunchedEffect(me?.user?.email, me?.anonymous) { vm.loadWatchlist() }
     WatchlistScreen(
         state = state,
         onOpen = { vm.openDetail(it, fromWatchlist = true) },

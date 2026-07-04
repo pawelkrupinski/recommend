@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.height
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -38,5 +39,18 @@ class RatingBadgesTest {
         val withBadges = rule.onNodeWithTag("with").getUnclippedBoundsInRoot().height
         val without = rule.onNodeWithTag("without").getUnclippedBoundsInRoot().height
         assertEquals(withBadges.value.toDouble(), without.value.toDouble(), 0.5)
+    }
+
+    @Test
+    fun `imdb is a two-part label+value pill and metacritic a bare score`() {
+        // Matching the movies app: IMDb splits into an "IMDb" label tab and a
+        // one-decimal value tab (never a whole number), Metacritic is just the
+        // colour-coded number — not the old single "IMDb 7" / "MC 83" pills.
+        rule.setContent { RatingBadges(Pick(tmdbId = 1, imdbRating = 7.0, metascore = 83)) }
+        rule.onNodeWithText("IMDb").assertExists()
+        rule.onNodeWithText("7.0").assertExists()
+        rule.onNodeWithText("83").assertExists()
+        rule.onNodeWithText("MC 83").assertDoesNotExist()
+        rule.onNodeWithText("IMDb 7.0").assertDoesNotExist()
     }
 }

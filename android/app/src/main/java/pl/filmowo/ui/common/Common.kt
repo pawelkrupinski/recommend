@@ -9,9 +9,10 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,17 +29,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import pl.filmowo.model.Pick
 import pl.filmowo.ui.theme.Accent
+import pl.filmowo.ui.theme.CardElevated
 import pl.filmowo.ui.theme.ImdbYellow
 import pl.filmowo.ui.theme.MetaBad
 import pl.filmowo.ui.theme.MetaGood
@@ -122,33 +131,90 @@ private fun starAt(x: Float, width: Int): Int {
     return ((x / width) * 10f).toInt().coerceIn(0, 9) + 1
 }
 
-/** IMDb + Metacritic badges, mirroring the web `.rb.imdb` / `.rb.mc` pills. */
+/**
+ * IMDb + Metacritic rating pills, matching the movies (kinowo) Android app: a
+ * two-tone IMDb label+value pill (yellow "IMDb" tab + a dark value tab) and a
+ * solid Metacritic score pill (just the colour-coded number on the same dark
+ * surface). Same trimmed text box, colours, base sizes (11sp / 4dp h-pad /
+ * 3dp v-pad / 3dp corner / 4dp gap) and viewport scaling anchored at ~411dp.
+ */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RatingBadges(pick: Pick, modifier: Modifier = Modifier) {
-    // Reserve a constant height so a card with no badges (or one still awaiting
-    // enrichment) is exactly as tall as one with them — keeps cards in a grid row
-    // the same height instead of shifting the stars/buttons below.
-    Row(
-        modifier = modifier.height(20.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    // Pills scale with the phone's width, anchored where the base sizes were
+    // tuned (scale 1.0 at ~411dp), clamped so tiny/huge configs stay sensible.
+    val scale = (LocalConfiguration.current.screenWidthDp / 411f).coerceIn(0.85f, 1.4f)
+    val fontSize = (11f * scale).sp
+    val hPad = (4f * scale).dp
+    val vPad = (3f * scale).dp
+    val corner = (3f * scale).dp
+    val gap = (4f * scale).dp
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(gap),
+        verticalArrangement = Arrangement.spacedBy(gap),
     ) {
-        pick.imdbRating?.let { Badge("IMDb ${trim1(it)}", ImdbYellow, Color.Black) }
-        pick.metascore?.let { Badge("MC $it", metaColor(it), Color.White) }
+        pick.imdbRating?.let { v ->
+            LabelValuePill("IMDb", ImdbYellow, Color.Black, oneDecimal(v), ImdbYellow, fontSize, hPad, vPad, corner)
+        }
+        pick.metascore?.let { v ->
+            SinglePill(v.toString(), metaColor(v), fontSize, hPad, vPad, corner)
+        }
+        // With no ratings yet, reserve exactly one pill's height with an invisible
+        // pill, so a still-enriching card stays as tall as its neighbours — keeps
+        // side-by-side grid cards the same height (see RatingBadgesTest).
+        if (pick.imdbRating == null && pick.metascore == null) {
+            SinglePill("0", Color.White, fontSize, hPad, vPad, corner, Modifier.alpha(0f))
+        }
     }
 }
 
+/** The trimmed text style shared by every pill. `includeFontPadding = false`
+ *  drops the extra leading a bare `Text` adds (the Compose cousin of the web's
+ *  `text-box-trim`) so the pills don't read tall; the centred line-box trim keeps
+ *  the glyphs centred. Mirrors the movies app's `pillTextStyle`. */
+private fun pillTextStyle(fontSize: TextUnit, weight: FontWeight) = TextStyle(
+    fontSize = fontSize,
+    fontWeight = weight,
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+    lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.Both,
+    ),
+)
+
+/** Two-tone pill: a solid colour label tab joined to a dark value tab. */
 @Composable
-private fun Badge(text: String, bg: Color, fg: Color) {
+private fun LabelValuePill(
+    label: String, labelBg: Color, labelFg: Color,
+    value: String, valueFg: Color,
+    fontSize: TextUnit, hPad: Dp, vPad: Dp, corner: Dp,
+) {
+    Row(modifier = Modifier.clip(RoundedCornerShape(corner))) {
+        Text(
+            label, color = labelFg, style = pillTextStyle(fontSize, FontWeight.Black),
+            modifier = Modifier.background(labelBg).padding(horizontal = hPad, vertical = vPad),
+        )
+        Text(
+            value, color = valueFg, style = pillTextStyle(fontSize, FontWeight.SemiBold),
+            modifier = Modifier.background(CardElevated).padding(horizontal = hPad, vertical = vPad),
+        )
+    }
+}
+
+/** Solid pill: a single colour-coded value on the dark surface (Metacritic). */
+@Composable
+private fun SinglePill(
+    text: String, fg: Color,
+    fontSize: TextUnit, hPad: Dp, vPad: Dp, corner: Dp,
+    modifier: Modifier = Modifier,
+) {
     Text(
-        text = text,
-        color = fg,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(bg)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+        text, color = fg, style = pillTextStyle(fontSize, FontWeight.SemiBold),
+        modifier = modifier
+            .clip(RoundedCornerShape(corner))
+            .background(CardElevated)
+            .padding(horizontal = hPad, vertical = vPad),
     )
 }
 
@@ -158,7 +224,8 @@ private fun metaColor(score: Int): Color = when {
     else -> MetaBad
 }
 
-private fun trim1(v: Double): String = if (v == v.toLong().toDouble()) v.toLong().toString() else "%.1f".format(v)
+/** One-decimal IMDb score, dot separator regardless of locale ("7" → "7.0"). */
+private fun oneDecimal(value: Double): String = String.format(java.util.Locale.US, "%.1f", value)
 
 /** Open an external URL (streaming link, trailer, credit). No-op on bad URLs. */
 fun openUrl(context: Context, url: String?) {

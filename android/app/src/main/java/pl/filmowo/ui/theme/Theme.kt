@@ -18,6 +18,9 @@ val TextMuted = Color(0xFF9A9AA8)
 
 // Rating-badge inks (mirror the web `.rb.imdb` / `.rb.mc`).
 val ImdbYellow = Color(0xFFF5C518)
+// The value half of a two-tone rating pill sits on this raised surface (matches
+// the movies app's CardElevated so the pills render identically).
+val CardElevated = Color(0xFF2A2A3E)
 val MetaGood = Color(0xFF66CC66)
 val MetaMid = Color(0xFFE0C040)
 val MetaBad = Color(0xFFE05050)

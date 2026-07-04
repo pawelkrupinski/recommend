@@ -2,7 +2,4 @@
 <resources>
     <color name="brand">#FFE0A106</color>
     <color name="background">#FF0B0B12</color>
-    <!-- The navy field of the launcher icon; the adaptive icon's background layer
-         so masked corners match the artwork (see mipmap-anydpi-v26/ic_launcher). -->
-    <color name="ic_launcher_background">#FF0B103F</color>
 </resources>

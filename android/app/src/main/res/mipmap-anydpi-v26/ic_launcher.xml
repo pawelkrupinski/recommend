@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive launcher icon (API 26+, which is our minSdk): the red-TV artwork
-     over the navy field it was designed on, so any launcher mask (circle,
-     squircle, rounded square) crops navy corners rather than clipping the TV. -->
+<!-- Adaptive icon (API 26+, our minSdk), matching the movies app: the red-TV
+     artwork sits centred on its navy field in the background layer with a
+     margin, so the launcher mask just rounds the corners and the TV shows
+     fully at a comfortable size (not zoomed/cropped as a foreground would be).
+     Foreground is empty. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background" />
-    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <background android:drawable="@mipmap/ic_launcher_art" />
+    <foreground android:drawable="@android:color/transparent" />
 </adaptive-icon>

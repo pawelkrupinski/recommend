@@ -161,6 +161,11 @@ test('rating a saved title in its popup records the rating and drops it from the
   const rate = page.locator('#modal-body .rate-watched');
   await expect(rate).toBeVisible();
 
+  // On desktop all 10 stars sit in a single row (one distinct top edge).
+  const rows = await rate.locator('.stars span').evaluateAll(
+    (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
+  expect(rows).toBe(1);
+
   // Rating it 8/10 closes the modal and drops the title from the list…
   await rate.locator('.stars span[data-n="8"]').click();
   await expect(page.locator('#modal')).toBeHidden();

@@ -388,6 +388,11 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .rate-watched { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
 .rate-watched > .sub { margin: 0 0 8px; }
 .rate-watched .rate-stars { margin: 0; }
+/* The popup is wide enough on desktop to lay all 10 stars in a single row
+   (the card widget wraps to two rows of 5 for its narrow column). */
+@media (min-width: 641px) {
+  .rate-watched .stars { grid-template-columns: repeat(10, 1fr); }
+}
 .trailers { margin-top: 14px; }
 /* Blue, not the orange --accent the streaming-service links (.where a) use, so
    the two aren't confused for each other in the popup. */

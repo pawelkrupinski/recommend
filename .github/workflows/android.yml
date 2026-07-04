@@ -27,7 +27,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # `contents: write` so the rolling-release step can create/update the
+      # public `android-latest` GitHub Release + its tag.
+      contents: write
       checks: write
     defaults:
       run:
@@ -94,3 +96,29 @@ jobs:
           name: filmowo-release-aab
           path: android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
+      # Publish the APK to a rolling `android-latest` GitHub Release so it has a
+      # stable, anonymous download URL — unlike the login-gated, ~90-day-expiring
+      # upload-artifact above:
+      #   https://github.com/${{ github.repository }}/releases/download/android-latest/filmowo.apk
+      # We ship the DEBUG APK: it's auto-signed with the debug keystore (so it
+      # installs AND updates in place across builds), whereas the release APK is
+      # unsigned here and won't install. It points at https://filmowo.fly.dev. The
+      # release AAB rides along for a future Play upload. Swap to the signed
+      # release APK once a keystore secret exists. Main pushes / manual only.
+      - name: Publish rolling APK release
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/filmowo.apk"
+          cp app/build/outputs/bundle/release/app-release.aab "$RUNNER_TEMP/filmowo.aab"
+          gh release delete android-latest --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create android-latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Filmowo Android (latest)" \
+            --notes "Debug build from the latest \`main\` commit (${GITHUB_SHA:0:7}), talking to https://filmowo.fly.dev. Sideload \`filmowo.apk\` on Android (enable installing from unknown sources). \`filmowo.aab\` is the (unsigned) Play bundle." \
+            "$RUNNER_TEMP/filmowo.apk" \
+            "$RUNNER_TEMP/filmowo.aab"

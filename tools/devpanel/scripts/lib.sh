@@ -1,0 +1,134 @@
+# Shared helpers for the DevPanel action scripts.
+# Sourced (not executed) by each script; expects SCRIPT_DIR to be set first.
+
+# A GUI-launched .app inherits a minimal PATH (no Homebrew, no Android SDK, maybe
+# no node), so adb / gradle / npm aren't found the way they are in a terminal.
+# Append the usual dev-tool locations (existing dirs not already on PATH).
+_devpanel_extra_paths=(/opt/homebrew/bin /usr/local/bin "$HOME/Library/Android/sdk/platform-tools")
+[[ -n "${ANDROID_HOME:-}" ]] && _devpanel_extra_paths+=("$ANDROID_HOME/platform-tools")
+[[ -n "${ANDROID_SDK_ROOT:-}" ]] && _devpanel_extra_paths+=("$ANDROID_SDK_ROOT/platform-tools")
+for _p in "${_devpanel_extra_paths[@]}"; do
+  [[ -d "$_p" && ":$PATH:" != *":$_p:"* ]] && PATH="$PATH:$_p"
+done
+export PATH
+
+# Repo root: a worktree path the panel passes via DEVPANEL_REPO_ROOT (the
+# long-press "run on worktree" menu), else three levels up from this script.
+REPO_ROOT="${DEVPANEL_REPO_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd)}"
+
+# step <cmd...> — announce and run one command. DEVPANEL_PRINT_ONLY=1 prints the
+# command instead of running it (test.sh asserts on those lines).
+step() {
+  if [[ "${DEVPANEL_PRINT_ONLY:-}" == "1" ]]; then
+    printf '%s\n' "$*"
+    return 0
+  fi
+  printf '\n\033[1m▶ %s\033[0m\n' "$*"
+  "$@"
+}
+
+# dispatch <workdir> <label> <cmd...> — cd into <workdir> and `exec` a
+# long-running command (server/gradle) so it owns the console's subprocess.
+# DEVPANEL_PRINT_ONLY=1 prints `cd <dir> && <cmd>` and returns.
+dispatch() {
+  local workdir="$1"; shift
+  local label="$1"; shift
+  if [[ "${DEVPANEL_PRINT_ONLY:-}" == "1" ]]; then
+    printf 'cd %s && %s\n' "$workdir" "$*"
+    return 0
+  fi
+  printf '\033[1m▶ %s\033[0m\n' "$label"
+  printf '  dir: %s\n  cmd: %s\n\n' "$workdir" "$*"
+  cd "$workdir"
+  exec "$@"
+}
+
+# resolve_adb — echo a usable adb path, or nothing. Order: $DEVPANEL_ADB, an adb
+# on PATH, the SDK from android/local.properties' sdk.dir, then default locations.
+resolve_adb() {
+  if [[ -n "${DEVPANEL_ADB:-}" ]]; then echo "$DEVPANEL_ADB"; return 0; fi
+  command -v adb 2>/dev/null && return 0
+  local sdk cand
+  sdk="$(sed -n 's/^sdk\.dir=//p' "$REPO_ROOT/android/local.properties" 2>/dev/null | head -1)"
+  for cand in "$sdk/platform-tools/adb" "${ANDROID_HOME:-}/platform-tools/adb" \
+              "${ANDROID_SDK_ROOT:-}/platform-tools/adb" "$HOME/Library/Android/sdk/platform-tools/adb"; do
+    [[ -n "$cand" && -x "$cand" ]] && { echo "$cand"; return 0; }
+  done
+  return 0
+}
+
+# android_serial — echo the device serial to target. $DEVPANEL_ANDROID_SERIAL
+# wins; else the single attached device; else the first of several (noting so to
+# stderr). Empty if adb missing / no device.
+android_serial() {
+  [[ -n "${DEVPANEL_ANDROID_SERIAL:-}" ]] && { echo "$DEVPANEL_ANDROID_SERIAL"; return 0; }
+  local adb; adb="$(resolve_adb)"
+  command -v "$adb" >/dev/null 2>&1 || return 0
+  local serials n
+  serials="$("$adb" devices 2>/dev/null | awk '$2=="device"{print $1}')"
+  n="$(printf '%s\n' "$serials" | grep -c .)"
+  if [[ "$n" -gt 1 ]]; then
+    echo "  multiple devices attached: $(echo $serials) — using the first; set DEVPANEL_ANDROID_SERIAL to pick" >&2
+    printf '%s\n' "$serials" | head -1
+  elif [[ "$n" -eq 1 ]]; then
+    printf '%s\n' "$serials"
+  fi
+}
+
+# android_device_state [serial] — echo the adb connection state of the target:
+# "device" (ready), "unauthorized", "offline", or empty when none is attached.
+android_device_state() {
+  local serial="${1:-}" adb; adb="$(resolve_adb)"
+  { [[ -z "$adb" ]] || ! command -v "$adb" >/dev/null 2>&1; } && return 0
+  "$adb" devices 2>/dev/null | awk -v s="$serial" '
+    NR==1 { next }
+    NF < 2 { next }
+    s != "" { if ($1 == s) { print $2; exit } next }
+    { print $2; exit }
+  '
+}
+
+# wait_for_android_unlock [serial] — block until the cabled device is authorized
+# AND its keyguard is dismissed. A plugged-in phone that hasn't accepted the
+# "Allow USB debugging" prompt sits in "unauthorized" (and `adb wait-for-device`
+# would hang silently), so we poll the state ourselves and tell the user what to
+# do. If no lock flag is exposed, we degrade to "assume unlocked" rather than
+# hang. No-op under DEVPANEL_PRINT_ONLY.
+wait_for_android_unlock() {
+  [[ "${DEVPANEL_PRINT_ONLY:-}" == "1" ]] && { echo "wait_for_android_unlock"; return 0; }
+  local serial="${1:-}" adb
+  adb="$(resolve_adb)"
+  if [[ -z "$adb" ]] || ! command -v "$adb" >/dev/null 2>&1; then
+    echo "  (adb not found — skipping unlock wait; set DEVPANEL_ADB or ANDROID_HOME)"
+    return 0
+  fi
+
+  local state announced_state=
+  while :; do
+    state="$(android_device_state "$serial")"
+    [[ "$state" == device ]] && { [[ -n "$announced_state" ]] && echo "  device ready."; break; }
+    case "$state" in
+      unauthorized) [[ "$announced_state" != unauthorized ]] && \
+        echo "🔒 Android device is unauthorized — accept the “Allow USB debugging” prompt on the device…" ;;
+      offline)      [[ "$announced_state" != offline ]] && \
+        echo "⏳ Android device is offline — reconnecting…" ;;
+      *)            [[ "$announced_state" != absent ]] && \
+        echo "🔌 waiting for an Android device to be attached…" ;;
+    esac
+    announced_state="${state:-absent}"
+    sleep 2
+  done
+
+  local s=""; [[ -n "$serial" ]] && s="-s $serial"
+  local announced= win lock
+  while :; do
+    win="$("$adb" $s shell dumpsys window 2>/dev/null)"
+    lock="$(printf '%s' "$win" | grep -oE 'mDreamingLockscreen=(true|false)' | head -1)"
+    [[ -z "$lock" ]] && lock="$(printf '%s' "$win" | grep -oE 'mKeyguardShowing=(true|false)' | head -1)"
+    case "$lock" in
+      *=false|"") [[ -n "$announced" ]] && echo "  unlocked."; return 0 ;;
+    esac
+    if [[ -z "$announced" ]]; then echo "🔒 waiting for Android unlock…"; announced=1; fi
+    sleep 2
+  done
+}

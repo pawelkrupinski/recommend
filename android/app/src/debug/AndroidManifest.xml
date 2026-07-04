@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Debug builds may point at a local dev server over http (the DevPanel wires
+         `adb reverse tcp:9002` so the cabled device's localhost reaches the Mac's
+         `npm run dev`). Allow cleartext for DEBUG only; the release build keeps
+         usesCleartextTraffic=false and talks to https://filmowo.fly.dev. -->
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+</manifest>

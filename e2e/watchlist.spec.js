@@ -140,6 +140,39 @@ test('the IMDb and Metacritic badges are links out to their sources', async ({ p
   await expect(noId.locator('a.rb.imdb')).toHaveAttribute('href', /imdb\.com\/find\/\?s=tt&q=No%20Id%20Film/);
 });
 
+test('rating a saved title in its popup records the rating and drops it from the watchlist', async ({ page }) => {
+  await login(page, uniqEmail('watch-rate'));
+
+  // Seed one saved title straight through the API (card fields persist).
+  await page.evaluate(async () => {
+    await fetch('/api/watchlist', { method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ tmdb_id: 555, title: 'Seen It', year: 2010 }) });
+  });
+
+  await page.goto('/watchlist');
+  const saved = page.locator('#watchlist-grid .card', { hasText: 'Seen It' });
+  await expect(saved).toBeVisible();
+
+  // Open the where-to-watch popup; once availability loads it carries a
+  // "watched it?" rate widget (the Discover popup has none).
+  await saved.locator('> img').click();
+  await expect(page.locator('#modal')).toBeVisible();
+  const rate = page.locator('#modal-body .rate-watched');
+  await expect(rate).toBeVisible();
+
+  // Rating it 8/10 closes the modal and drops the title from the list…
+  await rate.locator('.stars span[data-n="8"]').click();
+  await expect(page.locator('#modal')).toBeHidden();
+  await expect(page.locator('#watchlist-grid')).toContainText('Your watchlist is empty');
+  await expect(page.locator('#watchlist-count')).toContainText('0 saved');
+
+  // …and the rating was recorded (8 on the 1–10 star scale).
+  const rated = await page.evaluate(async () => (await (await fetch('/api/ratings')).json()).ratings);
+  expect(rated).toHaveLength(1);
+  expect(rated[0]).toMatchObject({ tmdb_id: 555, rating: 8 });
+});
+
 test('a watchlisted title stays out of the Discover grid after a reload', async ({ page }) => {
   await login(page, uniqEmail('watch-hide'));
   await enterPicks(page);

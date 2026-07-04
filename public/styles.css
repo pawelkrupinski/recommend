@@ -383,6 +383,11 @@ button.danger:disabled { opacity: .6; cursor: default; }
 .where a { display: inline-flex; align-items: center; gap: 8px; background: var(--panel2);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; margin: 6px 8px 0 0; text-decoration: none; }
 .where img { width: 22px; height: 22px; border-radius: 5px; }
+/* "Watched it?" rate widget in the watchlist popup: reuses the card's .rate-stars
+   tray but full-width, set off from the where-to-watch links by a divider above. */
+.rate-watched { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.rate-watched > .sub { margin: 0 0 8px; }
+.rate-watched .rate-stars { margin: 0; }
 .trailers { margin-top: 14px; }
 /* Blue, not the orange --accent the streaming-service links (.where a) use, so
    the two aren't confused for each other in the popup. */

@@ -863,7 +863,10 @@ function whereUrl(m) {
   const sv = (ME.services || []).length ? `&sv=${[...ME.services].map(Number).sort((a, b) => a - b).join('.')}` : '';
   return `/api/where?id=${m.tmdb_id}&media_type=${m.media_type || 'movie'}${region}${sv}`;
 }
-async function openWhere(m, { dismissable = true } = {}) {
+// `onRate(rating)` opts the popup into a "watched it?" rate widget below the
+// where-to-watch links: the Watchlist passes it so rating a saved title records
+// the rating and drops it from the list (see watchCard). Discover leaves it null.
+async function openWhere(m, { dismissable = true, onRate = null } = {}) {
   const modal = $('#modal'), body = $('#modal-body');
   modal.classList.remove('hidden');
   body.innerHTML = `${movieHeader(m)}<p>${t('modal.loadingAvailability')}</p>`;
@@ -890,8 +893,11 @@ async function openWhere(m, { dismissable = true } = {}) {
         }).join('');
     const dismissBtn = dismissable
       ? `<p style="margin-top:18px"><button id="dismiss">${t('card.notInterested')}</button></p>` : '';
+    const rateSection = onRate
+      ? `<div class="rate-watched"><p class="sub">${t('watchlist.ratePrompt')}</p>${starsMarkup()}</div>` : '';
     body.innerHTML = `${movieHeader(m)}
       <div class="where">${links || `<p class="sub">${t('modal.notAvailable')}</p>`}</div>
+      ${rateSection}
       ${dismissBtn}`;
     if (dismissable) {
       $('#dismiss').onclick = async () => {
@@ -899,6 +905,7 @@ async function openWhere(m, { dismissable = true } = {}) {
         modal.classList.add('hidden'); loadDiscover();
       };
     }
+    if (onRate) wireStars(body.querySelector('.rate-watched'), (rating) => { modal.classList.add('hidden'); onRate(rating); });
   } catch (e) { body.innerHTML += `<p>⚠ ${e.message}</p>`; }
 }
 // A plain left-click on a tone chip filters Discover to that tone in-app: close
@@ -1052,20 +1059,31 @@ function watchCard(w) {
   // the rate row. Tapping the poster opens the same where-to-watch popup.
   el.innerHTML = `${posterAndMeta(w)}
     <button class="skip watch-remove">${t('watchlist.remove')}</button>`;
-  el.querySelector('img').onclick = () => openWhere(w, { dismissable: false });
+  // The popup offers a "watched it?" rate widget: rating a saved title records it
+  // and drops it from the list (you've seen it, it no longer belongs in "to watch").
+  el.querySelector('img').onclick = () => openWhere(w, { dismissable: false, onRate: (rating) => rateWatchlistItem(w, rating) });
   wireServiceLinks(el, w, { dismissable: false }); // deep-link each service icon, exactly like Discover
-  el.querySelector('.watch-remove').onclick = async () => {
-    await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
-    watchlistIds.delete(pickKey(w));
-    watchlistItems = watchlistItems.filter((it) => pickKey(it) !== pickKey(w));
-    setWatchlistCount(watchlistItems.length);
-    // Re-derive both dropdowns (removing the last title of a tone/genre drops it)
-    // and repaint, so the view stays consistent with the filters and remaining items.
-    populateWatchlistTones();
-    populateWatchlistGenres();
-    renderWatchlist();
-  };
+  el.querySelector('.watch-remove').onclick = () => dropFromWatchlist(w);
   return el;
+}
+// Drop a saved title: DELETE server-side, then reconcile local state and repaint.
+// Shared by the Remove button and the popup's rate-then-watched flow.
+async function dropFromWatchlist(w) {
+  await api('/api/watchlist', { method: 'DELETE', body: JSON.stringify({ tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie' }) });
+  watchlistIds.delete(pickKey(w));
+  watchlistItems = watchlistItems.filter((it) => pickKey(it) !== pickKey(w));
+  setWatchlistCount(watchlistItems.length);
+  // Re-derive both dropdowns (removing the last title of a tone/genre drops it)
+  // and repaint, so the view stays consistent with the filters and remaining items.
+  populateWatchlistTones();
+  populateWatchlistGenres();
+  renderWatchlist();
+}
+// Record a rating for a watched title, then drop it from the watchlist.
+async function rateWatchlistItem(w, rating) {
+  await api('/api/ratings', { method: 'POST', body: JSON.stringify({
+    tmdb_id: w.tmdb_id, media_type: w.media_type || 'movie', rating, title: w.title, year: w.year }) });
+  await dropFromWatchlist(w);
 }
 
 // ---- my ratings -----------------------------------------------------------

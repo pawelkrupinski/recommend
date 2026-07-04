@@ -1,6 +1,14 @@
 import { test, expect } from '@playwright/test';
 import { login, uniqEmail, enterPicks } from './helpers.js';
 
+// Space below the popup stars minus the space above them, within the tray —
+// ~0 when the padding reads symmetric (positive = bottom-heavy).
+const trayGapDelta = (page) => page.evaluate(() => {
+  const tray = document.querySelector('.rate-watched .rate-stars').getBoundingClientRect();
+  const stars = document.querySelector('.rate-watched .stars').getBoundingClientRect();
+  return (tray.bottom - stars.bottom) - (stars.top - tray.top);
+});
+
 test('saving a Discover pick removes its card, flashes the tab, and lands in the Watchlist', async ({ page }) => {
   await login(page, uniqEmail('watchlist'));
   await enterPicks(page);
@@ -166,6 +174,10 @@ test('rating a saved title in its popup records the rating and drops it from the
     (els) => new Set(els.map((e) => Math.round(e.getBoundingClientRect().top))).size);
   expect(rows).toBe(1);
 
+  // The stars tray isn't bottom-heavy: the space below the stars matches the
+  // space above (the "n / 10" readout reserves no blank line here).
+  expect(Math.abs(await trayGapDelta(page))).toBeLessThanOrEqual(2);
+
   // Rating it 8/10 closes the modal and drops the title from the list…
   await rate.locator('.stars span[data-n="8"]').click();
   await expect(page.locator('#modal')).toBeHidden();
@@ -198,6 +210,8 @@ test.describe('mobile', () => {
     await expect(stars).toBeVisible();
     // The rating strip takes no native pan (unlike the Discover card's pan-y stars).
     await expect(stars).toHaveCSS('touch-action', 'none');
+    // And its tray padding reads symmetric on mobile too (top === bottom).
+    expect(Math.abs(await trayGapDelta(page))).toBeLessThanOrEqual(2);
   });
 });
 

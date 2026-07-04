@@ -394,6 +394,12 @@ button.danger:disabled { opacity: .6; cursor: default; }
    — the stars visibly jitter on mobile. Here the strip is a pure rating control,
    so opt out of native panning entirely: every drag on it rates, none scrolls. */
 .rate-watched .stars { touch-action: none; }
+/* The card reserves a blank line under the stars for the "n / 10" readout so its
+   grid height never shifts; the popup doesn't need that — collapse the reserved
+   line (it grows harmlessly downward on hover, the stars stay put) so the tray
+   isn't bottom-heavy, and match the tray's bottom padding to its top on mobile. */
+.rate-watched .rating-num { min-height: 0; margin-top: 0; }
+@media (max-width: 640px) { .rate-watched .rate-stars { padding-bottom: 2px; } }
 /* The popup is wide enough on desktop to lay all 10 stars in a single row
    (the card widget wraps to two rows of 5 for its narrow column). */
 @media (min-width: 641px) {

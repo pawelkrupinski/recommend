@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import pl.filmowo.auth.SessionAuth
 import pl.filmowo.data.AppPreferences
+import pl.filmowo.data.DiscoverCache
 import pl.filmowo.model.Genre
 import pl.filmowo.model.Me
 import pl.filmowo.model.Pick
@@ -76,6 +77,7 @@ class FilmowoViewModel(
     private val api: FilmowoApi,
     private val auth: SessionAuth,
     private val prefs: AppPreferences,
+    private val discoverCache: DiscoverCache,
 ) : ViewModel() {
 
     private val _me = MutableStateFlow<Me?>(null)
@@ -184,21 +186,46 @@ class FilmowoViewModel(
 
     private suspend fun loadPicks(refresh: Boolean, ratedCount: Int) {
         val s = _discover.value
+        val key = discoverKey(s.type, s.genre, s.tone)
+        // A manual refresh forces a fresh build, so skip the cache/conditional path.
+        val cached = if (refresh) null else discoverCache.get(key)
+        if (cached != null) {
+            // Paint the cached picks instantly instead of waiting on the (slow)
+            // server rebuild; the conditional fetch below only replaces them if the
+            // server's picks actually changed.
+            _discover.update {
+                it.copy(mode = DiscoverMode.PICKS, picks = cached.picks, ratedCount = ratedCount, loading = false, error = null)
+            }
+            enrichPicks(cached.picks)
+        }
         val params = buildMap {
             if (s.type.isNotEmpty()) put("type", s.type)
             if (s.genre.isNotEmpty()) put("genre", s.genre)
             if (s.tone.isNotEmpty()) put("tag", s.tone)
             if (refresh) put("refresh", "1")
         }
-        val picks = runCatching { api.recommend(params).results }.getOrElse {
-            _discover.update { it.copy(loading = false, error = LOAD_ERROR) }
+        val result = runCatching { api.recommend(params, cached?.etag) }.getOrElse {
+            // Network failure: keep the cached picks we already painted; only surface
+            // the error screen when there was nothing cached to fall back to.
+            _discover.update { it.copy(loading = false, error = if (cached == null) LOAD_ERROR else null) }
             return
         }
+        if (result.notModified) {
+            Log.i("Filmowo", "discover[$key] unchanged (304) — kept ${cached?.picks?.size ?: 0} cached")
+            _discover.update { it.copy(mode = DiscoverMode.PICKS, ratedCount = ratedCount, loading = false, error = null) }
+            return // unchanged → the cached picks (already shown) stand
+        }
+        val picks = result.value?.results.orEmpty()
+        Log.i("Filmowo", "discover[$key] fetched ${picks.size}${if (cached != null) " (replacing cache)" else ""}")
         _discover.update {
             it.copy(mode = DiscoverMode.PICKS, picks = picks, ratedCount = ratedCount, loading = false, error = null)
         }
         enrichPicks(picks)
+        result.etag?.let { discoverCache.put(key, it, picks) }
     }
+
+    /** Cache key for a Discover view: the filter combo that defines its picks. */
+    private fun discoverKey(type: String, genre: String, tone: String) = "$type|$genre|$tone"
 
     /** Fill in IMDb/Metacritic badges + tones after first paint (NDJSON stream). */
     private fun enrichPicks(picks: List<Pick>) {
@@ -439,9 +466,10 @@ class FilmowoViewModel(
         private val api: FilmowoApi,
         private val auth: SessionAuth,
         private val prefs: AppPreferences,
+        private val discoverCache: DiscoverCache,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            FilmowoViewModel(api, auth, prefs) as T
+            FilmowoViewModel(api, auth, prefs, discoverCache) as T
     }
 }

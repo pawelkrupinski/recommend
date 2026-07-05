@@ -7,6 +7,7 @@ import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -54,15 +55,26 @@ class FilmowoApiTest {
 
     @Test
     fun `recommend folds filters into the query string`() = runTest {
-        server.enqueue(MockResponse().setBody("""{"profileSize":12,"results":[]}"""))
+        server.enqueue(MockResponse().setHeader("ETag", "\"abc\"").setBody("""{"profileSize":12,"results":[]}"""))
         val recs = api.recommend(mapOf("genre" to "Action", "type" to "tv", "refresh" to "1"))
-        assertEquals(12, recs.profileSize)
+        assertEquals(12, recs.value?.profileSize)
+        assertEquals("\"abc\"", recs.etag)
+        assertFalse(recs.notModified)
 
         val path = server.takeRequest().path!!
         assertTrue(path.startsWith("/api/recommend?"))
         assertTrue(path.contains("genre=Action"))
         assertTrue(path.contains("type=tv"))
         assertTrue(path.contains("refresh=1"))
+    }
+
+    @Test
+    fun `recommend sends the cached hash and surfaces a 304 as notModified`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(304))
+        val recs = api.recommend(emptyMap(), etag = "\"abc\"")
+        assertTrue(recs.notModified)
+        assertNull(recs.value)
+        assertEquals("\"abc\"", server.takeRequest().headers["If-None-Match"])
     }
 
     @Test

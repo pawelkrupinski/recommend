@@ -48,8 +48,11 @@ class FilmowoApi(
     // ---- reads ----
     suspend fun me(): Me = get("/api/me", serializer = Me.serializer())
 
-    suspend fun recommend(params: Map<String, String>): Recommendations =
-        get("/api/recommend", params, Recommendations.serializer())
+    /** Conditional fetch of the picks: send the cached [etag] as `If-None-Match` so
+     *  an unchanged build comes back as a 304 ([Conditional.notModified]) and the
+     *  client keeps its local copy instead of re-shipping the whole screenful. */
+    suspend fun recommend(params: Map<String, String>, etag: String? = null): Conditional<Recommendations> =
+        conditionalGet("/api/recommend", params, etag, Recommendations.serializer())
 
     suspend fun watchlist(): WatchlistResponse = get("/api/watchlist", serializer = WatchlistResponse.serializer())
 
@@ -121,6 +124,24 @@ class FilmowoApi(
             }
         }
 
+    // A conditional GET: send If-None-Match and surface a 304 as `notModified`
+    // (kept distinct from a hard failure) plus the fresh ETag on a 200 so the
+    // caller can cache it for next time. 304 isn't "successful" to OkHttp, so it's
+    // handled before the non-2xx throw.
+    private suspend fun <T> conditionalGet(
+        path: String, params: Map<String, String>, etag: String?, serializer: KSerializer<T>,
+    ): Conditional<T> = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(urlFor(path, params)).header("User-Agent", UA)
+            .apply { if (!etag.isNullOrBlank()) header("If-None-Match", etag) }
+            .build()
+        client.newCall(req).execute().use { res ->
+            if (res.code == 304) return@withContext Conditional<T>(null, etag, notModified = true)
+            val body = res.body.string()
+            if (!res.isSuccessful) throw ApiException(res.code, body)
+            Conditional(json.decodeFromString(serializer, body), res.header("ETag"), notModified = false)
+        }
+    }
+
     private suspend fun send(path: String, method: String, body: String) = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(urlFor(path)).header("User-Agent", UA)
             .method(method, body.toRequestBody(JSON_MEDIA)).build()
@@ -166,3 +187,7 @@ data class SettingsPayload(
 )
 
 class ApiException(val code: Int, val bodyText: String) : Exception("HTTP $code: $bodyText")
+
+/** The outcome of a conditional GET: [value] + its [etag] on a 200, or
+ *  [notModified] with a null value on a 304 (the caller keeps its cached copy). */
+data class Conditional<T>(val value: T?, val etag: String?, val notModified: Boolean)

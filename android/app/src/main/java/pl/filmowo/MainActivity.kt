@@ -13,6 +13,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import okhttp3.OkHttpClient
 import pl.filmowo.auth.AuthRepository
+import pl.filmowo.data.DataStoreDiscoverCache
 import pl.filmowo.data.UserPreferences
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.net.PersistentCookieJar
@@ -44,7 +45,8 @@ class MainActivity : ComponentActivity() {
         val api = FilmowoApi(httpClient, BuildConfig.BASE_URL)
         val auth = AuthRepository(httpClient, cookieJar, BuildConfig.BASE_URL)
         val prefs = UserPreferences(applicationContext)
-        FilmowoViewModel.Factory(api, auth, prefs)
+        val discoverCache = DataStoreDiscoverCache(applicationContext)
+        FilmowoViewModel.Factory(api, auth, prefs, discoverCache)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

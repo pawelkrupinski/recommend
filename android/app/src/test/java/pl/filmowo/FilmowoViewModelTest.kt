@@ -25,6 +25,9 @@ import pl.filmowo.auth.SessionAuth
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import pl.filmowo.data.AppPreferences
+import pl.filmowo.data.CachedDiscover
+import pl.filmowo.data.DiscoverCache
+import pl.filmowo.model.Pick
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.FilmowoViewModel
@@ -66,9 +69,12 @@ class FilmowoViewModelTest {
         }
     }
 
-    private fun viewModel(prefs: FakePrefs = FakePrefs()): FilmowoViewModel {
+    private fun viewModel(
+        prefs: FakePrefs = FakePrefs(),
+        cache: DiscoverCache = FakeDiscoverCache(),
+    ): FilmowoViewModel {
         val api = FilmowoApi(OkHttpClient(), server.url("/").toString())
-        return FilmowoViewModel(api, FakeAuth(), prefs)
+        return FilmowoViewModel(api, FakeAuth(), prefs, cache)
     }
 
     private fun <T> await(flow: StateFlow<T>, timeoutMs: Long = 5_000, predicate: (T) -> Boolean): T = runBlocking {
@@ -353,6 +359,75 @@ class FilmowoViewModelTest {
         )
     }
 
+    private val tenRatings = (1..10).joinToString(",") { "{\"tmdb_id\":$it,\"rating\":7}" }
+
+    /** A dispatcher for the picks flow whose /api/recommend honours If-None-Match:
+     *  304 when the sent hash equals [currentEtag], else 200 with [nextEtag] + body.
+     *  Records each recommend request's If-None-Match into [sentHashes]. */
+    private fun serveConditionalRecommend(
+        currentEtag: String, nextEtag: String, body: String,
+        sentHashes: MutableList<String?>,
+    ) {
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                return when (path) {
+                    "/api/me" -> MockResponse().setBody(me)
+                    "/api/ratings" -> MockResponse().setBody("""{"ratings":[$tenRatings]}""")
+                    "/api/watchlist" -> MockResponse().setBody("""{"watchlist":[]}""")
+                    "/api/enrich" -> MockResponse().setBody("\n")
+                    "/api/recommend" -> {
+                        val inm = request.headers["If-None-Match"]
+                        sentHashes.add(inm)
+                        if (inm == currentEtag) MockResponse().setResponseCode(304)
+                        else MockResponse().setHeader("ETag", nextEtag).setBody(body)
+                    }
+                    else -> MockResponse().setBody("{}")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `a cached discover paints instantly and a 304 keeps it (never re-fetched)`() {
+        val cache = FakeDiscoverCache(
+            mapOf("||" to CachedDiscover("etag-1", listOf(Pick(tmdbId = 1, title = "CachedFilm")))),
+        )
+        val sent = java.util.Collections.synchronizedList(mutableListOf<String?>())
+        // The server would send "ServerFilm" on a 200, but a matching hash yields a 304.
+        serveConditionalRecommend(
+            currentEtag = "etag-1", nextEtag = "etag-x",
+            body = """{"profileSize":10,"results":[{"tmdb_id":9,"media_type":"movie","title":"ServerFilm"}]}""",
+            sentHashes = sent,
+        )
+        val vm = viewModel(cache = cache)
+        val picks = await(vm.discover) { it.mode == DiscoverMode.PICKS && it.picks.isNotEmpty() }
+        assertEquals("CachedFilm", picks.picks.first().title) // the cache stands; the 304 didn't replace it
+        assertFalse(picks.loading)
+        // The conditional request carried the cached hash (that's how the server knew nothing changed).
+        assertTrue("expected If-None-Match=etag-1; saw $sent", sent.contains("etag-1"))
+    }
+
+    @Test
+    fun `a changed build (200) replaces the cached discover and re-persists it`() {
+        val cache = FakeDiscoverCache(
+            mapOf("||" to CachedDiscover("etag-1", listOf(Pick(tmdbId = 1, title = "OldFilm")))),
+        )
+        val sent = java.util.Collections.synchronizedList(mutableListOf<String?>())
+        serveConditionalRecommend(
+            currentEtag = "nope", nextEtag = "etag-2", // never matches → always a 200 with a new hash
+            body = """{"profileSize":10,"results":[{"tmdb_id":9,"media_type":"movie","title":"NewFilm"}]}""",
+            sentHashes = sent,
+        )
+        val vm = viewModel(cache = cache)
+        val picks = await(vm.discover) { it.picks.any { p -> p.title == "NewFilm" } }
+        assertEquals("NewFilm", picks.picks.first().title)
+        assertTrue("expected the cached hash to be sent; saw $sent", sent.contains("etag-1"))
+        // The fresh build is persisted under its new hash for next launch.
+        assertEquals("etag-2", cache.store["||"]?.etag)
+        assertEquals("NewFilm", cache.store["||"]?.picks?.firstOrNull()?.title)
+    }
+
     private class FakeAuth : SessionAuth {
         override fun startWebSignIn(context: Context, provider: String) {}
         override suspend fun exchangeCode(code: String) = true
@@ -365,5 +440,14 @@ class FilmowoViewModelTest {
         override suspend fun setLanguage(code: String) {}
         override val watchlistSort: Flow<String?> get() = sort
         override suspend fun setWatchlistSort(sort: String) { this.sort.value = sort }
+    }
+
+    // A boring in-memory stand-in for the DataStore-backed cache.
+    private class FakeDiscoverCache(seed: Map<String, CachedDiscover> = emptyMap()) : DiscoverCache {
+        val store = LinkedHashMap<String, CachedDiscover>().apply { putAll(seed) }
+        override suspend fun get(key: String): CachedDiscover? = store[key]
+        override suspend fun put(key: String, etag: String, picks: List<Pick>) {
+            store[key] = CachedDiscover(etag, picks)
+        }
     }
 }

@@ -14,10 +14,16 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.LazyGridState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,6 +93,13 @@ private fun FirstRunOnboarding(vm: FilmowoViewModel) {
 private fun MainScaffold(vm: FilmowoViewModel) {
     val nav = rememberNavController()
     val detail by vm.detail.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    // Hoisted here so re-tapping the active bottom-nav tab scrolls that tab's list
+    // to the top (the Android analogue of iOS's tap-the-status-bar-to-scroll-top)
+    // and so scroll position survives a tab switch.
+    val discoverGrid = rememberLazyGridState()
+    val watchlistGrid = rememberLazyGridState()
+    val ratingsList = rememberLazyListState()
 
     Scaffold(
         bottomBar = {
@@ -97,10 +110,21 @@ private fun MainScaffold(vm: FilmowoViewModel) {
                     NavigationBarItem(
                         selected = route == tab.route,
                         onClick = {
-                            nav.navigate(tab.route) {
-                                popUpTo(nav.graph.startDestinationId) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
+                            if (route == tab.route) {
+                                // Re-tap the already-active tab → scroll it to the top.
+                                scope.launch {
+                                    when (tab.route) {
+                                        "discover" -> discoverGrid.animateScrollToItem(0)
+                                        "watchlist" -> watchlistGrid.animateScrollToItem(0)
+                                        "ratings" -> ratingsList.animateScrollToItem(0)
+                                    }
+                                }
+                            } else {
+                                nav.navigate(tab.route) {
+                                    popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
                         },
                         icon = { Icon(tab.icon, contentDescription = null) },
@@ -111,9 +135,9 @@ private fun MainScaffold(vm: FilmowoViewModel) {
         },
     ) { padding ->
         NavHost(nav, startDestination = "discover", modifier = Modifier.padding(padding).fillMaxSize()) {
-            composable("discover") { DiscoverTab(vm) }
-            composable("watchlist") { WatchlistTab(vm) }
-            composable("ratings") { RatingsTab(vm) }
+            composable("discover") { DiscoverTab(vm, discoverGrid) }
+            composable("watchlist") { WatchlistTab(vm, watchlistGrid) }
+            composable("ratings") { RatingsTab(vm, ratingsList) }
             composable("settings") { SettingsTab(vm) }
         }
     }
@@ -122,7 +146,7 @@ private fun MainScaffold(vm: FilmowoViewModel) {
 }
 
 @Composable
-private fun DiscoverTab(vm: FilmowoViewModel) {
+private fun DiscoverTab(vm: FilmowoViewModel, gridState: LazyGridState) {
     val state by vm.discover.collectAsStateWithLifecycle()
     val genres by vm.genres.collectAsStateWithLifecycle()
     val tones by vm.tones.collectAsStateWithLifecycle()
@@ -133,11 +157,12 @@ private fun DiscoverTab(vm: FilmowoViewModel) {
         onOpen = { vm.openDetail(it) },
         onRatePick = vm::ratePick, onSave = vm::savePick, onDismiss = vm::dismissPick,
         onRateQueue = vm::rateQueueItem, onSkipQueue = vm::skipQueueItem,
+        gridState = gridState,
     )
 }
 
 @Composable
-private fun WatchlistTab(vm: FilmowoViewModel) {
+private fun WatchlistTab(vm: FilmowoViewModel, gridState: LazyGridState) {
     val state by vm.watchlist.collectAsStateWithLifecycle()
     val me by vm.me.collectAsStateWithLifecycle()
     // Pull the watchlist from the server whenever the tab is opened and whenever
@@ -148,13 +173,14 @@ private fun WatchlistTab(vm: FilmowoViewModel) {
         onOpen = { vm.openDetail(it, fromWatchlist = true) },
         onRemove = vm::removeFromWatchlist,
         onSort = vm::setWatchlistSort,
+        gridState = gridState,
     )
 }
 
 @Composable
-private fun RatingsTab(vm: FilmowoViewModel) {
+private fun RatingsTab(vm: FilmowoViewModel, listState: LazyListState) {
     val ratings by vm.ratings.collectAsStateWithLifecycle()
-    RatingsScreen(ratings = ratings, onDelete = vm::deleteRating)
+    RatingsScreen(ratings = ratings, onDelete = vm::deleteRating, listState = listState)
 }
 
 @Composable

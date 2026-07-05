@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -72,6 +74,7 @@ fun DiscoverScreen(
     onDismiss: (Pick) -> Unit,
     onRateQueue: (RateQueueItem, Int) -> Unit,
     onSkipQueue: (RateQueueItem) -> Unit,
+    gridState: LazyGridState = rememberLazyGridState(),
 ) {
     when {
         // A load failure short-circuits every mode: show an error + Retry rather
@@ -79,7 +82,7 @@ fun DiscoverScreen(
         state.error != null -> ErrorRetry(t("error.offline"), onRetry = onRefresh)
         state.mode == DiscoverMode.LOADING -> Building()
         state.mode == DiscoverMode.ONBOARDING -> OnboardingQueue(state, onRateQueue, onSkipQueue, onRefresh)
-        else -> Picks(state, genres, tones, onType, onGenre, onTone, onRefresh, onOpen, onRatePick, onSave, onDismiss)
+        else -> Picks(state, genres, tones, onType, onGenre, onTone, onRefresh, onOpen, onRatePick, onSave, onDismiss, gridState)
     }
 }
 
@@ -129,6 +132,7 @@ private fun Picks(
     onRatePick: (Pick, Int) -> Unit,
     onSave: (Pick) -> Unit,
     onDismiss: (Pick) -> Unit,
+    gridState: LazyGridState,
 ) {
     Column(Modifier.fillMaxSize()) {
         FilterBar(state, genres, tones, onType, onGenre, onTone)
@@ -136,7 +140,7 @@ private fun Picks(
             state.loading && state.picks.isEmpty() -> Building()
             state.picks.isEmpty() ->
                 Centered { Text(t("discover.empty"), color = TextMuted, modifier = Modifier.padding(24.dp)) }
-            else -> PicksGrid(state, onOpen, onRatePick, onSave, onDismiss, onRefresh)
+            else -> PicksGrid(state, onOpen, onRatePick, onSave, onDismiss, onRefresh, gridState)
         }
     }
 }
@@ -152,6 +156,7 @@ private fun PicksGrid(
     onSave: (Pick) -> Unit,
     onDismiss: (Pick) -> Unit,
     onRefresh: () -> Unit,
+    gridState: LazyGridState,
 ) {
     PullToRefreshBox(
         isRefreshing = state.loading,
@@ -160,6 +165,7 @@ private fun PicksGrid(
     ) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(170.dp),
+            state = gridState,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

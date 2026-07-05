@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -27,7 +29,11 @@ import pl.filmowo.ui.theme.Accent
 import pl.filmowo.ui.theme.TextMuted
 
 @Composable
-fun RatingsScreen(ratings: List<Rating>, onDelete: (Rating) -> Unit) {
+fun RatingsScreen(
+    ratings: List<Rating>,
+    onDelete: (Rating) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+) {
     if (ratings.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(t("ratings.empty"), color = TextMuted, modifier = Modifier.padding(24.dp))
@@ -40,7 +46,7 @@ fun RatingsScreen(ratings: List<Rating>, onDelete: (Rating) -> Unit) {
             color = TextMuted, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState) {
             items(ratings, key = { "${it.mediaType}:${it.tmdbId}" }) { r ->
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),

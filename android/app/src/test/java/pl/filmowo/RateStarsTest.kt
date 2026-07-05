@@ -75,6 +75,21 @@ class RateStarsTest {
     }
 
     @Test
+    fun `a small vertical drift within one star-height still rates`() {
+        var rated = -1
+        rule.setContent {
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+        }
+        rule.onNodeWithTag("stars").performTouchInput {
+            down(Offset(1f, centerY))
+            moveTo(Offset(right * 0.75f, centerY))               // drag → 8
+            moveTo(Offset(right * 0.75f, height + height * 0.5f)) // drift below, but within the 1× tolerance
+            up()
+        }
+        rule.runOnIdle { assertEquals(8, rated) }
+    }
+
+    @Test
     fun `sliding off the stars clears the selection and submits nothing on lift`() {
         var rated = -1
         rule.setContent {

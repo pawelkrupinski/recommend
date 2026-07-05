@@ -40,7 +40,11 @@ install_apk() {
 wait_for_android_unlock "$serial"
 cd "$REPO_ROOT/android"
 
-step ./gradlew --no-daemon assembleReleaseFast
+# Keep the Gradle daemon alive between runs (like the movies app's runOnDevice):
+# a cold JVM (`--no-daemon`) added ~5s to a one-line-change deploy (12.5s → 7.8s)
+# and ~2.5s to a no-op. The config/build caches (android/gradle.properties) do
+# the rest.
+step ./gradlew assembleReleaseFast
 # Point the device's localhost at the Mac's dev server (no-op for a remote base).
 case "$FILMOWO_BASE_URL" in
   *localhost*|*127.0.0.1*) step "$adb" ${sflag[@]+"${sflag[@]}"} reverse "tcp:$PORT" "tcp:$PORT" ;;

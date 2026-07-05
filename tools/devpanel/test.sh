@@ -26,6 +26,13 @@ check "deploy builds the releaseFast APK"  "$d" "assembleReleaseFast"
 check "deploy points at prod by default"   "$d" "target base URL: https://filmowo.fly.dev"
 check "deploy installs the releaseFast APK" "$d" "install -r -d app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 check "deploy launches the main activity"  "$d" "am start -n net.pawel.filmowo/pl.filmowo.MainActivity"
+# The Gradle daemon is what makes the cable loop fast; --no-daemon (a cold JVM
+# every deploy) must not creep back in.
+if grep -qF -- "--no-daemon" <<<"$d"; then
+  echo "  ✗ deploy must not pass --no-daemon (kills the daemon speedup)"; fail=1
+else
+  echo "  ✓ deploy keeps the gradle daemon (no --no-daemon)"
+fi
 
 dl="$(FILMOWO_BASE_URL=http://localhost:9002 bash "$HERE/scripts/deploy-android.sh")"
 check "localhost base still reverses :9002" "$dl" "reverse tcp:9002 tcp:9002"

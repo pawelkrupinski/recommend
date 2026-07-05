@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pl.filmowo.i18n.t
 import pl.filmowo.model.Rating
+import pl.filmowo.ui.common.scrollbar
 import pl.filmowo.ui.theme.Accent
 import pl.filmowo.ui.theme.TextMuted
 
@@ -46,7 +47,7 @@ fun RatingsScreen(
             color = TextMuted, fontSize = 13.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
-        LazyColumn(Modifier.fillMaxSize(), state = listState) {
+        LazyColumn(Modifier.fillMaxSize().scrollbar(listState), state = listState) {
             items(ratings, key = { "${it.mediaType}:${it.tmdbId}" }) { r ->
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),

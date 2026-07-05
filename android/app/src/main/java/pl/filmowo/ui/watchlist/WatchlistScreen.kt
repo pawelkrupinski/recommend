@@ -36,6 +36,7 @@ import pl.filmowo.ui.WatchlistState
 import pl.filmowo.ui.common.PosterImage
 import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RatingBadges
+import pl.filmowo.ui.common.scrollbar
 import pl.filmowo.ui.theme.TextMuted
 
 @Composable
@@ -66,7 +67,7 @@ fun WatchlistScreen(
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().scrollbar(gridState),
             ) {
                 items(state.items, key = { it.key }) { pick ->
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {

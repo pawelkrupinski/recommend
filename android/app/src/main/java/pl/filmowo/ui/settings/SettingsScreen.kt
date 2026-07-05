@@ -25,6 +25,7 @@ import pl.filmowo.ui.SettingsData
 import pl.filmowo.ui.common.COUNTRIES
 import pl.filmowo.ui.common.Chooser
 import pl.filmowo.ui.common.LANGUAGES
+import pl.filmowo.ui.common.scrollbar
 import pl.filmowo.ui.theme.TextMuted
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -41,8 +42,11 @@ fun SettingsScreen(
     onDeleteAccount: () -> Unit,
 ) {
     LaunchedEffect(me?.country) { onLoadServices() }
+    val scroll = rememberScrollState()
     Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+        // scrollbar() before verticalScroll() so the thumb tracks the viewport
+        // rather than scrolling away with the content.
+        Modifier.fillMaxWidth().scrollbar(scroll).verticalScroll(scroll).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         // Account

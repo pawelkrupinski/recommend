@@ -69,7 +69,7 @@ class RateStarsTest {
             moveTo(Offset(right * 0.75f, centerY)) // preview → 8; no up() so it stays visible
         }
         val stars = rule.onNodeWithTag("stars").getUnclippedBoundsInRoot()
-        val number = rule.onNodeWithText("8").getUnclippedBoundsInRoot()
+        val number = rule.onNodeWithText("8/10").getUnclippedBoundsInRoot()
         assertTrue("the number sits above the stars", number.top < stars.top)
         assertTrue("the number sits on the right", number.left > (stars.left + stars.right) / 2f)
     }

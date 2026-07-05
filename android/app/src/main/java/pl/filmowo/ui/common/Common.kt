@@ -146,7 +146,7 @@ fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
         // card, and shown only during a drag (preview > 0), not on a tap.
         if (preview > 0) {
             Text(
-                preview.toString(),
+                "$preview/10",
                 color = Accent,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,

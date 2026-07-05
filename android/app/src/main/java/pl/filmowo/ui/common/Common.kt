@@ -106,7 +106,8 @@ fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
         Row(
             modifier = modifier
                 .pointerInput(Unit) {
-                    val vSlop = size.height.toFloat() // 1× the star height above/below
+                    val vSlop = size.height * 3f // generous: ~3× the star height above/below,
+                    // so normal finger drift never cancels — only a clear move away does
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         // Claim the gesture only once it's a HORIZONTAL drag, so a
@@ -127,7 +128,8 @@ fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
                     }
                 }
                 .pointerInput(Unit) {
-                    val vSlop = size.height.toFloat() // 1× the star height above/below
+                    val vSlop = size.height * 3f // generous: ~3× the star height above/below,
+                    // so normal finger drift never cancels — only a clear move away does
                     detectTapGestures { off -> starAt(off.x, off.y, size.width, size.height, vSlop).takeIf { it > 0 }?.let(onRate) }
                 },
             horizontalArrangement = Arrangement.spacedBy(2.dp),

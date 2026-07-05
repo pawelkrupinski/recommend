@@ -14,8 +14,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.ceil
 import pl.filmowo.ui.theme.TextMuted
 
 /**
@@ -25,30 +25,44 @@ import pl.filmowo.ui.theme.TextMuted
  * the app uses: [LazyGridState] (the picks / watchlist grids), [LazyListState]
  * (the ratings list) and [ScrollState] (the settings column).
  *
- * The thumb geometry is factored into pure [scrollbarThumb] functions so it can be
- * unit-tested; the drawing here is thin glue.
+ * The thumb geometry is factored into pure functions so it can be unit-tested; the
+ * drawing here is thin glue. For lazy scrollers the position is estimated in
+ * PIXELS (average item size × row + the sub-item scroll offset), not in whole
+ * item indexes — otherwise the thumb only moves once a whole item scrolls off and
+ * reads as jumpy.
  */
 
 /** Where the thumb sits, as fractions of the track (both 0..1). */
 data class ScrollbarThumb(val offsetFraction: Float, val heightFraction: Float)
 
-/** Thumb geometry for an item-based scroller (a lazy list or grid). Null when it
- *  all fits, so there's nothing to draw. For a grid the column count cancels out
- *  of both ratios, so raw item counts work the same as for a list. */
-internal fun scrollbarThumb(totalItems: Int, visibleItems: Int, firstVisibleIndex: Int): ScrollbarThumb? {
-    if (visibleItems <= 0 || totalItems <= visibleItems) return null
-    val height = visibleItems.toFloat() / totalItems
-    val offset = firstVisibleIndex.toFloat() / (totalItems - visibleItems)
+/** Thumb geometry for a pixel-based scroller: the thumb is the viewport's share of
+ *  the whole content, positioned by how far it's scrolled. Null when it all fits. */
+internal fun scrollbarThumb(scrollValue: Float, maxScroll: Float, viewportPx: Float): ScrollbarThumb? {
+    if (maxScroll <= 0f || viewportPx <= 0f) return null
+    val height = viewportPx / (viewportPx + maxScroll)
+    val offset = scrollValue / maxScroll
     return ScrollbarThumb(offset.coerceIn(0f, 1f), height.coerceIn(0f, 1f))
 }
 
-/** Thumb geometry for a pixel-based scroller ([ScrollState]): the thumb is the
- *  viewport's share of the whole content, positioned by how far it's scrolled. */
-internal fun scrollbarThumb(scrollValue: Int, maxScroll: Int, viewportPx: Float): ScrollbarThumb? {
-    if (maxScroll <= 0 || viewportPx <= 0f) return null
-    val height = viewportPx / (viewportPx + maxScroll)
-    val offset = scrollValue.toFloat() / maxScroll
-    return ScrollbarThumb(offset.coerceIn(0f, 1f), height.coerceIn(0f, 1f))
+/**
+ * Thumb geometry for a lazy list/grid, estimated in pixels so it moves smoothly
+ * *within* an item rather than jumping per item. Rows come from the item count and
+ * column span; the current position is the first visible row's pixel top plus the
+ * continuous [firstOffsetPx] the row is scrolled by. [avgItemSizePx] is the mean
+ * main-axis size of the visible items (stable, so the thumb height doesn't jitter).
+ */
+internal fun lazyScrollbarThumb(
+    firstIndex: Int, firstOffsetPx: Int, columns: Int,
+    totalItems: Int, avgItemSizePx: Float, spacingPx: Float, viewportPx: Float,
+): ScrollbarThumb? {
+    if (avgItemSizePx <= 0f || viewportPx <= 0f) return null
+    val cols = columns.coerceAtLeast(1)
+    val rows = ceil(totalItems / cols.toFloat())
+    val pitch = avgItemSizePx + spacingPx // one row's top-to-next-row distance
+    val contentPx = pitch * rows
+    if (contentPx <= viewportPx) return null
+    val scrolled = (firstIndex / cols) * pitch + firstOffsetPx
+    return scrollbarThumb(scrolled, contentPx - viewportPx, viewportPx)
 }
 
 private val THUMB_WIDTH = 4.dp
@@ -91,10 +105,17 @@ fun Modifier.scrollbar(state: LazyGridState, color: Color = TextMuted): Modifier
     val alpha = scrollAlpha(state.isScrollInProgress)
     return drawWithContent {
         val info = state.layoutInfo
-        drawThumb(
-            scrollbarThumb(info.totalItemsCount, info.visibleItemsInfo.size, info.visibleItemsInfo.firstOrNull()?.index ?: 0),
-            alpha, color,
+        val visible = info.visibleItemsInfo
+        val thumb = if (visible.isEmpty()) null else lazyScrollbarThumb(
+            firstIndex = state.firstVisibleItemIndex,
+            firstOffsetPx = state.firstVisibleItemScrollOffset,
+            columns = visible.maxOf { it.column } + 1,
+            totalItems = info.totalItemsCount,
+            avgItemSizePx = visible.sumOf { it.size.height }.toFloat() / visible.size,
+            spacingPx = info.mainAxisItemSpacing.toFloat(),
+            viewportPx = size.height,
         )
+        drawThumb(thumb, alpha, color)
     }
 }
 
@@ -103,10 +124,17 @@ fun Modifier.scrollbar(state: LazyListState, color: Color = TextMuted): Modifier
     val alpha = scrollAlpha(state.isScrollInProgress)
     return drawWithContent {
         val info = state.layoutInfo
-        drawThumb(
-            scrollbarThumb(info.totalItemsCount, info.visibleItemsInfo.size, info.visibleItemsInfo.firstOrNull()?.index ?: 0),
-            alpha, color,
+        val visible = info.visibleItemsInfo
+        val thumb = if (visible.isEmpty()) null else lazyScrollbarThumb(
+            firstIndex = state.firstVisibleItemIndex,
+            firstOffsetPx = state.firstVisibleItemScrollOffset,
+            columns = 1,
+            totalItems = info.totalItemsCount,
+            avgItemSizePx = visible.sumOf { it.size }.toFloat() / visible.size,
+            spacingPx = info.mainAxisItemSpacing.toFloat(),
+            viewportPx = size.height,
         )
+        drawThumb(thumb, alpha, color)
     }
 }
 
@@ -114,6 +142,6 @@ fun Modifier.scrollbar(state: LazyListState, color: Color = TextMuted): Modifier
 fun Modifier.scrollbar(state: ScrollState, color: Color = TextMuted): Modifier {
     val alpha = scrollAlpha(state.isScrollInProgress)
     return drawWithContent {
-        drawThumb(scrollbarThumb(state.value, state.maxValue, size.height), alpha, color)
+        drawThumb(scrollbarThumb(state.value.toFloat(), state.maxValue.toFloat(), size.height), alpha, color)
     }
 }

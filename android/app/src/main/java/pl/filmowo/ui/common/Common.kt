@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -99,35 +102,68 @@ private fun PlaceholderGlyph() {
 @Composable
 fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
     var preview by remember { mutableStateOf(0) }
-    Row(
-        modifier = modifier
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { off -> preview = starAt(off.x, size.width) },
-                    onDragEnd = { if (preview > 0) onRate(preview); preview = 0 },
-                    onDragCancel = { preview = 0 },
-                ) { change, _ -> preview = starAt(change.position.x, size.width) }
+    Box {
+        Row(
+            modifier = modifier
+                .pointerInput(Unit) {
+                    val vSlop = 24.dp.toPx()
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        // Claim the gesture only once it's a HORIZONTAL drag, so a
+                        // vertical scroll that starts on the stars still scrolls the
+                        // list. Once claimed, track EVERY move (incl. vertical) so
+                        // sliding the finger off the row clears the selection.
+                        var change = awaitHorizontalTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                            ?: return@awaitEachGesture
+                        while (change.pressed) {
+                            preview = starAt(change.position.x, change.position.y, size.width, size.height, vSlop)
+                            change.consume()
+                            change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                        }
+                        // On lift, commit only if a star is still selected (finger
+                        // on the row); sliding off first submits nothing.
+                        if (preview > 0) onRate(preview)
+                        preview = 0
+                    }
+                }
+                .pointerInput(Unit) {
+                    val vSlop = 24.dp.toPx()
+                    detectTapGestures { off -> starAt(off.x, off.y, size.width, size.height, vSlop).takeIf { it > 0 }?.let(onRate) }
+                },
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            for (n in 1..10) {
+                Icon(
+                    imageVector = if (n <= preview) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    contentDescription = "Rate $n",
+                    tint = if (n <= preview) Accent else TextMuted,
+                    modifier = Modifier.size(24.dp),
+                )
             }
-            .pointerInput(Unit) {
-                detectTapGestures { off -> starAt(off.x, size.width).takeIf { it > 0 }?.let(onRate) }
-            },
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        for (n in 1..10) {
-            Icon(
-                imageVector = if (n <= preview) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                contentDescription = "Rate $n",
-                tint = if (n <= preview) Accent else TextMuted,
-                modifier = Modifier.size(24.dp),
+        }
+        // While dragging, the current value floats just above the stars on the
+        // right. An overlay (offset up, out of the layout) so it never shifts the
+        // card, and shown only during a drag (preview > 0), not on a tap.
+        if (preview > 0) {
+            Text(
+                preview.toString(),
+                color = Accent,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                modifier = Modifier.align(Alignment.TopEnd).offset(y = (-20).dp),
             )
         }
     }
 }
 
-/** Which star (1–10) a horizontal offset `x` falls on within a row `width` px
- *  wide; 0 when the finger is off the left edge (clears the preview). */
-private fun starAt(x: Float, width: Int): Int {
-    if (width <= 0 || x < 0f) return 0
+/** The star (1–10) a touch at (`x`,`y`) falls on within a `width`×`height` px star
+ *  row, or 0 when it's outside — off the left/right ends, or away vertically past
+ *  `vSlop`. Returning 0 clears the lit stars and (via the caller's `preview > 0`
+ *  guard) cancels the submit when the finger lifts off the row. */
+private fun starAt(x: Float, y: Float, width: Int, height: Int, vSlop: Float): Int {
+    if (width <= 0) return 0
+    if (y < -vSlop || y > height + vSlop) return 0
+    if (x < 0f || x > width) return 0
     return ((x / width) * 10f).toInt().coerceIn(0, 9) + 1
 }
 

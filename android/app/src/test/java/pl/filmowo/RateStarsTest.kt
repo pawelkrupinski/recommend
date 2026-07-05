@@ -7,12 +7,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.down
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.moveTo
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.up
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,5 +57,35 @@ class RateStarsTest {
         // Tap at 45% across → the 5th star (cell 5 spans 40–50%).
         rule.onNodeWithTag("stars").performTouchInput { click(Offset(right * 0.45f, centerY)) }
         rule.runOnIdle { assertEquals(5, rated) }
+    }
+
+    @Test
+    fun `the value floats above and to the right of the stars while dragging`() {
+        rule.setContent {
+            RateStars(onRate = {}, modifier = Modifier.testTag("stars").width(250.dp))
+        }
+        rule.onNodeWithTag("stars").performTouchInput {
+            down(Offset(1f, centerY))
+            moveTo(Offset(right * 0.75f, centerY)) // preview → 8; no up() so it stays visible
+        }
+        val stars = rule.onNodeWithTag("stars").getUnclippedBoundsInRoot()
+        val number = rule.onNodeWithText("8").getUnclippedBoundsInRoot()
+        assertTrue("the number sits above the stars", number.top < stars.top)
+        assertTrue("the number sits on the right", number.left > (stars.left + stars.right) / 2f)
+    }
+
+    @Test
+    fun `sliding off the stars clears the selection and submits nothing on lift`() {
+        var rated = -1
+        rule.setContent {
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+        }
+        rule.onNodeWithTag("stars").performTouchInput {
+            down(Offset(1f, centerY))
+            moveTo(Offset(right * 0.75f, centerY))     // a real (horizontal) drag starts → preview 8
+            moveTo(Offset(right * 0.75f, height * 6f)) // slide far below the row → preview 0
+            up()                                        // lift off the stars → nothing submitted
+        }
+        rule.runOnIdle { assertEquals(-1, rated) }
     }
 }

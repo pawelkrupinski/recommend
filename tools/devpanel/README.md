@@ -18,12 +18,10 @@ close button quits; the yellow button hides the panel.
   the Mac's local dev server instead (wired over `adb reverse tcp:9002`).
   Handles the unauthorized/locked device wait and the signature-mismatch reinstall.
 - **Android tests** — `./gradlew testDebugUnitTest` (JVM + Robolectric, no emulator).
-- **Dev server** — `npm run dev` with `ALLOW_DEV_LOGIN=1` (long-running; its
-  console keeps scrollback; Stop to kill).
 
 Long-press (or right-click) any button to run it on a specific git worktree.
-The header shows the Mac's LAN IP so you can reach the dev server from a phone
-on the same Wi-Fi.
+The header shows the Mac's LAN IP so you can reach a local `npm run dev` server
+(started in your own terminal) from a phone on the same Wi-Fi.
 
 ## How it works
 

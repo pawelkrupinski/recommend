@@ -30,9 +30,6 @@ check "deploy launches the main activity"  "$d" "am start -n net.pawel.filmowo/p
 dl="$(FILMOWO_BASE_URL=http://localhost:9002 bash "$HERE/scripts/deploy-android.sh")"
 check "localhost base still reverses :9002" "$dl" "reverse tcp:9002 tcp:9002"
 
-s="$(bash "$HERE/scripts/run-server.sh")"
-check "server runs npm run dev"            "$s" "npm run dev"
-
 t="$(bash "$HERE/scripts/test-android.sh")"
 check "tests run testDebugUnitTest"        "$t" "testDebugUnitTest"
 

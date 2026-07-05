@@ -3,9 +3,8 @@
 //
 // No Dock icon (accessory app). The close button quits; the yellow button hides
 // the panel and a menu-bar (☰) icon brings it back. Every action runs its script
-// as a background subprocess, streaming live output into an in-panel console:
-//   • Server — the `npm run dev` server; KEEPS its scrollback across runs.
-//   • Device — Android build/install/launch + tests; CLEARED at the start of each run.
+// as a background subprocess, streaming live output into the in-panel Device
+// console, which is CLEARED at the start of each run.
 //
 // Long-press (or right-click) any button to pick which git worktree to run in;
 // the chosen path is handed to the script via DEVPANEL_REPO_ROOT.
@@ -152,12 +151,10 @@ final class ConsoleView: NSObject {
     private(set) var isExpanded = false
     private var runner: CommandRunner?
 
-    private let clearsOnRun: Bool
     private let titleText: String
     var onLayoutChange: (() -> Void)?
 
-    init(title: String, clearsOnRun: Bool) {
-        self.clearsOnRun = clearsOnRun
+    init(title: String) {
         self.titleText = title
         super.init()
 
@@ -225,7 +222,7 @@ final class ConsoleView: NSObject {
 
     func run(scriptPath: String, label: String, repoRoot: String?) {
         runner?.stop()
-        if clearsOnRun { textView.string = "" }
+        textView.string = ""
         setExpanded(true)
         let where_ = repoRoot.map { " @ \(($0 as NSString).lastPathComponent)" } ?? ""
         append("\n── \(label)\(where_) ─────────────\n")
@@ -279,13 +276,10 @@ final class ConsoleView: NSObject {
 
 // MARK: - Actions
 
-private enum Console { case server, device }
-
 private struct Action {
     let title: String
     let subtitle: String
     let script: String
-    let console: Console
 }
 
 /// One row in the palette. All filmowo actions are single-option (plain buttons),
@@ -309,13 +303,10 @@ private struct ButtonGroup {
 private let groups: [ButtonGroup] = [
     ButtonGroup(title: "Android → device", subtitle: "releaseFast · install · launch", defaultsKey: nil,
                 options: [Action(title: "Android → device", subtitle: "releaseFast · install · launch",
-                                 script: "deploy-android.sh", console: .device)]),
+                                 script: "deploy-android.sh")]),
     ButtonGroup(title: "Android tests", subtitle: "gradlew testDebugUnitTest", defaultsKey: nil,
                 options: [Action(title: "Android tests", subtitle: "gradlew testDebugUnitTest",
-                                 script: "test-android.sh", console: .device)]),
-    ButtonGroup(title: "Dev server", subtitle: "npm run dev · :9002", defaultsKey: nil,
-                options: [Action(title: "Dev server", subtitle: "npm run dev · :9002",
-                                 script: "run-server.sh", console: .server)]),
+                                 script: "test-android.sh")]),
 ]
 
 private let allActions: [Action] = groups.flatMap { $0.options }
@@ -334,8 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().path
 
-    private let serverConsole = ConsoleView(title: "Server output", clearsOnRun: false)
-    private let deviceConsole = ConsoleView(title: "Device output", clearsOnRun: true)
+    private let deviceConsole = ConsoleView(title: "Device output")
     private var suppressClick: Set<String> = []
     private var expandedWidth = defaultExpandedWidth
     private var relayouting = false
@@ -353,11 +343,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         content.addArrangedSubview(headerRow())
         for group in groups { content.addArrangedSubview(button(for: group.options[0])) }
         content.addArrangedSubview(deviceConsole.container)
-        content.addArrangedSubview(serverConsole.container)
         for v in content.arrangedSubviews {
             v.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
         }
-        serverConsole.onLayoutChange = { [weak self] in self?.relayout() }
         deviceConsole.onLayoutChange = { [weak self] in self?.relayout() }
 
         let root = NSView()
@@ -456,9 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     @objc private func hidePanel() { panel.orderOut(nil) }
 
     @objc private func zoomPanel() {
-        let open = !(serverConsole.isExpanded && deviceConsole.isExpanded)
-        serverConsole.setOpen(open)
-        deviceConsole.setOpen(open)
+        deviceConsole.setOpen(!deviceConsole.isExpanded)
     }
 
     private func twoLineTitle(_ title: String, _ subtitle: String) -> NSAttributedString {
@@ -569,8 +555,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             NSSound.beep(); return
         }
         let path = (scriptsDir as NSString).appendingPathComponent(script)
-        let console = action.console == .server ? serverConsole : deviceConsole
-        console.run(scriptPath: path, label: action.title, repoRoot: repoRoot)
+        deviceConsole.run(scriptPath: path, label: action.title, repoRoot: repoRoot)
     }
 
     // MARK: worktree picker
@@ -637,7 +622,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func relayout() {
         guard let root = panel.contentView else { return }
-        let anyExpanded = serverConsole.isExpanded || deviceConsole.isExpanded
+        let anyExpanded = deviceConsole.isExpanded
         let fit = root.fittingSize
         let topLeft = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
         relayouting = true
@@ -670,13 +655,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowDidResize(_ notification: Notification) {
-        guard !relayouting, serverConsole.isExpanded || deviceConsole.isExpanded,
+        guard !relayouting, deviceConsole.isExpanded,
               let w = panel.contentView?.frame.width else { return }
         expandedWidth = w
     }
 
     @objc private func quit() {
-        serverConsole.stop()
         deviceConsole.stop()
         NSApp.terminate(nil)
     }
@@ -711,7 +695,7 @@ if ProcessInfo.processInfo.environment["DEVPANEL_SELFTEST"] == "1" {
     let labelOK = android.label(forSelectedScript: nil).title == "Android → device"
         && android.label(forSelectedScript: "deploy-android.sh").title == "Android → device"
         && android.label(forSelectedScript: "bogus.sh").title == "Android → device"
-        && allActions.count == 3
+        && allActions.count == 2
 
     let ipOK =
         LocalHostIp.pick(["8.8.8.8", "192.168.1.5"]) == "192.168.1.5"

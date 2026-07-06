@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -52,6 +51,7 @@ import pl.filmowo.model.Tone
 import pl.filmowo.ui.DiscoverMode
 import pl.filmowo.ui.DiscoverState
 import pl.filmowo.ui.common.ErrorRetry
+import pl.filmowo.ui.common.PosterGridCells
 import pl.filmowo.ui.common.PosterImage
 import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RateStars
@@ -166,7 +166,7 @@ private fun PicksGrid(
         modifier = Modifier.fillMaxSize(),
     ) {
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(170.dp),
+            columns = PosterGridCells,
             state = gridState,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),

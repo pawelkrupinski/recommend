@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -33,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import pl.filmowo.i18n.t
 import pl.filmowo.model.Pick
 import pl.filmowo.ui.WatchlistState
+import pl.filmowo.ui.common.PosterGridCells
 import pl.filmowo.ui.common.PosterImage
 import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RatingBadges
@@ -62,7 +62,7 @@ fun WatchlistScreen(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(170.dp),
+                columns = PosterGridCells,
                 state = gridState,
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),

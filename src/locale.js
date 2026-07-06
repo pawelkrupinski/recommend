@@ -34,26 +34,20 @@ const asCountry = (raw) => {
   return /^[A-Z]{2}$/.test(c) && c !== 'XX' && c !== 'T1' ? c : null;
 };
 
-// The Cloudflare edge country only (web). It doubles as a language hint because,
-// unlike a phone's physical GPS/network country, an IP-geo country genuinely
-// correlates with the language the visitor expects.
-const cfCountry = (req) => asCountry(req.headers['cf-ipcountry']);
-
 // The country resolved for this request's streaming REGION, or null. Prefer
 // Cloudflare's `CF-IPCountry` (web edge); fall back to the `X-Device-Country`
 // hint the native app sends from GPS / network / device locale (it talks to the
 // origin directly, so there's no CF header). Detection only ever seeds defaults.
 export function detectCountry(req) {
-  return cfCountry(req) || asCountry(req.headers['x-device-country']);
+  return asCountry(req.headers['cf-ipcountry']) || asCountry(req.headers['x-device-country']);
 }
 
-// Best default UI language for a new visitor: the language of their CF-geo
-// country if we localize for it, else the first supported language their browser
-// asks for (Accept-Language), else DEFAULT_LANGUAGE. Note the default country is
-// CF-only, NOT detectCountry: a phone's physical region (PL while travelling)
-// must not override the user's chosen device language — that rides on
-// Accept-Language, which the app sends from its locale.
-export function detectLanguage(req, country = cfCountry(req)) {
+// Best default UI language for a new visitor: the language of their resolved
+// country if we localize for it (so a Poland region defaults to Polish, whatever
+// the device language), else the first supported language their browser asks for
+// (Accept-Language), else DEFAULT_LANGUAGE. It's only a default — a saved choice
+// always wins (see server.js), and onboarding lets them switch it up front.
+export function detectLanguage(req, country = detectCountry(req)) {
   const byCountry = country && COUNTRY_TO_LANGUAGE[country];
   if (byCountry && isSupportedLanguage(byCountry)) return byCountry;
 

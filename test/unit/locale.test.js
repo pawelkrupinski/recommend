@@ -56,15 +56,13 @@ test('detectLanguage falls back to Accept-Language, then to the default', () => 
   assert.equal(detectLanguage(req({ 'cf-ipcountry': 'PL', 'accept-language': 'en-US' })), 'pl');
 });
 
-test('the device-country hint sets the region but NOT the language', () => {
-  // A phone whose owner reads English is physically in Poland: country resolves
-  // to PL (streaming region) but the UI language stays the device's own — the
-  // X-Device-Country hint must not trip COUNTRY_TO_LANGUAGE the way CF does.
-  const travelling = req({ 'x-device-country': 'PL', 'accept-language': 'en-CA,en;q=0.9' });
-  assert.equal(detectCountry(travelling), 'PL', 'region follows the physical device country');
-  assert.equal(detectLanguage(travelling), 'en', 'language follows the device language, not the region');
-  // Whereas Cloudflare's IP-geo country still drives the language on the web.
-  assert.equal(detectLanguage(req({ 'cf-ipcountry': 'PL', 'accept-language': 'en-CA' })), 'pl');
+test('a Poland region defaults the language to Polish, from either signal', () => {
+  // Whether Poland comes from the web edge or the app's device-region header, the
+  // default UI language is Polish — a default the visitor can still switch.
+  assert.equal(detectLanguage(req({ 'x-device-country': 'PL', 'accept-language': 'en-CA,en;q=0.9' })), 'pl',
+    'the app device-region PL defaults to Polish');
+  assert.equal(detectLanguage(req({ 'cf-ipcountry': 'PL', 'accept-language': 'en-CA' })), 'pl',
+    'the web edge PL defaults to Polish');
 });
 
 test('tmdbLang maps app codes to TMDB language params', () => {

@@ -25,6 +25,16 @@ test.describe('locale fallback when GPS is unavailable', () => {
   });
 });
 
+test.describe('a Poland region defaults the language to Polish', () => {
+  test.use({ locale: 'pl-PL' });
+
+  test('onboarding preselects PL and Polish when the region resolves to Poland', async ({ page }) => {
+    await login(page, uniqEmail('pl'), { onboarded: false });
+    await expect(page.locator('#ob-country')).toHaveValue('PL');
+    await expect(page.locator('#ob-lang')).toHaveValue('pl');
+  });
+});
+
 test('the start screen offers Sign in, which opens the provider overlay', async ({ page }) => {
   await login(page, uniqEmail('signin'), { onboarded: false });
   await expect(page.locator('#login')).toBeHidden();

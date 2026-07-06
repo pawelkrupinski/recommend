@@ -3,8 +3,8 @@
 // module directly — it touches no DOM at module load, so node can load it.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MESSAGES, LANGUAGES, t, setLanguage, getLanguage } from '../../public/i18n.js';
-import { SUPPORTED_LANGUAGES } from '../../src/locale.js';
+import { MESSAGES, LANGUAGES, t, setLanguage, getLanguage, COUNTRY_TO_LANGUAGE as CLIENT_COUNTRY_LANG } from '../../public/i18n.js';
+import { SUPPORTED_LANGUAGES, COUNTRY_TO_LANGUAGE as SERVER_COUNTRY_LANG } from '../../src/locale.js';
 
 test('every language defines exactly the same set of keys', () => {
   const en = Object.keys(MESSAGES.en).sort();
@@ -13,6 +13,12 @@ test('every language defines exactly the same set of keys', () => {
     assert.deepEqual(Object.keys(MESSAGES[code]).sort(), en,
       `language "${code}" must define the same keys as English`);
   }
+});
+
+test('client COUNTRY_TO_LANGUAGE matches the server map (no drift)', () => {
+  // Onboarding defaults the UI language from the resolved country using the client
+  // copy; it must stay identical to the server's so both agree Poland → Polish.
+  assert.deepEqual(CLIENT_COUNTRY_LANG, SERVER_COUNTRY_LANG);
 });
 
 test('client LANGUAGES match the server SUPPORTED_LANGUAGES (no drift)', () => {

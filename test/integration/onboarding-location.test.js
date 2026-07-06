@@ -33,13 +33,13 @@ test('a Polish device seeds Polish as the interface language (from Accept-Langua
   assert.equal(data.language, 'pl');
 });
 
-test('an English phone physically in Poland gets the PL region but keeps English UI', async () => {
-  // The bug this guards: a device-locale country must not flip the UI language,
-  // or a traveller on a Canadian-English phone would land in a Polish interface.
+test('a phone whose region resolves to Poland defaults to a Polish interface', async () => {
+  // Even from an English-locale device: a Poland region defaults the UI to Polish
+  // (a default the user can switch in onboarding), matching the web edge behaviour.
   const app = client(base, { 'x-device-country': 'PL', 'accept-language': 'en-CA,en;q=0.9' });
   const { data } = await app.json('/api/me');
   assert.equal(data.detectedCountry, 'PL', 'streaming region follows the physical country');
-  assert.equal(data.language, 'en', 'UI language follows the device language');
+  assert.equal(data.language, 'pl', 'Poland → Polish default');
 });
 
 test('/api/geocode reverse-geocodes a GPS position to a country', async () => {

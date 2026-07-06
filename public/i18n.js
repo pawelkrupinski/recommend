@@ -10,6 +10,12 @@ export const LANGUAGES = [
 ];
 const DEFAULT_LANGUAGE = 'en';
 
+// Default UI language for a resolved country — mirrors the server's
+// COUNTRY_TO_LANGUAGE in locale.js (a unit test keeps them in sync). Onboarding
+// uses it so a Poland region defaults the language to Polish. Unmapped → null.
+export const COUNTRY_TO_LANGUAGE = { PL: 'pl' };
+export const languageForCountry = (country) => COUNTRY_TO_LANGUAGE[country] || null;
+
 export const MESSAGES = {
   en: {
     // onboarding

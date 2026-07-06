@@ -1,5 +1,5 @@
 import { matchServiceLink, serviceSearchLink } from './service-match.js';
-import { t, setLanguage, getLanguage, applyStatic, LANGUAGES } from './i18n.js';
+import { t, setLanguage, getLanguage, applyStatic, LANGUAGES, languageForCountry } from './i18n.js';
 import { sortWatchlist } from './watchlist-sort.js';
 import { presentTones, filterByTone, presentGenres, filterByGenre, filterByType, genreLabels } from './watchlist-filters.js';
 import { newPicks, pickKey } from './recs-queue.js';
@@ -1235,16 +1235,6 @@ function localeCountry() {
   return null;
 }
 
-// The first interface language the browser asks for that we actually ship.
-function localeLanguage() {
-  const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
-  for (const tag of tags) {
-    const code = (tag || '').split('-')[0].toLowerCase();
-    if (LANGUAGES.some((l) => l.code === code)) return code;
-  }
-  return null;
-}
-
 // Resolve the country from a device GPS fix via our /api/geocode seam, or null on
 // denial / unsupported / timeout / failure. Skips the prompt when the permission
 // was already denied, so a repeat visitor who said no isn't asked again.
@@ -1276,30 +1266,38 @@ async function gpsCountry() {
 async function startOnboarding() {
   const ob = $('#onboarding');
   ob.classList.remove('hidden');
-  // Interface language from the browser locale (else the server-detected one, which
-  // init() already applied). Switch it live before the copy is shown.
-  const lang0 = localeLanguage();
-  if (lang0 && lang0 !== getLanguage()) { setLanguage(lang0); document.documentElement.lang = lang0; applyStatic(); }
-  // Language switches the onboarding copy live (no data loaded yet to refetch).
   const lang = $('#ob-lang');
+  const sel = $('#ob-country');
+  // Default the UI language from the resolved country when we localize for it (so
+  // a Poland region defaults to Polish, whatever the browser language). Only ever
+  // an upgrade — the server already applied the browser/edge default in init() —
+  // and it keeps the language <select> in sync. Still overridable right below.
+  const applyCountryLanguage = (country) => {
+    const code = languageForCountry(country);
+    if (code && code !== getLanguage()) { setLanguage(code); document.documentElement.lang = code; applyStatic(); }
+    lang.value = getLanguage();
+  };
+  // Language switches the onboarding copy live (no data loaded yet to refetch).
   lang.innerHTML = langOptions(getLanguage());
   lang.onchange = () => { setLanguage(lang.value); document.documentElement.lang = lang.value; applyStatic(); };
   // Country ("kraj"): paint the best synchronous guess now — browser locale region,
   // else the server-detected country, else PL — so the card never blocks on the
   // geolocation prompt. A GPS fix (if granted) upgrades it in the background below.
-  const sel = $('#ob-country');
   const paintCountry = (code) => {
     sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === code ? 'selected' : ''}>${n}</option>`).join('');
   };
-  paintCountry(localeCountry() || knownCountry(ME.detectedCountry) || 'PL');
+  const resolved = localeCountry() || knownCountry(ME.detectedCountry);
+  paintCountry(resolved || 'PL');
+  applyCountryLanguage(resolved);
   // Services differ per country, so a country switch reloads with a clean slate.
   const noSave = () => {}; // onboarding saves the full set once at the end
   sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
   await loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
-  // Upgrade to a GPS-resolved country if the visitor grants it — repaint + reload
-  // providers for the new region. Runs after the initial paint so nothing waits.
+  // Upgrade to a GPS-resolved country if the visitor grants it — repaint, reload
+  // providers, and re-default the language for the new region. Runs after the
+  // initial paint so nothing waits.
   gpsCountry().then((c) => {
-    if (c && c !== sel.value) { paintCountry(c); loadProviders(c, [], $('#ob-provider-list'), noSave); }
+    if (c && c !== sel.value) { paintCountry(c); applyCountryLanguage(c); loadProviders(c, [], $('#ob-provider-list'), noSave); }
   });
   // "Already have an account? Sign in" → the same overlay the userbar opens.
   $('#ob-signin').onclick = (e) => { e.preventDefault(); showLogin(); };

@@ -1,20 +1,25 @@
 package pl.filmowo
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import okhttp3.OkHttpClient
 import pl.filmowo.auth.AuthRepository
 import pl.filmowo.data.DataStoreDiscoverCache
 import pl.filmowo.data.UserPreferences
+import pl.filmowo.location.DeviceRegion
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.net.LocaleHeaderInterceptor
 import pl.filmowo.net.PersistentCookieJar
@@ -32,13 +37,19 @@ import java.util.concurrent.TimeUnit
  */
 class MainActivity : ComponentActivity() {
 
+    // Resolves the device's streaming-region country (GPS → network → SIM →
+    // locale). Shared between the request interceptor and the view model so a GPS
+    // fix, once resolved, rides on subsequent requests.
+    private val deviceRegion by lazy { DeviceRegion(applicationContext) }
+
     private val viewModel: FilmowoViewModel by viewModels {
         val cookieJar = PersistentCookieJar(applicationContext)
         val httpClient = OkHttpClient.Builder()
             .cookieJar(cookieJar)
-            // Send the device locale on every request so the server can seed a new
-            // user's country + language (no Cloudflare edge here → no CF-IPCountry).
-            .addInterceptor(LocaleHeaderInterceptor())
+            // Send the device region + language on every request so the server can
+            // seed a new user's country + language (no Cloudflare edge here → no
+            // CF-IPCountry). Region and language are independent signals.
+            .addInterceptor(LocaleHeaderInterceptor(country = { deviceRegion.best() }))
             // A short connect timeout so an unreachable server fails fast (→ the
             // boot error screen), but a generous read timeout because a cold
             // /api/recommend picks-build takes ~15s+ on the shared-CPU host — too
@@ -50,8 +61,15 @@ class MainActivity : ComponentActivity() {
         val auth = AuthRepository(httpClient, cookieJar, BuildConfig.BASE_URL)
         val prefs = UserPreferences(applicationContext)
         val discoverCache = DataStoreDiscoverCache(applicationContext)
-        FilmowoViewModel.Factory(api, auth, prefs, discoverCache)
+        FilmowoViewModel.Factory(api, auth, prefs, discoverCache, deviceRegion)
     }
+
+    // A granted coarse-location permission upgrades the region to a GPS fix; a
+    // denial is fine — the network/SIM/locale fallback already gives a country.
+    private val locationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) viewModel.resolveDeviceRegion()
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Dark-only UI: force light system-bar icons so they stay visible against
@@ -62,6 +80,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         handleAuthDeepLink(intent)
+        requestLocationForRegion()
         setContent {
             FilmowoTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = Background) {
@@ -74,6 +93,18 @@ class MainActivity : ComponentActivity() {
     // The OAuth callback bounces back as filmowo://auth-done?code=…. singleTask
     // means a redirect into the running app lands here; a cold start lands in
     // onCreate's intent — both funnel through handleAuthDeepLink.
+    // Ask for coarse location to pin the streaming region to where the phone
+    // actually is; if already granted, resolve a GPS fix straight away. Denial is
+    // harmless — the network/SIM/locale fallback still yields a country.
+    private fun requestLocationForRegion() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED) {
+            viewModel.resolveDeviceRegion()
+        } else {
+            locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

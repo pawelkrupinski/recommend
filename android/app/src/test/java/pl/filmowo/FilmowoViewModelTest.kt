@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import pl.filmowo.data.AppPreferences
 import pl.filmowo.data.CachedDiscover
 import pl.filmowo.data.DiscoverCache
+import pl.filmowo.location.RegionSource
 import pl.filmowo.model.Pick
 import pl.filmowo.net.FilmowoApi
 import pl.filmowo.ui.DiscoverMode
@@ -74,7 +75,7 @@ class FilmowoViewModelTest {
         cache: DiscoverCache = FakeDiscoverCache(),
     ): FilmowoViewModel {
         val api = FilmowoApi(OkHttpClient(), server.url("/").toString())
-        return FilmowoViewModel(api, FakeAuth(), prefs, cache)
+        return FilmowoViewModel(api, FakeAuth(), prefs, cache, FakeRegion())
     }
 
     private fun <T> await(flow: StateFlow<T>, timeoutMs: Long = 5_000, predicate: (T) -> Boolean): T = runBlocking {
@@ -433,6 +434,11 @@ class FilmowoViewModelTest {
         override suspend fun exchangeCode(code: String) = true
         override suspend fun signOut() {}
         override suspend fun deleteAccount() {}
+    }
+
+    private class FakeRegion : RegionSource {
+        override fun best(): String? = null
+        override suspend fun resolveGps(geocode: suspend (Double, Double) -> String?): String? = null
     }
 
     private class FakePrefs(initialSort: String? = null) : AppPreferences {

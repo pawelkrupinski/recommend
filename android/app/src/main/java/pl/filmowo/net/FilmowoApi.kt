@@ -67,6 +67,10 @@ class FilmowoApi(
 
     suspend fun origins(): OriginsResponse = get("/api/origins", serializer = OriginsResponse.serializer())
 
+    /** Reverse-geocode a GPS position to an ISO country via the server, or null. */
+    suspend fun geocode(lat: Double, lng: Double): String? =
+        get("/api/geocode", mapOf("lat" to lat.toString(), "lng" to lng.toString()), GeocodeResponse.serializer()).country
+
     suspend fun rateQueue(page: Int): RateQueue =
         get("/api/rate-queue", mapOf("page" to page.toString()), RateQueue.serializer())
 
@@ -164,6 +168,9 @@ class FilmowoApi(
         val title: String?,
         val year: Int?,
     )
+
+    @Serializable
+    private data class GeocodeResponse(val country: String? = null)
 
     @Serializable
     private data class IdPayload(

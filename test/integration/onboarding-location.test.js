@@ -25,12 +25,21 @@ test('a fresh visitor is seeded from the app device-locale headers (no Cloudflar
   assert.equal(data.language, 'en', 'GB has no localized UI language → English');
 });
 
-test('a Polish device seeds Polish as the interface language', async () => {
+test('a Polish device seeds Polish as the interface language (from Accept-Language)', async () => {
   const app = client(base, { 'x-device-country': 'PL', 'accept-language': 'pl-PL,pl;q=0.9' });
   const { data } = await app.json('/api/me');
   assert.equal(data.detectedCountry, 'PL');
   assert.equal(data.detectedLanguage, 'pl');
-  assert.equal(data.language, 'pl', 'Poland maps to Polish via COUNTRY_TO_LANGUAGE');
+  assert.equal(data.language, 'pl');
+});
+
+test('an English phone physically in Poland gets the PL region but keeps English UI', async () => {
+  // The bug this guards: a device-locale country must not flip the UI language,
+  // or a traveller on a Canadian-English phone would land in a Polish interface.
+  const app = client(base, { 'x-device-country': 'PL', 'accept-language': 'en-CA,en;q=0.9' });
+  const { data } = await app.json('/api/me');
+  assert.equal(data.detectedCountry, 'PL', 'streaming region follows the physical country');
+  assert.equal(data.language, 'en', 'UI language follows the device language');
 });
 
 test('/api/geocode reverse-geocodes a GPS position to a country', async () => {

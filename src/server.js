@@ -47,7 +47,7 @@ const json = (req, res, code, body, cacheControl = 'private, no-cache') =>
 // their saved choice, or — for someone who hasn't chosen yet — the language
 // detected from the request (Cloudflare country header / Accept-Language).
 const langFor = (uid, req) =>
-  getUserSetting(uid, 'language', detectLanguage(req, detectCountry(req)));
+  getUserSetting(uid, 'language', detectLanguage(req));
 
 // Normalize a service name for cross-source matching: lowercase, drop "+"/"plus"
 // and any non-alphanumerics. "Disney+" / "Disney Plus" -> "disney".
@@ -154,7 +154,7 @@ async function api(req, res, url) {
         // The watchlist sort the user last chose, so it's restored on load.
         watchlistSort: getUserSetting(uid, 'watchlist_sort', 'added'),
         detectedCountry,
-        detectedLanguage: detectLanguage(req, detectedCountry),
+        detectedLanguage: detectLanguage(req),
       });
     }
 
@@ -442,7 +442,7 @@ const server = createServer(async (req, res) => {
     // detected language — Facebook's ?fb_locale override, else the request's
     // country / Accept-Language — rather than as one shared static file.
     if ((url.pathname === '/' || url.pathname === '/index.html')
-      && (await serveShell(req, res, PUBLIC, fbLocaleLang(url) || detectLanguage(req, detectCountry(req))))) return;
+      && (await serveShell(req, res, PUBLIC, fbLocaleLang(url) || detectLanguage(req)))) return;
     // serveStatic compresses, caches (in-memory, pre-built variants) and serves a
     // 304 on a matching ETag; returns false when the file is missing.
     if (await serveStatic(req, res, PUBLIC, url.pathname)) return;

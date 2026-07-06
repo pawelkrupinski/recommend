@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import pl.filmowo.auth.SessionAuth
 import pl.filmowo.data.AppPreferences
 import pl.filmowo.data.DiscoverCache
+import pl.filmowo.location.RegionSource
 import pl.filmowo.model.Genre
 import pl.filmowo.model.Me
 import pl.filmowo.model.Pick
@@ -78,6 +79,7 @@ class FilmowoViewModel(
     private val auth: SessionAuth,
     private val prefs: AppPreferences,
     private val discoverCache: DiscoverCache,
+    private val deviceRegion: RegionSource,
 ) : ViewModel() {
 
     private val _me = MutableStateFlow<Me?>(null)
@@ -441,6 +443,17 @@ class FilmowoViewModel(
         }
     }
 
+    // ---- location ----------------------------------------------------------
+    /** After a location-permission grant: resolve a GPS country and, for a
+     *  not-yet-onboarded user, re-seed /api/me so their streaming region reflects
+     *  where they actually are (an onboarded account has a saved country already). */
+    fun resolveDeviceRegion() {
+        viewModelScope.launch {
+            val country = deviceRegion.resolveGps { lat, lng -> runCatching { api.geocode(lat, lng) }.getOrNull() }
+            if (country != null && _me.value?.onboarded == false) refreshAll()
+        }
+    }
+
     // ---- auth --------------------------------------------------------------
     fun signIn(context: Context, provider: String) = auth.startWebSignIn(context, provider)
 
@@ -467,9 +480,10 @@ class FilmowoViewModel(
         private val auth: SessionAuth,
         private val prefs: AppPreferences,
         private val discoverCache: DiscoverCache,
+        private val deviceRegion: RegionSource,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            FilmowoViewModel(api, auth, prefs, discoverCache) as T
+            FilmowoViewModel(api, auth, prefs, discoverCache, deviceRegion) as T
     }
 }

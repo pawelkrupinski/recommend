@@ -34,18 +34,26 @@ const asCountry = (raw) => {
   return /^[A-Z]{2}$/.test(c) && c !== 'XX' && c !== 'T1' ? c : null;
 };
 
-// The country resolved for this request, or null. Prefer Cloudflare's
-// `CF-IPCountry` (present on the web edge); fall back to the `X-Device-Country`
-// hint the native app sends from its device locale (it talks to the origin
-// directly, so there's no CF header). Detection only ever seeds defaults.
+// The Cloudflare edge country only (web). It doubles as a language hint because,
+// unlike a phone's physical GPS/network country, an IP-geo country genuinely
+// correlates with the language the visitor expects.
+const cfCountry = (req) => asCountry(req.headers['cf-ipcountry']);
+
+// The country resolved for this request's streaming REGION, or null. Prefer
+// Cloudflare's `CF-IPCountry` (web edge); fall back to the `X-Device-Country`
+// hint the native app sends from GPS / network / device locale (it talks to the
+// origin directly, so there's no CF header). Detection only ever seeds defaults.
 export function detectCountry(req) {
-  return asCountry(req.headers['cf-ipcountry']) || asCountry(req.headers['x-device-country']);
+  return cfCountry(req) || asCountry(req.headers['x-device-country']);
 }
 
-// Best default language for a new visitor: their country's language if we
-// localize for it, else the first supported language their browser asks for
-// (Accept-Language), else DEFAULT_LANGUAGE.
-export function detectLanguage(req, country = detectCountry(req)) {
+// Best default UI language for a new visitor: the language of their CF-geo
+// country if we localize for it, else the first supported language their browser
+// asks for (Accept-Language), else DEFAULT_LANGUAGE. Note the default country is
+// CF-only, NOT detectCountry: a phone's physical region (PL while travelling)
+// must not override the user's chosen device language — that rides on
+// Accept-Language, which the app sends from its locale.
+export function detectLanguage(req, country = cfCountry(req)) {
   const byCountry = country && COUNTRY_TO_LANGUAGE[country];
   if (byCountry && isSupportedLanguage(byCountry)) return byCountry;
 

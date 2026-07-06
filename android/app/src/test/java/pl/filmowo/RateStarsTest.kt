@@ -26,7 +26,9 @@ import pl.filmowo.ui.common.RateStars
 /**
  * The rating widget supports the web's drag-to-rate: a horizontal drag across the
  * row rates by finger position (lift commits), and a tap still rates the star
- * under it. Rendered off-device via Robolectric.
+ * under it. On a card too narrow for all ten stars in a row it wraps into two
+ * rows of five, and the rating follows the row you touch. Rendered off-device via
+ * Robolectric. A wide width (≥ the ten-star width) keeps them on one row.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -37,7 +39,7 @@ class RateStarsTest {
     fun `dragging across the stars rates by finger position`() {
         var rated = -1
         rule.setContent {
-            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(300.dp))
         }
         // Lift at 75% across → the 8th of 10 stars (cell 8 spans 70–80%).
         rule.onNodeWithTag("stars").performTouchInput {
@@ -52,7 +54,7 @@ class RateStarsTest {
     fun `tapping a star still rates it`() {
         var rated = -1
         rule.setContent {
-            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(300.dp))
         }
         // Tap at 45% across → the 5th star (cell 5 spans 40–50%).
         rule.onNodeWithTag("stars").performTouchInput { click(Offset(right * 0.45f, centerY)) }
@@ -62,7 +64,7 @@ class RateStarsTest {
     @Test
     fun `the value floats above and to the right of the stars while dragging`() {
         rule.setContent {
-            RateStars(onRate = {}, modifier = Modifier.testTag("stars").width(250.dp))
+            RateStars(onRate = {}, modifier = Modifier.testTag("stars").width(300.dp))
         }
         rule.onNodeWithTag("stars").performTouchInput {
             down(Offset(1f, centerY))
@@ -78,7 +80,7 @@ class RateStarsTest {
     fun `a vertical drift within the tolerance still rates`() {
         var rated = -1
         rule.setContent {
-            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(300.dp))
         }
         rule.onNodeWithTag("stars").performTouchInput {
             down(Offset(1f, centerY))
@@ -93,7 +95,7 @@ class RateStarsTest {
     fun `sliding off the stars clears the selection and submits nothing on lift`() {
         var rated = -1
         rule.setContent {
-            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(250.dp))
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(300.dp))
         }
         rule.onNodeWithTag("stars").performTouchInput {
             down(Offset(1f, centerY))
@@ -102,5 +104,20 @@ class RateStarsTest {
             up()                                        // lift off the stars → nothing submitted
         }
         rule.runOnIdle { assertEquals(-1, rated) }
+    }
+
+    @Test
+    fun `a narrow card wraps the stars into two rows and rates from the row you touch`() {
+        var rated = -1
+        rule.setContent {
+            // 150dp is well under the ten-star width, so the stars split 5 over 5.
+            RateStars(onRate = { rated = it }, modifier = Modifier.testTag("stars").width(150.dp))
+        }
+        // Upper half, ~45% across → the 3rd star of the top row (1..5).
+        rule.onNodeWithTag("stars").performTouchInput { click(Offset(right * 0.45f, height * 0.25f)) }
+        rule.runOnIdle { assertEquals(3, rated) }
+        // Lower half, same x → the 3rd star of the bottom row (6..10) = 8.
+        rule.onNodeWithTag("stars").performTouchInput { click(Offset(right * 0.45f, height * 0.75f)) }
+        rule.runOnIdle { assertEquals(8, rated) }
     }
 }

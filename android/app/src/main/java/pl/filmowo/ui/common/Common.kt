@@ -11,10 +11,13 @@ import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellati
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -94,79 +97,104 @@ private fun PlaceholderGlyph() {
     )
 }
 
+private const val STAR_COUNT = 10
+private val STAR_SIZE = 24.dp
+private val STAR_GAP = 2.dp
+/** Width all ten stars need in one row; a card narrower than this wraps them
+ *  into two rows of five (a 2-up grid cell on a small phone can't fit them). */
+private val ONE_ROW_WIDTH = STAR_SIZE * STAR_COUNT + STAR_GAP * (STAR_COUNT - 1)
+
 /**
  * Ten 1–10 rating stars. Tap a star to rate, or — like the web widget — drag
- * horizontally across the row to preview the rating under your finger and lift
- * to commit. A vertical drag is left to the enclosing scroll container.
+ * horizontally across the stars to preview the rating under your finger and lift
+ * to commit. A vertical drag is left to the enclosing scroll container. When the
+ * card is too narrow to fit all ten in a row (a 2-up grid on a small phone), the
+ * stars wrap into two rows of five and the drag/tap maps to whichever row and
+ * column the finger is over; sliding down from the top row into the bottom one
+ * moves the rating from 1–5 up to 6–10.
  */
 @Composable
 fun RateStars(onRate: (Int) -> Unit, modifier: Modifier = Modifier) {
     var preview by remember { mutableStateOf(0) }
-    Box {
-        Row(
-            modifier = modifier
-                .pointerInput(Unit) {
-                    val vSlop = size.height * 3f // generous: ~3× the star height above/below,
-                    // so normal finger drift never cancels — only a clear move away does
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        // Claim the gesture only once it's a HORIZONTAL drag, so a
-                        // vertical scroll that starts on the stars still scrolls the
-                        // list. Once claimed, track EVERY move (incl. vertical) so
-                        // sliding the finger off the row clears the selection.
-                        var change = awaitHorizontalTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
-                            ?: return@awaitEachGesture
-                        while (change.pressed) {
-                            preview = starAt(change.position.x, change.position.y, size.width, size.height, vSlop)
-                            change.consume()
-                            change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+    BoxWithConstraints(modifier) {
+        val rows = if (maxWidth < ONE_ROW_WIDTH) 2 else 1
+        val perRow = STAR_COUNT / rows
+        Box(Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pointerInput(rows) {
+                        val vSlop = size.height.toFloat() / rows * 3f // ~3× a star's height of
+                        // vertical slack past the top/bottom edge, so normal finger drift
+                        // never cancels — only a clear move away does
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            // Claim the gesture only once it's a HORIZONTAL drag, so a
+                            // vertical scroll that starts on the stars still scrolls the
+                            // list. Once claimed, track EVERY move (incl. vertical) so
+                            // sliding between rows — or off the stars — updates the value.
+                            var change = awaitHorizontalTouchSlopOrCancellation(down.id) { c, _ -> c.consume() }
+                                ?: return@awaitEachGesture
+                            while (change.pressed) {
+                                preview = starAt(change.position.x, change.position.y, size.width, size.height, rows, vSlop)
+                                change.consume()
+                                change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+                            }
+                            // On lift, commit only if a star is still selected (finger
+                            // on the stars); sliding off first submits nothing.
+                            if (preview > 0) onRate(preview)
+                            preview = 0
                         }
-                        // On lift, commit only if a star is still selected (finger
-                        // on the row); sliding off first submits nothing.
-                        if (preview > 0) onRate(preview)
-                        preview = 0
+                    }
+                    .pointerInput(rows) {
+                        val vSlop = size.height.toFloat() / rows * 3f
+                        detectTapGestures { off -> starAt(off.x, off.y, size.width, size.height, rows, vSlop).takeIf { it > 0 }?.let(onRate) }
+                    },
+                verticalArrangement = Arrangement.spacedBy(STAR_GAP),
+            ) {
+                for (r in 0 until rows) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        for (c in 0 until perRow) {
+                            val n = r * perRow + c + 1
+                            Icon(
+                                imageVector = if (n <= preview) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = "Rate $n",
+                                tint = if (n <= preview) Accent else TextMuted,
+                                modifier = Modifier.size(STAR_SIZE),
+                            )
+                        }
                     }
                 }
-                .pointerInput(Unit) {
-                    val vSlop = size.height * 3f // generous: ~3× the star height above/below,
-                    // so normal finger drift never cancels — only a clear move away does
-                    detectTapGestures { off -> starAt(off.x, off.y, size.width, size.height, vSlop).takeIf { it > 0 }?.let(onRate) }
-                },
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            for (n in 1..10) {
-                Icon(
-                    imageVector = if (n <= preview) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    contentDescription = "Rate $n",
-                    tint = if (n <= preview) Accent else TextMuted,
-                    modifier = Modifier.size(24.dp),
+            }
+            // While dragging, the current value floats just above the stars on the
+            // right. An overlay (offset up, out of the layout) so it never shifts the
+            // card, and shown only during a drag (preview > 0), not on a tap.
+            if (preview > 0) {
+                Text(
+                    "$preview/10",
+                    color = Accent,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    modifier = Modifier.align(Alignment.TopEnd).offset(y = (-20).dp),
                 )
             }
-        }
-        // While dragging, the current value floats just above the stars on the
-        // right. An overlay (offset up, out of the layout) so it never shifts the
-        // card, and shown only during a drag (preview > 0), not on a tap.
-        if (preview > 0) {
-            Text(
-                "$preview/10",
-                color = Accent,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                modifier = Modifier.align(Alignment.TopEnd).offset(y = (-20).dp),
-            )
         }
     }
 }
 
-/** The star (1–10) a touch at (`x`,`y`) falls on within a `width`×`height` px star
- *  row, or 0 when it's outside — off the left/right ends, or away vertically past
- *  `vSlop`. Returning 0 clears the lit stars and (via the caller's `preview > 0`
- *  guard) cancels the submit when the finger lifts off the row. */
-private fun starAt(x: Float, y: Float, width: Int, height: Int, vSlop: Float): Int {
-    if (width <= 0) return 0
-    if (y < -vSlop || y > height + vSlop) return 0
+/** The star (1–[STAR_COUNT]) a touch at (`x`,`y`) falls on within a `width`×`height`
+ *  px block of `rows` equal rows, or 0 when it's outside — off the left/right ends,
+ *  or away vertically past `vSlop`. The row picks the tens (rows of five → 1–5 vs
+ *  6–10); the column picks within it. Returning 0 clears the lit stars and (via the
+ *  caller's `preview > 0` guard) cancels the submit when the finger lifts off. */
+internal fun starAt(x: Float, y: Float, width: Int, height: Int, rows: Int, vSlop: Float): Int {
+    if (width <= 0 || height <= 0) return 0
     if (x < 0f || x > width) return 0
-    return ((x / width) * 10f).toInt().coerceIn(0, 9) + 1
+    if (y < -vSlop || y > height + vSlop) return 0
+    val perRow = STAR_COUNT / rows
+    val row = (y / (height.toFloat() / rows)).toInt().coerceIn(0, rows - 1)
+    val col = ((x / width) * perRow).toInt().coerceIn(0, perRow - 1)
+    return row * perRow + col + 1
 }
 
 /**

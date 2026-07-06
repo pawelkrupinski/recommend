@@ -22,6 +22,20 @@ test('detectCountry rejects non-geographic placeholders and missing headers', ()
   assert.equal(detectCountry(req()), null, 'no header → no signal');
 });
 
+test('detectCountry falls back to the native app X-Device-Country hint', () => {
+  // The app hits the origin directly (no Cloudflare edge), so it sends its
+  // device-locale country instead.
+  assert.equal(detectCountry(req({ 'x-device-country': 'GB' })), 'GB');
+  assert.equal(detectCountry(req({ 'x-device-country': 'gb' })), 'GB', 'lowercased codes are accepted');
+  assert.equal(detectCountry(req({ 'x-device-country': 'ZZ' })), 'ZZ',
+    'any well-formed 2-letter code passes; only XX/T1 are treated as no-signal');
+  assert.equal(detectCountry(req({ 'x-device-country': 'XX' })), null, 'placeholders are rejected here too');
+  assert.equal(detectCountry(req({ 'x-device-country': 'GBR' })), null, 'not a 2-letter code');
+  // Cloudflare's edge signal wins over the device hint when both are present.
+  assert.equal(detectCountry(req({ 'cf-ipcountry': 'PL', 'x-device-country': 'GB' })), 'PL',
+    'CF edge country takes precedence');
+});
+
 test('COUNTRY_TO_LANGUAGE maps Poland to Polish; others fall back to English', () => {
   assert.equal(COUNTRY_TO_LANGUAGE.PL, 'pl');
   assert.equal(COUNTRY_TO_LANGUAGE.US, undefined, 'unmapped countries default to English via detectLanguage');

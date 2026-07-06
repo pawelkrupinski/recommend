@@ -1216,25 +1216,93 @@ function renderUserbar() {
     `${avatar}<span class="uname">${esc(user.name || user.email)}</span>`
     + `<a class="logout" href="/auth/logout">${t('auth.signOut')}</a>`;
 }
+// ---- newcomer location resolution -----------------------------------------
+// Preselect the onboarding country ("kraj") and interface language from the
+// visitor's location, most precise signal first. Everything here is best-effort:
+// any failure falls through so the picker still opens on a sensible default.
+
+// Only keep a country we actually offer in the picker, so the <select> value
+// always matches an <option>.
+const knownCountry = (c) => (c && COUNTRIES.some(([code]) => code === c) ? c : null);
+
+// The country region subtag of the browser's locale, e.g. en-GB → GB, pl-PL → PL.
+function localeCountry() {
+  const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const tag of tags) {
+    const hit = knownCountry((tag || '').split('-')[1]?.toUpperCase());
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// The first interface language the browser asks for that we actually ship.
+function localeLanguage() {
+  const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const tag of tags) {
+    const code = (tag || '').split('-')[0].toLowerCase();
+    if (LANGUAGES.some((l) => l.code === code)) return code;
+  }
+  return null;
+}
+
+// Resolve the country from a device GPS fix via our /api/geocode seam, or null on
+// denial / unsupported / timeout / failure. Skips the prompt when the permission
+// was already denied, so a repeat visitor who said no isn't asked again.
+async function gpsCountry() {
+  if (!navigator.geolocation) return null;
+  try {
+    const perm = await navigator.permissions?.query({ name: 'geolocation' });
+    if (perm?.state === 'denied') return null;
+  } catch { /* Permissions API unsupported — just try the request below. */ }
+  const coords = await new Promise((resolve) => {
+    const done = (v) => resolve(v);
+    const timer = setTimeout(() => done(null), 6000); // never let onboarding hang on a slow fix
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { clearTimeout(timer); done(pos.coords); },
+      () => { clearTimeout(timer); done(null); },
+      { timeout: 5000, maximumAge: 600000 },
+    );
+  });
+  if (!coords) return null;
+  try {
+    const { country } = await api(`/api/geocode?lat=${coords.latitude}&lng=${coords.longitude}`);
+    return knownCountry(country);
+  } catch { return null; }
+}
+
 // ---- first-run onboarding -------------------------------------------------
 // Brand-new accounts (onboarded=false) must pick their streaming services before
 // reaching the app. Reuses the Settings provider picker against its own list.
 async function startOnboarding() {
   const ob = $('#onboarding');
   ob.classList.remove('hidden');
+  // Interface language from the browser locale (else the server-detected one, which
+  // init() already applied). Switch it live before the copy is shown.
+  const lang0 = localeLanguage();
+  if (lang0 && lang0 !== getLanguage()) { setLanguage(lang0); document.documentElement.lang = lang0; applyStatic(); }
   // Language switches the onboarding copy live (no data loaded yet to refetch).
   const lang = $('#ob-lang');
   lang.innerHTML = langOptions(getLanguage());
   lang.onchange = () => { setLanguage(lang.value); document.documentElement.lang = lang.value; applyStatic(); };
-  // Preselect the detected country for a newcomer; fall back to PL if we don't
-  // recognise it (or there was no geo signal).
-  const detected = COUNTRIES.some(([c]) => c === ME.detectedCountry) ? ME.detectedCountry : 'PL';
+  // Country ("kraj"): paint the best synchronous guess now — browser locale region,
+  // else the server-detected country, else PL — so the card never blocks on the
+  // geolocation prompt. A GPS fix (if granted) upgrades it in the background below.
   const sel = $('#ob-country');
-  sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === detected ? 'selected' : ''}>${n}</option>`).join('');
+  const paintCountry = (code) => {
+    sel.innerHTML = COUNTRIES.map(([c, n]) => `<option value="${c}" ${c === code ? 'selected' : ''}>${n}</option>`).join('');
+  };
+  paintCountry(localeCountry() || knownCountry(ME.detectedCountry) || 'PL');
   // Services differ per country, so a country switch reloads with a clean slate.
   const noSave = () => {}; // onboarding saves the full set once at the end
   sel.onchange = () => loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
   await loadProviders(sel.value, [], $('#ob-provider-list'), noSave);
+  // Upgrade to a GPS-resolved country if the visitor grants it — repaint + reload
+  // providers for the new region. Runs after the initial paint so nothing waits.
+  gpsCountry().then((c) => {
+    if (c && c !== sel.value) { paintCountry(c); loadProviders(c, [], $('#ob-provider-list'), noSave); }
+  });
+  // "Already have an account? Sign in" → the same overlay the userbar opens.
+  $('#ob-signin').onclick = (e) => { e.preventDefault(); showLogin(); };
   $('#ob-continue').onclick = async () => {
     const btn = $('#ob-continue');
     const ids = [...$('#ob-provider-list').querySelectorAll('.prov.on')].map((e) => Number(e.dataset.id));

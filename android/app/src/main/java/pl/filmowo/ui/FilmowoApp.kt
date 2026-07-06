@@ -22,7 +22,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +37,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import pl.filmowo.i18n.LocalLanguage
 import pl.filmowo.i18n.t
+import pl.filmowo.ui.auth.LoginScreen
 import pl.filmowo.ui.common.ErrorRetry
 import pl.filmowo.ui.detail.DetailSheet
 import pl.filmowo.ui.discover.DiscoverScreen
@@ -78,15 +82,30 @@ fun FilmowoApp(vm: FilmowoViewModel) {
 private fun FirstRunOnboarding(vm: FilmowoViewModel) {
     val me by vm.me.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
-    OnboardingScreen(
-        me = me,
-        settings = settings,
-        onLoadServices = vm::loadServices,
-        onCountry = vm::setCountry,
-        onLanguage = vm::setLanguage,
-        onToggleService = vm::toggleService,
-        onComplete = vm::completeOnboarding,
-    )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var showLogin by rememberSaveable { mutableStateOf(false) }
+    // Once the user signs in but still isn't onboarded, drop the login screen so
+    // they land on the streaming setup. (If they ARE onboarded, FilmowoApp's
+    // top-level branch has already swapped this whole screen for MainScaffold.)
+    LaunchedEffect(me?.anonymous) { if (me?.anonymous == false) showLogin = false }
+    if (showLogin) {
+        LoginScreen(
+            me = me,
+            onSignIn = { provider -> vm.signIn(context, provider) },
+            onBack = { showLogin = false },
+        )
+    } else {
+        OnboardingScreen(
+            me = me,
+            settings = settings,
+            onLoadServices = vm::loadServices,
+            onCountry = vm::setCountry,
+            onLanguage = vm::setLanguage,
+            onToggleService = vm::toggleService,
+            onComplete = vm::completeOnboarding,
+            onSignIn = { showLogin = true },
+        )
+    }
 }
 
 @Composable

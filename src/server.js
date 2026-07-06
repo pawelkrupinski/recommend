@@ -20,6 +20,7 @@ import { toneList } from './tones.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
 import { handleFacebook } from './facebook.js';
 import { detectCountry, detectLanguage, isSupportedLanguage, tmdbLang } from './locale.js';
+import { reverseGeocode } from './geocode.js';
 import { CONTINENTS } from './geo.js';
 import { log } from './log.js';
 import { startPerfMonitor } from './perf.js';
@@ -202,6 +203,15 @@ async function api(req, res, url) {
       const list = await providerPicker(region);
       // Region service lists barely move — hold for an hour.
       return json(req, res, 200, list, 'private, max-age=3600');
+    }
+
+    // ---- reverse-geocode a browser GPS position to a country ----------
+    // The web onboarding location cascade posts the visitor's coordinates here so
+    // the lookup runs server-side; `country` is null when it can't be resolved
+    // and the client falls back to its locale / detected signal.
+    if (p === '/api/geocode' && req.method === 'GET') {
+      const country = await reverseGeocode(Number(url.searchParams.get('lat')), Number(url.searchParams.get('lng')));
+      return json(req, res, 200, { country }, 'private, max-age=3600');
     }
 
     // ---- ratings ------------------------------------------------------

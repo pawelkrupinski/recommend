@@ -26,12 +26,20 @@ export const isSupportedLanguage = (code) =>
 
 export const tmdbLang = (code) => TMDB_LANG[code] || TMDB_LANG[DEFAULT_LANGUAGE];
 
-// The country Cloudflare resolved for this request, or null. CF sets
-// `CF-IPCountry` to a 2-letter ISO code, or a non-geographic placeholder
-// (`XX` unknown, `T1` Tor) we treat as "no signal".
+// A 2-letter ISO country code, or null for anything non-geographic. CF sets
+// `CF-IPCountry` to a code or a placeholder (`XX` unknown, `T1` Tor); the app's
+// device-locale header carries a code the same way.
+const asCountry = (raw) => {
+  const c = (raw || '').toUpperCase();
+  return /^[A-Z]{2}$/.test(c) && c !== 'XX' && c !== 'T1' ? c : null;
+};
+
+// The country resolved for this request, or null. Prefer Cloudflare's
+// `CF-IPCountry` (present on the web edge); fall back to the `X-Device-Country`
+// hint the native app sends from its device locale (it talks to the origin
+// directly, so there's no CF header). Detection only ever seeds defaults.
 export function detectCountry(req) {
-  const raw = (req.headers['cf-ipcountry'] || '').toUpperCase();
-  return /^[A-Z]{2}$/.test(raw) && raw !== 'XX' && raw !== 'T1' ? raw : null;
+  return asCountry(req.headers['cf-ipcountry']) || asCountry(req.headers['x-device-country']);
 }
 
 // Best default language for a new visitor: their country's language if we

@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
@@ -36,6 +37,7 @@ fun OnboardingScreen(
     onLanguage: (String) -> Unit,
     onToggleService: (Int) -> Unit,
     onComplete: () -> Unit,
+    onSignIn: () -> Unit,
 ) {
     LaunchedEffect(me?.country) { onLoadServices() }
     Column(
@@ -44,6 +46,9 @@ fun OnboardingScreen(
     ) {
         Text(t("onboarding.welcome"), fontWeight = FontWeight.Bold, fontSize = 24.sp)
         Text(t("onboarding.intro"), color = TextMuted)
+        // Existing account? Skip setup and sign in — routing then lands on Discover
+        // (already onboarded) or back on this streaming setup (a fresh account).
+        TextButton(onClick = onSignIn) { Text(t("onboarding.haveAccount")) }
 
         Text(t("settings.language"), fontWeight = FontWeight.SemiBold)
         Chooser(LANGUAGES.firstOrNull { it.first == me?.language }?.second ?: "English", LANGUAGES, onLanguage)

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -22,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import pl.filmowo.i18n.t
 import pl.filmowo.model.Me
 import pl.filmowo.ui.SettingsData
+import pl.filmowo.ui.auth.SignInButtons
 import pl.filmowo.ui.common.COUNTRIES
 import pl.filmowo.ui.common.Chooser
 import pl.filmowo.ui.common.LANGUAGES
@@ -56,12 +56,7 @@ fun SettingsScreen(
             OutlinedButton(onClick = onSignOut) { Text(t("settings.signOut")) }
         } else {
             Text(t("settings.anonymous"), color = TextMuted, fontSize = 13.sp)
-            if (me?.providers?.contains("google") == true) {
-                Button(onClick = { onSignIn("google") }, modifier = Modifier.fillMaxWidth()) { Text(t("settings.signInGoogle")) }
-            }
-            if (me?.providers?.contains("facebook") == true) {
-                Button(onClick = { onSignIn("facebook") }, modifier = Modifier.fillMaxWidth()) { Text(t("settings.signInFacebook")) }
-            }
+            SignInButtons(me = me, onSignIn = onSignIn)
         }
 
         // Language

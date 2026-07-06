@@ -17,6 +17,7 @@ export const MESSAGES = {
     'ob.intro': 'Tell us where you watch so every pick is something you can actually stream tonight.',
     'ob.continue': 'Continue →',
     'ob.changeLater': 'You can change these any time in Settings.',
+    'ob.haveAccount': 'Already have an account?',
     'label.country': 'Country',
     'label.language': 'Language',
     // tabs
@@ -110,6 +111,7 @@ export const MESSAGES = {
     'ob.intro': 'Powiedz nam, gdzie oglądasz, aby każda propozycja była czymś, co naprawdę możesz obejrzeć dziś wieczorem.',
     'ob.continue': 'Dalej →',
     'ob.changeLater': 'Możesz to zmienić w dowolnej chwili w Ustawieniach.',
+    'ob.haveAccount': 'Masz już konto?',
     'label.country': 'Kraj',
     'label.language': 'Język',
     // tabs

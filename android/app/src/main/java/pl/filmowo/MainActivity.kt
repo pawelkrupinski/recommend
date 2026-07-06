@@ -16,6 +16,7 @@ import pl.filmowo.auth.AuthRepository
 import pl.filmowo.data.DataStoreDiscoverCache
 import pl.filmowo.data.UserPreferences
 import pl.filmowo.net.FilmowoApi
+import pl.filmowo.net.LocaleHeaderInterceptor
 import pl.filmowo.net.PersistentCookieJar
 import pl.filmowo.ui.FilmowoApp
 import pl.filmowo.ui.FilmowoViewModel
@@ -35,6 +36,9 @@ class MainActivity : ComponentActivity() {
         val cookieJar = PersistentCookieJar(applicationContext)
         val httpClient = OkHttpClient.Builder()
             .cookieJar(cookieJar)
+            // Send the device locale on every request so the server can seed a new
+            // user's country + language (no Cloudflare edge here → no CF-IPCountry).
+            .addInterceptor(LocaleHeaderInterceptor())
             // A short connect timeout so an unreachable server fails fast (→ the
             // boot error screen), but a generous read timeout because a cold
             // /api/recommend picks-build takes ~15s+ on the shared-CPU host — too

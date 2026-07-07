@@ -19,6 +19,7 @@
 		475E8F2C9EE155F3913A517B /* PosterStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D046E06B1709EAB2F02F5AB /* PosterStore.swift */; };
 		4A33079419E3ABE6B08A77D0 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C12FB67116791F24FE6FB79 /* DiscoverView.swift */; };
 		61B448BF2A140F330E4A113C /* WatchlistStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C7B5D7E337A2061945F0418 /* WatchlistStore.swift */; };
+		70F30F3106DEF2CB8BD915D4 /* RateStarsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB4DE365394041A520B76DA3 /* RateStarsTests.swift */; };
 		752C03B75CA70E5EFE3B6ED4 /* FilmowoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 001FF82D30B022693ABD8C5C /* FilmowoClient.swift */; };
 		787770015289E08BD83C01F8 /* LaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A42284F5F87007B6C6FF45 /* LaunchUITests.swift */; };
 		797596C045965B6FA8C56CE9 /* UITestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3EA2E73C462980C310545B5 /* UITestSupport.swift */; };
@@ -36,6 +37,7 @@
 		C5BFC02ED39DC7955AD858E8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7218C798A82711CE2A165D4B /* RootView.swift */; };
 		C7B228C31037C4DBFCC1C5E3 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */; };
 		C8F1D707B4D57378D6668C82 /* WatchlistView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4361582255FA1B36483067B3 /* WatchlistView.swift */; };
+		CF700B8D878D08E1A6BB0C21 /* DiscoverLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC1187A719F2FD25D57F1AD /* DiscoverLayoutUITests.swift */; };
 		D363D6845F0477C6861515CB /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338EFE9FB78467C9C4A0753B /* AuthService.swift */; };
 		E645299722BC9B6BE794FDF8 /* RatingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F774659FF5E09EEE898D04 /* RatingsView.swift */; };
 		EC840382315F3BBE421933F4 /* TabsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84786BE4F742B405D79D7E48 /* TabsUITests.swift */; };
@@ -77,6 +79,7 @@
 		4361582255FA1B36483067B3 /* WatchlistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistView.swift; sourceTree = "<group>"; };
 		4857C9D9AEB52B8106BC3970 /* FilmowoUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FilmowoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C12FB67116791F24FE6FB79 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
+		4FC1187A719F2FD25D57F1AD /* DiscoverLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverLayoutUITests.swift; sourceTree = "<group>"; };
 		50F404784530ADEDAE519851 /* FilmowoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoApp.swift; sourceTree = "<group>"; };
 		640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRegionSource.swift; sourceTree = "<group>"; };
 		7218C798A82711CE2A165D4B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -96,6 +99,7 @@
 		D3EA2E73C462980C310545B5 /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
 		D54F418094D292E901552A96 /* DiscoverFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverFlowUITests.swift; sourceTree = "<group>"; };
 		DBE91132606D22E239573FA3 /* DetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailSheet.swift; sourceTree = "<group>"; };
+		EB4DE365394041A520B76DA3 /* RateStarsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStarsTests.swift; sourceTree = "<group>"; };
 		EDAE005D6B6F853D2FB64D57 /* AppModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModelTests.swift; sourceTree = "<group>"; };
 		F04DD2F3D03BC136C540D70B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		F3B1AB92B1F064547BA548DC /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
@@ -134,6 +138,7 @@
 			isa = PBXGroup;
 			children = (
 				D54F418094D292E901552A96 /* DiscoverFlowUITests.swift */,
+				4FC1187A719F2FD25D57F1AD /* DiscoverLayoutUITests.swift */,
 				04A42284F5F87007B6C6FF45 /* LaunchUITests.swift */,
 				84786BE4F742B405D79D7E48 /* TabsUITests.swift */,
 				D3EA2E73C462980C310545B5 /* UITestSupport.swift */,
@@ -190,6 +195,7 @@
 				EDAE005D6B6F853D2FB64D57 /* AppModelTests.swift */,
 				9E73F47B09C3182CF76A051E /* DiscoverStoreTests.swift */,
 				A1EB6FE38B136B883276683E /* FilmowoClientTests.swift */,
+				EB4DE365394041A520B76DA3 /* RateStarsTests.swift */,
 			);
 			path = FilmowoTests;
 			sourceTree = "<group>";
@@ -406,6 +412,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F5EEB7DD69A56E1DC13EBC1E /* DiscoverFlowUITests.swift in Sources */,
+				CF700B8D878D08E1A6BB0C21 /* DiscoverLayoutUITests.swift in Sources */,
 				787770015289E08BD83C01F8 /* LaunchUITests.swift in Sources */,
 				EC840382315F3BBE421933F4 /* TabsUITests.swift in Sources */,
 				797596C045965B6FA8C56CE9 /* UITestSupport.swift in Sources */,
@@ -419,6 +426,7 @@
 				C053C98226BBAD11FAAA4769 /* AppModelTests.swift in Sources */,
 				93120CF232896067A891A10D /* DiscoverStoreTests.swift in Sources */,
 				A0A9F5107E1A9052440B836D /* FilmowoClientTests.swift in Sources */,
+				70F30F3106DEF2CB8BD915D4 /* RateStarsTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

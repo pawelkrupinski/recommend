@@ -17,6 +17,7 @@ struct DiscoverView: View {
         NavigationStack {
             content
                 .navigationTitle(I18n.t(language, "nav.discover"))
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {

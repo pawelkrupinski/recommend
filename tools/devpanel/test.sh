@@ -46,4 +46,12 @@ check "iOS deploy builds for a device"     "$i" "-destination platform=iOS,id="
 check "iOS deploy installs via devicectl"  "$i" "devicectl device install app --device"
 check "iOS deploy launches the bundle"     "$i" "devicectl device process launch --device <udid> pl.filmowo.Filmowo"
 
+# Device selection prefers the cabled (wired) device over a wireless one, so
+# plugging in an iPad while an iPhone is on wifi targets the iPad.
+pick() { SCRIPT_DIR="$HERE/scripts" bash -c 'source "'"$HERE"'/scripts/lib.sh"; _ios_pick'; }
+w="$(printf 'UD-PHONE\tiPhone\tlocalNetwork\tPhone\nUD-PAD\tiPad\twired\tPad\n' | pick)"
+check "picks the cabled device over a wireless one" "$w" "UD-PAD"
+o="$(printf 'UD-PHONE\tiPhone\tlocalNetwork\tPhone\n' | pick)"
+check "falls back to the only (wireless) device"    "$o" "UD-PHONE"
+
 if [[ $fail -eq 0 ]]; then echo "✓ all devpanel checks passed"; else echo "✗ devpanel checks failed"; exit 1; fi

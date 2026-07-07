@@ -22,6 +22,14 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // iPad Safari (WebKit) catches iOS-specific stacking/layout bugs the desktop
+    // Chromium run can't — e.g. the sign-in overlay painting *under* the app.
+    // Scoped to the login-overlay spec so the rest of the suite stays chromium.
+    {
+      name: 'webkit-ipad',
+      use: { ...devices['iPad (gen 7)'] },
+      testMatch: /login-overlay\.spec\.js/,
+    },
   ],
   webServer: {
     // Build the fingerprinted bundle first, then serve it — so e2e exercises the

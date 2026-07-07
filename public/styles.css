@@ -55,6 +55,11 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
      viewport (long onboarding service grid on a small phone) it pins to the top
      and the overlay scrolls instead of clipping the card at both ends. */
   background: rgba(0, 0, 0, 0.6); z-index: 60; }
+/* The sign-in overlay can open *over* the onboarding overlay ("Already have an
+   account? Sign in"). Both are `.login` (z-index 60), and #login sits earlier in
+   the DOM, so at equal z-index it painted *under* onboarding — the popup "popped
+   under" on iPad. Lift #login above its sibling backdrops so it always wins. */
+#login { z-index: 70; }
 .login-card { position: relative; margin: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
   padding: 36px 32px; max-width: 380px; width: 100%; text-align: center; }
 .login-card h1 { font-size: 26px; margin-bottom: 6px; }

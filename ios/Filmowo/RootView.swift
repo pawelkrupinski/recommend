@@ -1,21 +1,31 @@
 import SwiftUI
+import FilmowoCore
 
-/// Placeholder root. Replaced in the networking/onboarding slice with the
-/// `/api/me` boot probe → onboarding vs. the four-tab main scaffold
-/// (Discover, Watchlist, Ratings, Settings), matching Android `FilmowoApp.kt`.
+/// App root: boots against `/api/me`, then routes to onboarding or the main
+/// tabs, with a retryable error state. Owns the `AppModel` and injects it +
+/// the active language into the whole tree. Mirrors Android `FilmowoApp.kt`.
 struct RootView: View {
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
-            Text("Filmowo")
-                .font(.largeTitle.bold())
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+    @StateObject private var app = AppModel()
 
-#Preview {
-    RootView()
+    var body: some View {
+        Group {
+            switch app.boot {
+            case .loading:
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            case .failed:
+                RetryView(message: I18n.t(app.language, "error.offline")) {
+                    Task { await app.start() }
+                }
+            case .onboarding:
+                OnboardingView(app: app)
+            case .ready:
+                MainTabView(app: app)
+            }
+        }
+        .environmentObject(app)
+        .language(app.language)
+        .task {
+            if app.me == nil { await app.start() }
+        }
+    }
 }

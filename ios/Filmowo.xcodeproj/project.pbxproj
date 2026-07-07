@@ -7,21 +7,27 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		19FA4E8636B53F1050AE2CA9 /* Endpoints.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D6234CBB356DE13CDA343F8 /* Endpoints.swift */; };
-		2AB64CC0CEDE12A34C907BBA /* WhereInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBD43D1A670C9BAEF3469D9 /* WhereInfo.swift */; };
-		2DC3542074CB7F002454ACAD /* I18n.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C95F894E20992ACD8943CCE /* I18n.swift */; };
+		004B014D0AAC29F146779538 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDA064E8531145F61DED250 /* CardView.swift */; };
+		00EA197B0BB98DE0172A6236 /* LocationRegionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */; };
+		2850193A8F71697D5536AF64 /* DiscoverStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */; };
+		2D70C22487B10D82E5AD4858 /* RateStars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B30ADA08055813C7B38ED7A /* RateStars.swift */; };
 		371C629EF39D5F021B201D40 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F04DD2F3D03BC136C540D70B /* Assets.xcassets */; };
+		38C361246034B0934B852CB8 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1AB92B1F064547BA548DC /* Localization.swift */; };
 		4610262F32B3DA70E5D8D704 /* FilmowoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F404784530ADEDAE519851 /* FilmowoApp.swift */; };
-		5696578FD08C42052BFDA5F1 /* RegionResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEABEB0A203D84FB5068AA35 /* RegionResolver.swift */; };
-		572FFE75BCE2B4B52E810CBE /* Rating.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5623B4D7E1E27FC54E51C609 /* Rating.swift */; };
-		65EB9F491AB8AD9571209272 /* SmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33193B693386A14D57F30BBF /* SmokeTests.swift */; };
-		6D6E40130A8F8EC703E66F87 /* Card.swift in Sources */ = {isa = PBXBuildFile; fileRef = B995396413E34EE01D0B7DDE /* Card.swift */; };
+		4A33079419E3ABE6B08A77D0 /* DiscoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C12FB67116791F24FE6FB79 /* DiscoverView.swift */; };
+		752C03B75CA70E5EFE3B6ED4 /* FilmowoClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 001FF82D30B022693ABD8C5C /* FilmowoClient.swift */; };
 		787770015289E08BD83C01F8 /* LaunchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04A42284F5F87007B6C6FF45 /* LaunchUITests.swift */; };
-		908F8E7F49D41879C56AE345 /* Catalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95A069249634F63BCE9EEEEF /* Catalog.swift */; };
-		9C79A4A3CAC8F1E505CEBBD6 /* Decoding.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5ECBE476754B3BEF36A067A /* Decoding.swift */; };
-		BC292D1BD136430635AC08F0 /* Feed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3640AB7E95B21648EB97BFA5 /* Feed.swift */; };
+		9BF831634BFEB626D1757C77 /* CountryCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4C56ECC26AA731DAC9CFF53 /* CountryCatalog.swift */; };
+		9FEC451C0A8C9267AABE3C40 /* FilmowoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 921D1DBD9B8BCACDE0328299 /* FilmowoCore */; };
+		A0A9F5107E1A9052440B836D /* FilmowoClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EB6FE38B136B883276683E /* FilmowoClientTests.swift */; };
+		B17793B4E9CF78B6B4EC223B /* PosterImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8516F36FE1065B71FDA11532 /* PosterImage.swift */; };
+		B1DCB3822FE0824FF80ED567 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35283668ABA5A9BC210D6158 /* AccessibilityIdentifiers.swift */; };
+		B4BEC787E6074E57ED531983 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF3B7BAFE9D91DBC6CC57D1 /* AppModel.swift */; };
+		BF4CE22480496B35034CCCBB /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37E297BFE28F4065A6017E22 /* MainTabView.swift */; };
 		C5BFC02ED39DC7955AD858E8 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7218C798A82711CE2A165D4B /* RootView.swift */; };
-		FFDECE161EAD7D7BCA12B794 /* Me.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0479BE0CC59E5E9CD989AF4 /* Me.swift */; };
+		C7B228C31037C4DBFCC1C5E3 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */; };
+		D363D6845F0477C6861515CB /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338EFE9FB78467C9C4A0753B /* AuthService.swift */; };
+		FA9EE2253304CC66B1A9FC3C /* DetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE91132606D22E239573FA3 /* DetailSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -42,28 +48,59 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		001FF82D30B022693ABD8C5C /* FilmowoClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoClient.swift; sourceTree = "<group>"; };
 		04A42284F5F87007B6C6FF45 /* LaunchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchUITests.swift; sourceTree = "<group>"; };
+		0CF3B7BAFE9D91DBC6CC57D1 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		17235E22E8D6B632118D558F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		33193B693386A14D57F30BBF /* SmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeTests.swift; sourceTree = "<group>"; };
-		3640AB7E95B21648EB97BFA5 /* Feed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Feed.swift; sourceTree = "<group>"; };
+		30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		338EFE9FB78467C9C4A0753B /* AuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthService.swift; sourceTree = "<group>"; };
+		35283668ABA5A9BC210D6158 /* AccessibilityIdentifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityIdentifiers.swift; sourceTree = "<group>"; };
+		37E297BFE28F4065A6017E22 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		3BDA064E8531145F61DED250 /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
 		4857C9D9AEB52B8106BC3970 /* FilmowoUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FilmowoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		4D6234CBB356DE13CDA343F8 /* Endpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Endpoints.swift; sourceTree = "<group>"; };
+		4C12FB67116791F24FE6FB79 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		50F404784530ADEDAE519851 /* FilmowoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoApp.swift; sourceTree = "<group>"; };
-		5623B4D7E1E27FC54E51C609 /* Rating.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rating.swift; sourceTree = "<group>"; };
-		5C95F894E20992ACD8943CCE /* I18n.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = I18n.swift; sourceTree = "<group>"; };
+		640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRegionSource.swift; sourceTree = "<group>"; };
 		7218C798A82711CE2A165D4B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		7B30ADA08055813C7B38ED7A /* RateStars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStars.swift; sourceTree = "<group>"; };
+		7BD8ABD7EBAB969DA4EEC02F /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = .; sourceTree = SOURCE_ROOT; };
 		83F46537A1D17468923528D7 /* Filmowo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Filmowo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		95A069249634F63BCE9EEEEF /* Catalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Catalog.swift; sourceTree = "<group>"; };
-		9CBD43D1A670C9BAEF3469D9 /* WhereInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhereInfo.swift; sourceTree = "<group>"; };
-		A5ECBE476754B3BEF36A067A /* Decoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Decoding.swift; sourceTree = "<group>"; };
+		8516F36FE1065B71FDA11532 /* PosterImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PosterImage.swift; sourceTree = "<group>"; };
+		A1EB6FE38B136B883276683E /* FilmowoClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoClientTests.swift; sourceTree = "<group>"; };
+		B4C56ECC26AA731DAC9CFF53 /* CountryCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCatalog.swift; sourceTree = "<group>"; };
 		B79985D96654DA2492D6EB22 /* FilmowoTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FilmowoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		B995396413E34EE01D0B7DDE /* Card.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Card.swift; sourceTree = "<group>"; };
-		F0479BE0CC59E5E9CD989AF4 /* Me.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Me.swift; sourceTree = "<group>"; };
+		BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverStore.swift; sourceTree = "<group>"; };
+		DBE91132606D22E239573FA3 /* DetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailSheet.swift; sourceTree = "<group>"; };
 		F04DD2F3D03BC136C540D70B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		FEABEB0A203D84FB5068AA35 /* RegionResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RegionResolver.swift; sourceTree = "<group>"; };
+		F3B1AB92B1F064547BA548DC /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFrameworksBuildPhase section */
+		D781F12F2D3E54A162FBFF2A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9FEC451C0A8C9267AABE3C40 /* FilmowoCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
 /* Begin PBXGroup section */
+		03C297045E3548D9C3A985B4 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				3BDA064E8531145F61DED250 /* CardView.swift */,
+				B4C56ECC26AA731DAC9CFF53 /* CountryCatalog.swift */,
+				DBE91132606D22E239573FA3 /* DetailSheet.swift */,
+				4C12FB67116791F24FE6FB79 /* DiscoverView.swift */,
+				37E297BFE28F4065A6017E22 /* MainTabView.swift */,
+				30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */,
+				7B30ADA08055813C7B38ED7A /* RateStars.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		1D6DB99186F68B1B9725E52D /* FilmowoUITests */ = {
 			isa = PBXGroup;
 			children = (
@@ -72,48 +109,62 @@
 			path = FilmowoUITests;
 			sourceTree = "<group>";
 		};
+		2D73A727203D52C11D8F4FFC /* Location */ = {
+			isa = PBXGroup;
+			children = (
+				640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */,
+			);
+			path = Location;
+			sourceTree = "<group>";
+		};
+		3E12BF5CC30AFC397D884DBF /* i18n */ = {
+			isa = PBXGroup;
+			children = (
+				F3B1AB92B1F064547BA548DC /* Localization.swift */,
+			);
+			path = i18n;
+			sourceTree = "<group>";
+		};
 		3F132A10C48ED772B2EE90AB /* Filmowo */ = {
 			isa = PBXGroup;
 			children = (
+				35283668ABA5A9BC210D6158 /* AccessibilityIdentifiers.swift */,
 				F04DD2F3D03BC136C540D70B /* Assets.xcassets */,
 				50F404784530ADEDAE519851 /* FilmowoApp.swift */,
 				17235E22E8D6B632118D558F /* Info.plist */,
 				7218C798A82711CE2A165D4B /* RootView.swift */,
+				CF1C87DC64F7062A844E2FC7 /* Auth */,
+				3E12BF5CC30AFC397D884DBF /* i18n */,
+				2D73A727203D52C11D8F4FFC /* Location */,
+				E95732F04A0C1FFEC5DE8F9A /* Networking */,
+				9E49645D6662A1CD3F2FA9DA /* Storage */,
+				03C297045E3548D9C3A985B4 /* Views */,
 			);
 			path = Filmowo;
-			sourceTree = "<group>";
-		};
-		57AE5C7ABB0BC4A4C5872C80 /* FilmowoCore */ = {
-			isa = PBXGroup;
-			children = (
-				A5ECBE476754B3BEF36A067A /* Decoding.swift */,
-				4D6234CBB356DE13CDA343F8 /* Endpoints.swift */,
-				5C95F894E20992ACD8943CCE /* I18n.swift */,
-				FEABEB0A203D84FB5068AA35 /* RegionResolver.swift */,
-				76BD0EA191254EFBCDF241B9 /* Models */,
-			);
-			path = FilmowoCore;
 			sourceTree = "<group>";
 		};
 		60C2BE36638FF5243B7B4FCE /* FilmowoTests */ = {
 			isa = PBXGroup;
 			children = (
-				33193B693386A14D57F30BBF /* SmokeTests.swift */,
+				A1EB6FE38B136B883276683E /* FilmowoClientTests.swift */,
 			);
 			path = FilmowoTests;
 			sourceTree = "<group>";
 		};
-		76BD0EA191254EFBCDF241B9 /* Models */ = {
+		950A0A211BE0B57688FC8056 /* Packages */ = {
 			isa = PBXGroup;
 			children = (
-				B995396413E34EE01D0B7DDE /* Card.swift */,
-				95A069249634F63BCE9EEEEF /* Catalog.swift */,
-				3640AB7E95B21648EB97BFA5 /* Feed.swift */,
-				F0479BE0CC59E5E9CD989AF4 /* Me.swift */,
-				5623B4D7E1E27FC54E51C609 /* Rating.swift */,
-				9CBD43D1A670C9BAEF3469D9 /* WhereInfo.swift */,
+				7BD8ABD7EBAB969DA4EEC02F /* ios */,
 			);
-			path = Models;
+			name = Packages;
+			sourceTree = "<group>";
+		};
+		9E49645D6662A1CD3F2FA9DA /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				8516F36FE1065B71FDA11532 /* PosterImage.swift */,
+			);
+			path = Storage;
 			sourceTree = "<group>";
 		};
 		9EBF712ABEE0E7CB2F7FB7B5 /* Products */ = {
@@ -130,11 +181,29 @@
 			isa = PBXGroup;
 			children = (
 				3F132A10C48ED772B2EE90AB /* Filmowo */,
-				57AE5C7ABB0BC4A4C5872C80 /* FilmowoCore */,
 				60C2BE36638FF5243B7B4FCE /* FilmowoTests */,
 				1D6DB99186F68B1B9725E52D /* FilmowoUITests */,
+				950A0A211BE0B57688FC8056 /* Packages */,
 				9EBF712ABEE0E7CB2F7FB7B5 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		CF1C87DC64F7062A844E2FC7 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				338EFE9FB78467C9C4A0753B /* AuthService.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		E95732F04A0C1FFEC5DE8F9A /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				0CF3B7BAFE9D91DBC6CC57D1 /* AppModel.swift */,
+				BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */,
+				001FF82D30B022693ABD8C5C /* FilmowoClient.swift */,
+			);
+			path = Networking;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -182,6 +251,7 @@
 			buildPhases = (
 				230F59E1CE319D34A5BC6F0C /* Sources */,
 				46111E83EB65D23AA1DFE860 /* Resources */,
+				D781F12F2D3E54A162FBFF2A /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -189,6 +259,7 @@
 			);
 			name = Filmowo;
 			packageProductDependencies = (
+				921D1DBD9B8BCACDE0328299 /* FilmowoCore */,
 			);
 			productName = Filmowo;
 			productReference = 83F46537A1D17468923528D7 /* Filmowo.app */;
@@ -224,6 +295,9 @@
 			);
 			mainGroup = A49ADB98668D1F4A6734A94B;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CDAADDDDC6B3A1F0D9173728 /* XCLocalSwiftPackageReference "." */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 9EBF712ABEE0E7CB2F7FB7B5 /* Products */;
 			projectDirPath = "";
@@ -252,18 +326,23 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6D6E40130A8F8EC703E66F87 /* Card.swift in Sources */,
-				908F8E7F49D41879C56AE345 /* Catalog.swift in Sources */,
-				9C79A4A3CAC8F1E505CEBBD6 /* Decoding.swift in Sources */,
-				19FA4E8636B53F1050AE2CA9 /* Endpoints.swift in Sources */,
-				BC292D1BD136430635AC08F0 /* Feed.swift in Sources */,
+				B1DCB3822FE0824FF80ED567 /* AccessibilityIdentifiers.swift in Sources */,
+				B4BEC787E6074E57ED531983 /* AppModel.swift in Sources */,
+				D363D6845F0477C6861515CB /* AuthService.swift in Sources */,
+				004B014D0AAC29F146779538 /* CardView.swift in Sources */,
+				9BF831634BFEB626D1757C77 /* CountryCatalog.swift in Sources */,
+				FA9EE2253304CC66B1A9FC3C /* DetailSheet.swift in Sources */,
+				2850193A8F71697D5536AF64 /* DiscoverStore.swift in Sources */,
+				4A33079419E3ABE6B08A77D0 /* DiscoverView.swift in Sources */,
 				4610262F32B3DA70E5D8D704 /* FilmowoApp.swift in Sources */,
-				2DC3542074CB7F002454ACAD /* I18n.swift in Sources */,
-				FFDECE161EAD7D7BCA12B794 /* Me.swift in Sources */,
-				572FFE75BCE2B4B52E810CBE /* Rating.swift in Sources */,
-				5696578FD08C42052BFDA5F1 /* RegionResolver.swift in Sources */,
+				752C03B75CA70E5EFE3B6ED4 /* FilmowoClient.swift in Sources */,
+				38C361246034B0934B852CB8 /* Localization.swift in Sources */,
+				00EA197B0BB98DE0172A6236 /* LocationRegionSource.swift in Sources */,
+				BF4CE22480496B35034CCCBB /* MainTabView.swift in Sources */,
+				C7B228C31037C4DBFCC1C5E3 /* OnboardingView.swift in Sources */,
+				B17793B4E9CF78B6B4EC223B /* PosterImage.swift in Sources */,
+				2D70C22487B10D82E5AD4858 /* RateStars.swift in Sources */,
 				C5BFC02ED39DC7955AD858E8 /* RootView.swift in Sources */,
-				2AB64CC0CEDE12A34C907BBA /* WhereInfo.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -279,7 +358,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				65EB9F491AB8AD9571209272 /* SmokeTests.swift in Sources */,
+				A0A9F5107E1A9052440B836D /* FilmowoClientTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -572,6 +651,20 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		CDAADDDDC6B3A1F0D9173728 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = .;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		921D1DBD9B8BCACDE0328299 /* FilmowoCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = FilmowoCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 12F0ECBF9291D0094A9E047F /* Project object */;
 }

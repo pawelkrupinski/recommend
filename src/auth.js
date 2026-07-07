@@ -17,10 +17,16 @@ const STATE_COOKIE = 'oauth';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60; // 30 days (seconds)
 const STATE_MAX_AGE = 10 * 60 * 1000;      // 10 minutes (ms)
 const EXCHANGE_MAX_AGE = 5 * 60 * 1000;    // 5 minutes (ms): one-shot code lifetime
-// The native Android app can't share the browser's session cookie, so OAuth for it
-// ends by bouncing back into the app through this deep link with a one-shot `code`
-// the app redeems at POST /auth/exchange (mirrors the movies app's kinowo://auth-done).
-const ANDROID_REDIRECT = 'filmowo://auth-done';
+// The native apps (Android + iOS) can't share the browser's session cookie, so
+// OAuth for them ends by bouncing back into the app through this deep link with a
+// one-shot `code` the app redeems at POST /auth/exchange (mirrors the movies
+// app's kinowo://auth-done). The `filmowo://` scheme is OS-agnostic — both
+// platforms register it — so a single redirect serves both.
+const NATIVE_REDIRECT = 'filmowo://auth-done';
+// Platforms that finish OAuth via the deep link rather than a browser session.
+const NATIVE_PLATFORMS = new Set(['android', 'ios']);
+// The client-declared platform, normalised to a native one or 'web'.
+const nativePlatform = (p) => (NATIVE_PLATFORMS.has(p) ? p : 'web');
 
 // ---- signing helpers ------------------------------------------------------
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
@@ -118,7 +124,7 @@ function signInAs(req, res, profile, extraCookies = []) {
 // A one-shot, HMAC-signed code that binds a freshly-authenticated user id for the
 // Android app to redeem at /auth/exchange. Short-lived; the app trades it seconds later.
 const mintExchangeCode = (userId) => pack({ uid: userId, iat: Date.now(), k: 'exch' });
-const androidRedirect = (params) => `${ANDROID_REDIRECT}?${new URLSearchParams(params)}`;
+const nativeRedirect = (params) => `${NATIVE_REDIRECT}?${new URLSearchParams(params)}`;
 function setSession(res, req, userId, extraCookies = []) {
   res.setHeader('Set-Cookie', [
     cookie(SESSION_COOKIE, pack({ uid: userId, iat: Date.now() }), { maxAge: SESSION_MAX_AGE, secure: isSecure(req) }),
@@ -224,13 +230,14 @@ export async function handleAuth(req, res, url) {
     const name = url.searchParams.get('name') || 'Test User';
     const profile = { email, name, provider: 'dev', provider_sub: `dev-${email}` };
     // Native-app dev login: skip the browser session and hand back a one-shot code
-    // via the deep link, exactly like the real Android OAuth callback below — so
-    // tests and local app development can exercise /auth/exchange without real OAuth.
-    if (url.searchParams.get('platform') === 'android') {
+    // via the deep link, exactly like the real Android/iOS OAuth callback below —
+    // so tests and local app development can exercise /auth/exchange without real
+    // OAuth.
+    if (NATIVE_PLATFORMS.has(url.searchParams.get('platform'))) {
       const user = upsertUserFromLogin(profile);
       if (url.searchParams.get('admin') === '1') setUserAdmin(user.id, true);
       if (url.searchParams.get('onboarded') === '1') setUserSetting(user.id, 'onboarded', true);
-      redirect(res, androidRedirect({ code: mintExchangeCode(user.id) }));
+      redirect(res, nativeRedirect({ code: mintExchangeCode(user.id) }));
       return true;
     }
     const user = signInAs(req, res, profile);
@@ -269,9 +276,10 @@ export async function handleAuth(req, res, url) {
   if (start && req.method === 'GET') {
     const provider = PROVIDERS[start[1]];
     if (!provider.enabled()) { redirect(res, '/?error=provider_disabled'); return true; }
-    // `platform=android` (set by the app's Custom Tab) rides in the signed state so
-    // the callback knows to finish via the deep link rather than a browser session.
-    const platform = url.searchParams.get('platform') === 'android' ? 'android' : 'web';
+    // `platform` (android|ios, set by the app's in-app browser) rides in the signed
+    // state so the callback knows to finish via the deep link rather than a browser
+    // session.
+    const platform = nativePlatform(url.searchParams.get('platform'));
     const state = b64url(randomBytes(16));
     const stateCookie = cookie(STATE_COOKIE, pack({ state, provider: start[1], platform, iat: Date.now() }),
       { maxAge: 600, secure: isSecure(req) });
@@ -283,7 +291,7 @@ export async function handleAuth(req, res, url) {
   const cb = path.match(/^\/auth\/(google|facebook)\/callback$/);
   if (cb && req.method === 'GET') {
     const name = cb[1];
-    const android = unpack(parseCookies(req)[STATE_COOKIE])?.platform === 'android';
+    const native = NATIVE_PLATFORMS.has(unpack(parseCookies(req)[STATE_COOKIE])?.platform);
     const clearState = cookie(STATE_COOKIE, '', { maxAge: 0, secure: isSecure(req) });
     try {
       const saved = unpack(parseCookies(req)[STATE_COOKIE]);
@@ -293,12 +301,12 @@ export async function handleAuth(req, res, url) {
       if (!saved || saved.provider !== name || saved.state !== returnedState) throw new Error('Invalid OAuth state');
       if (Date.now() - saved.iat > STATE_MAX_AGE) throw new Error('OAuth state expired');
       const prof = await PROVIDERS[name].profile(req, code);
-      if (android) {
+      if (native) {
         // Don't start a session in the browser tab (the app has its own cookie jar);
         // upsert the account and bounce back into the app with a one-shot code that
         // it redeems at /auth/exchange, where the anon-merge runs against its cookies.
         const user = upsertUserFromLogin(prof);
-        redirect(res, androidRedirect({ code: mintExchangeCode(user.id) }), [clearState]);
+        redirect(res, nativeRedirect({ code: mintExchangeCode(user.id) }), [clearState]);
       } else {
         signInAs(req, res, prof, [clearState]);
         res.writeHead(302, { Location: '/' });
@@ -306,7 +314,7 @@ export async function handleAuth(req, res, url) {
       }
     } catch (e) {
       // Bounce the error back into the app (deep link) or the web app accordingly.
-      redirect(res, android ? androidRedirect({ error: e.message }) : '/?error=' + encodeURIComponent(e.message), [clearState]);
+      redirect(res, native ? nativeRedirect({ error: e.message }) : '/?error=' + encodeURIComponent(e.message), [clearState]);
     }
     return true;
   }

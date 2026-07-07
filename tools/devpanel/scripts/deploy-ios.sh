@@ -51,7 +51,15 @@ if [[ -z "$TEAM" ]]; then
 fi
 printf '▶ target device: %s\n▶ signing team: %s\n' "$(ios_device_name "$UDID")" "$TEAM"
 
-build_cmd "$UDID" "$TEAM"
+if ! build_cmd "$UDID" "$TEAM"; then
+  echo "✋ Build for the device failed. If it mentions \"developer disk image could"
+  echo "   not be mounted\", the device isn't ready to receive a build — usually:"
+  echo "     • it's locked — unlock it and keep it awake, or"
+  echo "     • Developer Mode is off — Settings ▸ Privacy & Security ▸ Developer"
+  echo "       Mode ▸ On (then reboot + trust), or"
+  echo "     • it was just plugged in — give it a few seconds and retry."
+  exit 1
+fi
 
 step xcrun devicectl device install app --device "$UDID" "$APP"
 

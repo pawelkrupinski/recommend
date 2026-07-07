@@ -149,22 +149,43 @@ ios_team() {
     | sed -n 's/^ *organizationalUnitName *= *//p' | head -1
 }
 
-# ios_udid <iphone|ipad> — echo the UDID of the first available paired device of
-# that kind (via `xcrun devicectl`). $FILMOWO_IOS_UDID overrides. Empty if none.
-ios_udid() {
-  [[ -n "${FILMOWO_IOS_UDID:-}" ]] && { echo "$FILMOWO_IOS_UDID"; return 0; }
-  local want=iPhone; [[ "${1:-iphone}" == ipad ]] && want=iPad
+# ios_devices — print "udid<TAB>type<TAB>name" for every available iOS device
+# (iPhone or iPad) paired via `xcrun devicectl`.
+ios_devices() {
   local tmp; tmp="$(mktemp)"
   if ! xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1; then
     rm -f "$tmp"; return 0
   fi
-  /usr/bin/python3 - "$tmp" "$want" <<'PY'
+  /usr/bin/python3 - "$tmp" <<'PY'
 import json, sys
-data = json.load(open(sys.argv[1])); want = sys.argv[2]
+data = json.load(open(sys.argv[1]))
 for d in data.get("result", {}).get("devices", []):
     hw = d.get("hardwareProperties", {})
-    if hw.get("platform") == "iOS" and hw.get("deviceType") == want and hw.get("udid"):
-        print(hw["udid"]); break
+    if hw.get("platform") == "iOS" and hw.get("udid"):
+        name = d.get("deviceProperties", {}).get("name", "?")
+        print("\t".join([hw["udid"], hw.get("deviceType", "?"), name]))
 PY
   rm -f "$tmp"
+}
+
+# ios_udid — echo the UDID of the iOS device to deploy to. $FILMOWO_IOS_UDID
+# wins; else the single attached iOS device; else the first of several (listing
+# them, with names, to stderr). Empty when none is attached.
+ios_udid() {
+  [[ -n "${FILMOWO_IOS_UDID:-}" ]] && { echo "$FILMOWO_IOS_UDID"; return 0; }
+  local devices n; devices="$(ios_devices)"
+  n="$(printf '%s\n' "$devices" | grep -c .)"
+  if [[ "$n" -gt 1 ]]; then
+    { echo "  multiple iOS devices attached:"
+      printf '%s\n' "$devices" | awk -F'\t' '{print "    · "$3" ("$2")"}'
+      echo "    using the first — set FILMOWO_IOS_UDID to pick a specific one."; } >&2
+    printf '%s\n' "$devices" | head -1 | cut -f1
+  elif [[ "$n" -eq 1 ]]; then
+    printf '%s\n' "$devices" | cut -f1
+  fi
+}
+
+# ios_device_name <udid> — a friendly "name (type)" for logging, else the udid.
+ios_device_name() {
+  ios_devices | awk -F'\t' -v u="$1" '$1==u{print $3" ("$2")"; f=1} END{if(!f)print u}'
 }

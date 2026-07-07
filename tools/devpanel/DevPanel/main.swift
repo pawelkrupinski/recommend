@@ -307,12 +307,9 @@ private let groups: [ButtonGroup] = [
     ButtonGroup(title: "Android tests", subtitle: "gradlew testDebugUnitTest", defaultsKey: nil,
                 options: [Action(title: "Android tests", subtitle: "gradlew testDebugUnitTest",
                                  script: "test-android.sh")]),
-    ButtonGroup(title: "iOS → iPhone", subtitle: "build · sign · install · launch", defaultsKey: nil,
-                options: [Action(title: "iOS → iPhone", subtitle: "build · sign · install · launch",
-                                 script: "deploy-ios-iphone.sh")]),
-    ButtonGroup(title: "iOS → iPad", subtitle: "build · sign · install · launch", defaultsKey: nil,
-                options: [Action(title: "iOS → iPad", subtitle: "build · sign · install · launch",
-                                 script: "deploy-ios-ipad.sh")]),
+    ButtonGroup(title: "Deploy to iOS", subtitle: "build · sign · install · launch", defaultsKey: nil,
+                options: [Action(title: "Deploy to iOS", subtitle: "build · sign · install · launch",
+                                 script: "deploy-ios.sh")]),
 ]
 
 private let allActions: [Action] = groups.flatMap { $0.options }
@@ -698,12 +695,12 @@ if ProcessInfo.processInfo.environment["DEVPANEL_SELFTEST"] == "1" {
         && s2 == 0 && o2.contains("ROOT=/tmp/devpanel-selftest-root")
 
     let android = groups.first { $0.options.first?.script == "deploy-android.sh" }!
-    let iosPhone = groups.first { $0.options.first?.script == "deploy-ios-iphone.sh" }
+    let ios = groups.first { $0.options.first?.script == "deploy-ios.sh" }
     let labelOK = android.label(forSelectedScript: nil).title == "Android → device"
         && android.label(forSelectedScript: "deploy-android.sh").title == "Android → device"
         && android.label(forSelectedScript: "bogus.sh").title == "Android → device"
-        && iosPhone?.label(forSelectedScript: nil).title == "iOS → iPhone"
-        && allActions.count == 4
+        && ios?.label(forSelectedScript: nil).title == "Deploy to iOS"
+        && allActions.count == 3
 
     let ipOK =
         LocalHostIp.pick(["8.8.8.8", "192.168.1.5"]) == "192.168.1.5"

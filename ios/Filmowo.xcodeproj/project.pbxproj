@@ -41,6 +41,7 @@
 		D363D6845F0477C6861515CB /* AuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 338EFE9FB78467C9C4A0753B /* AuthService.swift */; };
 		E645299722BC9B6BE794FDF8 /* RatingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17F774659FF5E09EEE898D04 /* RatingsView.swift */; };
 		EC840382315F3BBE421933F4 /* TabsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84786BE4F742B405D79D7E48 /* TabsUITests.swift */; };
+		EF87F56991D9886B4F0816BA /* RateStarsDragUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A335C1A5AD691E04D18A7AE /* RateStarsDragUITests.swift */; };
 		F5EEB7DD69A56E1DC13EBC1E /* DiscoverFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54F418094D292E901552A96 /* DiscoverFlowUITests.swift */; };
 		FA9EE2253304CC66B1A9FC3C /* DetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE91132606D22E239573FA3 /* DetailSheet.swift */; };
 /* End PBXBuildFile section */
@@ -83,6 +84,7 @@
 		50F404784530ADEDAE519851 /* FilmowoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoApp.swift; sourceTree = "<group>"; };
 		640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRegionSource.swift; sourceTree = "<group>"; };
 		7218C798A82711CE2A165D4B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		7A335C1A5AD691E04D18A7AE /* RateStarsDragUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStarsDragUITests.swift; sourceTree = "<group>"; };
 		7B30ADA08055813C7B38ED7A /* RateStars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStars.swift; sourceTree = "<group>"; };
 		7BD8ABD7EBAB969DA4EEC02F /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = .; sourceTree = SOURCE_ROOT; };
 		83F46537A1D17468923528D7 /* Filmowo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Filmowo.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -140,6 +142,7 @@
 				D54F418094D292E901552A96 /* DiscoverFlowUITests.swift */,
 				4FC1187A719F2FD25D57F1AD /* DiscoverLayoutUITests.swift */,
 				04A42284F5F87007B6C6FF45 /* LaunchUITests.swift */,
+				7A335C1A5AD691E04D18A7AE /* RateStarsDragUITests.swift */,
 				84786BE4F742B405D79D7E48 /* TabsUITests.swift */,
 				D3EA2E73C462980C310545B5 /* UITestSupport.swift */,
 			);
@@ -414,6 +417,7 @@
 				F5EEB7DD69A56E1DC13EBC1E /* DiscoverFlowUITests.swift in Sources */,
 				CF700B8D878D08E1A6BB0C21 /* DiscoverLayoutUITests.swift in Sources */,
 				787770015289E08BD83C01F8 /* LaunchUITests.swift in Sources */,
+				EF87F56991D9886B4F0816BA /* RateStarsDragUITests.swift in Sources */,
 				EC840382315F3BBE421933F4 /* TabsUITests.swift in Sources */,
 				797596C045965B6FA8C56CE9 /* UITestSupport.swift in Sources */,
 			);

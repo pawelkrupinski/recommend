@@ -4,8 +4,14 @@ import SwiftUI
 /// Tap a star to rate, or — like Android `RateStars` and the web widget — drag
 /// horizontally across the stars to preview the value under your finger and lift
 /// to commit; sliding down from the top row into the bottom moves 1–5 up to
-/// 6–10. A vertical drag is left to the enclosing scroll view. `rating` is the
-/// current value (nil = unrated); `onRate` fires the chosen 1...10 value.
+/// 6–10. `rating` is the current value (nil = unrated); `onRate` fires the
+/// chosen 1...10 value.
+///
+/// One `DragGesture` on the whole block handles both tap and drag: the stars are
+/// plain (accessibility-only) images rather than buttons, because a per-star
+/// `Button` swallows the touch sequence and the drag never reaches the block
+/// (most visibly on iPad). XCUITest and VoiceOver still see ten `rate-star-N`
+/// buttons via the accessibility traits.
 struct RateStars: View {
     let rating: Double?
     var onRate: (Double) -> Void
@@ -13,45 +19,41 @@ struct RateStars: View {
     static let starCount = 10
     private let rows = 2
     private var perRow: Int { Self.starCount / rows }
-    private let space = "rate-stars"
+    /// Fixed row height so the `GeometryReader` reports a stable block size.
+    private let rowHeight: CGFloat = 30
 
-    /// Value under the finger during a horizontal drag (0 = none / not dragging).
+    /// Value under the finger during a drag (0 = none / not dragging).
     @State private var preview = 0
-    /// Measured size of the star block, for mapping a drag position → a star.
-    @State private var size: CGSize = .zero
 
     private var displayValue: Int {
         preview > 0 ? preview : Int((rating ?? 0).rounded())
     }
 
     var body: some View {
-        VStack(spacing: 4) {
-            ForEach(0..<rows, id: \.self) { row in
-                HStack(spacing: 4) {
-                    ForEach(0..<perRow, id: \.self) { col in
-                        star(row * perRow + col + 1)
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                ForEach(0..<rows, id: \.self) { row in
+                    HStack(spacing: 0) {
+                        ForEach(0..<perRow, id: \.self) { col in
+                            star(row * perRow + col + 1)
+                        }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+            .contentShape(Rectangle())
+            .gesture(dragToRate(size: geo.size))
+            .overlay(alignment: .topTrailing) {
+                if preview > 0 {
+                    Text("\(preview)/10")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.yellow)
+                        .offset(y: -18)
                 }
             }
         }
-        .coordinateSpace(name: space)
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: SizeKey.self, value: proxy.size)
-            }
-        }
-        .onPreferenceChange(SizeKey.self) { size = $0 }
-        // Only a real drag (≥8pt) previews; taps fall through to the star buttons,
-        // so XCUITest star taps and normal tap-to-rate still work.
-        .simultaneousGesture(dragToRate)
-        .overlay(alignment: .topTrailing) {
-            if preview > 0 {
-                Text("\(preview)/10")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.yellow)
-                    .offset(y: -18)
-            }
-        }
+        .frame(height: rowHeight * CGFloat(rows))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.rateStars)
     }
@@ -62,20 +64,19 @@ struct RateStars: View {
             .font(.title3)
             .foregroundStyle(filled ? Color.yellow : Color.secondary)
             .frame(maxWidth: .infinity)
-            .overlay {
-                Button { onRate(Double(value)) } label: {
-                    Color.clear.contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier(AXID.rateStar(value))
-                .accessibilityLabel("Rate \(value)")
-            }
+            // Plain image; the block's drag gesture handles touches. Expose each
+            // star as a button to VoiceOver / XCUITest so a star can still be
+            // tapped by identifier.
+            .accessibilityElement()
+            .accessibilityAddTraits(.isButton)
+            .accessibilityIdentifier(AXID.rateStar(value))
+            .accessibilityLabel("Rate \(value)")
     }
 
-    private var dragToRate: some Gesture {
-        DragGesture(minimumDistance: 8, coordinateSpace: .named(space))
+    private func dragToRate(size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { g in
-                // Claim only horizontal drags; a vertical-dominant move is a scroll.
+                // A vertical-dominant move is a cancel (slide off), not a rating.
                 guard abs(g.translation.width) >= abs(g.translation.height) else {
                     preview = 0
                     return
@@ -102,9 +103,4 @@ struct RateStars: View {
         let col = min(max(Int((x / width) * CGFloat(perRow)), 0), perRow - 1)
         return row * perRow + col + 1
     }
-}
-
-private struct SizeKey: PreferenceKey {
-    static let defaultValue = CGSize.zero
-    static func reduce(value: inout CGSize, nextValue: () -> CGSize) { value = nextValue() }
 }

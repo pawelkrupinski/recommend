@@ -304,11 +304,8 @@ private let groups: [ButtonGroup] = [
     ButtonGroup(title: "Android → device", subtitle: "releaseFast · install · launch", defaultsKey: nil,
                 options: [Action(title: "Android → device", subtitle: "releaseFast · install · launch",
                                  script: "deploy-android.sh")]),
-    ButtonGroup(title: "Android tests", subtitle: "gradlew testDebugUnitTest", defaultsKey: nil,
-                options: [Action(title: "Android tests", subtitle: "gradlew testDebugUnitTest",
-                                 script: "test-android.sh")]),
-    ButtonGroup(title: "Deploy to iOS", subtitle: "build · sign · install · launch", defaultsKey: nil,
-                options: [Action(title: "Deploy to iOS", subtitle: "build · sign · install · launch",
+    ButtonGroup(title: "iOS → device", subtitle: "build · sign · install · launch", defaultsKey: nil,
+                options: [Action(title: "iOS → device", subtitle: "build · sign · install · launch",
                                  script: "deploy-ios.sh")]),
 ]
 
@@ -699,8 +696,8 @@ if ProcessInfo.processInfo.environment["DEVPANEL_SELFTEST"] == "1" {
     let labelOK = android.label(forSelectedScript: nil).title == "Android → device"
         && android.label(forSelectedScript: "deploy-android.sh").title == "Android → device"
         && android.label(forSelectedScript: "bogus.sh").title == "Android → device"
-        && ios?.label(forSelectedScript: nil).title == "Deploy to iOS"
-        && allActions.count == 3
+        && ios?.label(forSelectedScript: nil).title == "iOS → device"
+        && allActions.count == 2
 
     let ipOK =
         LocalHostIp.pick(["8.8.8.8", "192.168.1.5"]) == "192.168.1.5"

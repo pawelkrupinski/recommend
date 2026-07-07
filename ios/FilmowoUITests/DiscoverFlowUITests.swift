@@ -41,6 +41,16 @@ final class DiscoverFlowUITests: XCTestCase {
         assertAtLeastTwoColumns(app.cards)
     }
 
+    func testPickCardShowsItsServiceLogo() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        // The Matrix (movie:603) streams on Netflix (service id 8) in the stub;
+        // the card overlays that service's logo next to the poster.
+        let matrix = app.otherElements["card-movie:603"]
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+        XCTAssertTrue(matrix.images[AXIDs.serviceLogo(8)].waitForExistence(timeout: 5),
+                      "the card badges the streaming service with its logo")
+    }
+
     func testTappingAPickOpensDetailSheet() {
         let app = XCUIApplication.launch(scenario: "picks")
         XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
@@ -64,4 +74,5 @@ final class DiscoverFlowUITests: XCTestCase {
 enum AXIDs {
     static let detailSheet = "detail-sheet"
     static let detailClose = "detail-close"
+    static func serviceLogo(_ id: Int) -> String { "service-logo-\(id)" }
 }

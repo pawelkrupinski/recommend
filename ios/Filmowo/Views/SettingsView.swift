@@ -85,6 +85,7 @@ struct SettingsView: View {
                         store.toggleService(svc.id)
                     } label: {
                         HStack {
+                            ServiceLogo(service: svc)
                             Text(svc.name).foregroundStyle(.primary)
                             Spacer()
                             if store.selectedServices.contains(svc.id) {

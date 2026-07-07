@@ -165,6 +165,7 @@ struct OnboardingView: View {
                         model.toggle(svc.id)
                     } label: {
                         HStack {
+                            ServiceLogo(service: svc)
                             Text(svc.name).foregroundStyle(.primary)
                             Spacer()
                             if model.selectedServices.contains(svc.id) {

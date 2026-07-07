@@ -28,6 +28,9 @@ enum AXID {
     static let rateStars = "rate-stars"
     static func rateStar(_ value: Int) -> String { "rate-star-\(value)" }
 
+    // Service logo (streaming-service icon shown next to names / on cards)
+    static func serviceLogo(_ id: Int) -> String { "service-logo-\(id)" }
+
     // Card actions
     static let cardSave = "card-save"
     static let cardDismiss = "card-dismiss"

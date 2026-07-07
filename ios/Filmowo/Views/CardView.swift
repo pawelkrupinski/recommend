@@ -51,11 +51,7 @@ struct CardView: View {
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 3) {
                     ForEach(card.services.prefix(3)) { svc in
-                        AsyncImage(url: TMDBImage.url(svc.logo, width: 92)) { img in
-                            img.resizable().scaledToFit()
-                        } placeholder: { Color.clear }
-                        .frame(width: 22, height: 22)
-                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                        ServiceLogo(service: svc)
                     }
                 }
                 .padding(6)

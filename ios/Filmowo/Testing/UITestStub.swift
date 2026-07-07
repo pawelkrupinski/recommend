@@ -71,7 +71,7 @@ final class UITestStubProtocol: URLProtocol {
         case "/api/tones":
             return #"{"tones":[{"slug":"dark","label":"Dark"},{"slug":"feel-good","label":"Feel-good"}]}"#
         case "/api/providers":
-            return #"{"providers":[{"id":8,"name":"Netflix","logo":null},{"id":337,"name":"Disney+","logo":null}]}"#
+            return #"{"providers":[{"id":8,"name":"Netflix","logo":"/netflix.png"},{"id":337,"name":"Disney+","logo":"/disney.png"}]}"#
         case "/api/rate-queue":
             return rateQueueJSON
         case "/api/recommend":
@@ -103,7 +103,7 @@ final class UITestStubProtocol: URLProtocol {
 
     private static let recommendJSON = """
     {"profileSize":20,"results":[
-      {"tmdb_id":603,"media_type":"movie","title":"The Matrix","year":1999,"runtime":136,"poster_path":"/m.jpg","vote_average":8.2,"genres":["Action"],"genreIds":[28],"services":[{"id":8,"name":"Netflix","logo":null}]},
+      {"tmdb_id":603,"media_type":"movie","title":"The Matrix","year":1999,"runtime":136,"poster_path":"/m.jpg","vote_average":8.2,"genres":["Action"],"genreIds":[28],"services":[{"id":8,"name":"Netflix","logo":"/netflix.png"}]},
       {"tmdb_id":1399,"media_type":"tv","title":"Game of Thrones","year":2011,"seasons":8,"poster_path":"/g.jpg","vote_average":8.4,"genres":["Drama"],"genreIds":[18]},
       {"tmdb_id":27205,"media_type":"movie","title":"Inception","year":2010,"runtime":148,"poster_path":"/i.jpg","vote_average":8.4,"genres":["Action"],"genreIds":[28]},
       {"tmdb_id":13,"media_type":"movie","title":"Forrest Gump","year":1994,"runtime":142,"poster_path":"/f.jpg","vote_average":8.5,"genres":["Drama"],"genreIds":[18]}

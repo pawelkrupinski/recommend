@@ -2,14 +2,21 @@ import SwiftUI
 import FilmowoCore
 
 /// The four-tab main scaffold (Discover, Watchlist, Ratings, Settings), matching
-/// Android's bottom navigation and the web app's tab routes. Discover is wired
-/// here; the other tabs' stores land alongside their screens in the next slice.
+/// Android's bottom navigation and the web app's tab routes. Each tab owns its
+/// store, wired to the shared client.
 struct MainTabView: View {
     @EnvironmentObject private var app: AppModel
     @StateObject private var discover: DiscoverStore
+    @StateObject private var watchlist: WatchlistStore
+    @StateObject private var ratings: RatingsStore
+    @StateObject private var settings: SettingsStore
 
     init(app: AppModel) {
         _discover = StateObject(wrappedValue: DiscoverStore(client: app.client))
+        _watchlist = StateObject(wrappedValue: WatchlistStore(client: app.client,
+            sort: WatchlistStore.Sort(rawValue: app.me?.watchlistSort ?? "added") ?? .added))
+        _ratings = StateObject(wrappedValue: RatingsStore(client: app.client))
+        _settings = StateObject(wrappedValue: SettingsStore(app: app))
     }
 
     private var language: String { app.language }
@@ -20,37 +27,17 @@ struct MainTabView: View {
                 .tabItem { Label(I18n.t(language, "nav.discover"), systemImage: "sparkles") }
                 .accessibilityIdentifier(AXID.tabDiscover)
 
-            WatchlistTabPlaceholder()
+            WatchlistView(store: watchlist)
                 .tabItem { Label(I18n.t(language, "nav.watchlist"), systemImage: "bookmark") }
                 .accessibilityIdentifier(AXID.tabWatchlist)
 
-            RatingsTabPlaceholder()
+            RatingsView(store: ratings)
                 .tabItem { Label(I18n.t(language, "nav.ratings"), systemImage: "star") }
                 .accessibilityIdentifier(AXID.tabRatings)
 
-            SettingsTabPlaceholder()
+            SettingsView(store: settings)
                 .tabItem { Label(I18n.t(language, "nav.settings"), systemImage: "gearshape") }
                 .accessibilityIdentifier(AXID.tabSettings)
         }
-    }
-}
-
-// Placeholders replaced by full screens in the Watchlist/Ratings/Settings slice.
-private struct WatchlistTabPlaceholder: View {
-    @Environment(\.language) private var language
-    var body: some View {
-        NavigationStack { Text(I18n.t(language, "nav.watchlist")).navigationTitle(I18n.t(language, "nav.watchlist")) }
-    }
-}
-private struct RatingsTabPlaceholder: View {
-    @Environment(\.language) private var language
-    var body: some View {
-        NavigationStack { Text(I18n.t(language, "nav.ratings")).navigationTitle(I18n.t(language, "nav.ratings")) }
-    }
-}
-private struct SettingsTabPlaceholder: View {
-    @Environment(\.language) private var language
-    var body: some View {
-        NavigationStack { Text(I18n.t(language, "nav.settings")).navigationTitle(I18n.t(language, "nav.settings")) }
     }
 }

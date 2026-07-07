@@ -20,17 +20,12 @@ struct PosterImage: View {
     var width: Int = 500
 
     var body: some View {
-        AsyncImage(url: TMDBImage.url(path, width: width)) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: .fill)
-            default:
-                ZStack {
-                    Rectangle().fill(.quaternary)
-                    Image(systemName: "film")
-                        .font(.title2)
-                        .foregroundStyle(.tertiary)
-                }
+        CachedAsyncImage(url: TMDBImage.url(path, width: width)) {
+            ZStack {
+                Rectangle().fill(.quaternary)
+                Image(systemName: "film")
+                    .font(.title2)
+                    .foregroundStyle(.tertiary)
             }
         }
         .aspectRatio(2.0 / 3.0, contentMode: .fit)

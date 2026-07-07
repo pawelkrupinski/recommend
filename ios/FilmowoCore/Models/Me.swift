@@ -23,12 +23,13 @@ public struct Me: Codable, Hashable {
     public let services: [Int]
     public let country: String?
     public let language: String
+    public let watchlistSort: String?
     public let detectedCountry: String?
     public let detectedLanguage: String?
 
     enum CodingKeys: String, CodingKey {
         case user, anonymous, onboarded, providers, services, country, language
-        case detectedCountry, detectedLanguage
+        case watchlistSort, detectedCountry, detectedLanguage
     }
 
     public init(from decoder: Decoder) throws {
@@ -40,6 +41,7 @@ public struct Me: Codable, Hashable {
         services = try c.decode([Int].self, forKey: .services, default: [])
         country = try c.decodeIfPresent(String.self, forKey: .country)
         language = try c.decode(String.self, forKey: .language, default: "en")
+        watchlistSort = try c.decodeIfPresent(String.self, forKey: .watchlistSort)
         detectedCountry = try c.decodeIfPresent(String.self, forKey: .detectedCountry)
         detectedLanguage = try c.decodeIfPresent(String.self, forKey: .detectedLanguage)
     }
@@ -47,11 +49,12 @@ public struct Me: Codable, Hashable {
     public init(
         user: MeUser? = nil, anonymous: Bool = true, onboarded: Bool = false,
         providers: [String] = [], services: [Int] = [], country: String? = nil,
-        language: String = "en", detectedCountry: String? = nil, detectedLanguage: String? = nil
+        language: String = "en", watchlistSort: String? = nil,
+        detectedCountry: String? = nil, detectedLanguage: String? = nil
     ) {
         self.user = user; self.anonymous = anonymous; self.onboarded = onboarded
         self.providers = providers; self.services = services; self.country = country
-        self.language = language; self.detectedCountry = detectedCountry
-        self.detectedLanguage = detectedLanguage
+        self.language = language; self.watchlistSort = watchlistSort
+        self.detectedCountry = detectedCountry; self.detectedLanguage = detectedLanguage
     }
 }

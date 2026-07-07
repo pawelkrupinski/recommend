@@ -41,10 +41,11 @@ struct RateStars: View {
     }
 
     private func tapHalf(value: Int) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture { onRate(Double(value)) }
-            .accessibilityIdentifier(AXID.rateStar(value))
-            .accessibilityLabel("Rate \(value)")
+        Button { onRate(Double(value)) } label: {
+            Color.clear.contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(AXID.rateStar(value))
+        .accessibilityLabel("Rate \(value)")
     }
 }

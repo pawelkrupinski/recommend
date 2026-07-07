@@ -5,7 +5,7 @@ import FilmowoCore
 /// tabs, with a retryable error state. Owns the `AppModel` and injects it +
 /// the active language into the whole tree. Mirrors Android `FilmowoApp.kt`.
 struct RootView: View {
-    @StateObject private var app = AppModel()
+    @StateObject private var app = AppModel.forLaunch()
 
     var body: some View {
         Group {

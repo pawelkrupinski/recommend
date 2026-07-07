@@ -19,10 +19,20 @@ final class AppModel: ObservableObject {
 
     @Published var boot: Boot = .loading
     @Published var me: Me?
+    /// A just-chosen language, applied instantly so the UI re-localizes without
+    /// waiting for the settings round-trip; cleared once `me` catches up.
+    @Published private var languageOverride: String?
 
-    /// Active UI language: the user's saved choice, else the device's, else en.
+    /// Active UI language: a pending override, else the user's saved choice, else
+    /// the device's, else en.
     var language: String {
-        me?.language ?? Locale.current.language.languageCode?.identifier ?? "en"
+        languageOverride ?? me?.language ?? Locale.current.language.languageCode?.identifier ?? "en"
+    }
+
+    /// Switch language immediately (before the server confirms).
+    func setLanguage(_ lang: String) {
+        languageOverride = lang
+        client.language = lang
     }
 
     init(client: FilmowoClient = .live(), region: AppRegionSource = LocationRegionSource()) {
@@ -49,7 +59,8 @@ final class AppModel: ObservableObject {
     /// Adopt a fresh `Me` and propagate its language to outgoing requests.
     func apply(_ me: Me) {
         self.me = me
-        client.language = me.language
+        if me.language == languageOverride { languageOverride = nil } // server caught up
+        client.language = language
         if let c = me.country { client.deviceCountry = c }
     }
 

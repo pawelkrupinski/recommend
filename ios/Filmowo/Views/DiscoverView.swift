@@ -164,6 +164,7 @@ private struct QueueCard: View {
             Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(2, reservesSpace: true)
             RateStars(rating: nil, onRate: onRate)
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.card("movie:\(item.tmdbId)"))
     }
 }

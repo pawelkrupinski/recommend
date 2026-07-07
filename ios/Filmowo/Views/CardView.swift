@@ -24,7 +24,6 @@ struct CardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             posterWithServices
-                .onTapGesture(perform: onTap)
 
             Text(card.title)
                 .font(.subheadline.weight(.semibold))
@@ -41,6 +40,9 @@ struct CardView: View {
             RateStars(rating: ratedValue, onRate: onRate)
                 .padding(.top, 2)
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onTap)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.card(card.key))
     }
 

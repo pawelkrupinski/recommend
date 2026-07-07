@@ -10,8 +10,8 @@ final class DecodingTests: XCTestCase {
         XCTAssertEqual(me.services, [8, 337, 119])
         XCTAssertEqual(me.country, "PL")
         XCTAssertEqual(me.language, "pl")
+        XCTAssertEqual(me.watchlistSort, "added")
         XCTAssertEqual(me.detectedCountry, "PL")
-        // `watchlistSort` is present in the payload but not in the model — must be ignored.
     }
 
     func testRecommendDecodesFullAndSparseCards() throws {

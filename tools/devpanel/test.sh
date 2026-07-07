@@ -40,4 +40,14 @@ check "localhost base still reverses :9002" "$dl" "reverse tcp:9002 tcp:9002"
 t="$(bash "$HERE/scripts/test-android.sh")"
 check "tests run testDebugUnitTest"        "$t" "testDebugUnitTest"
 
+i="$(bash "$HERE/scripts/deploy-ios-iphone.sh")"
+check "iOS deploy targets the iphone"      "$i" "target device kind: iphone"
+check "iOS deploy builds the Filmowo scheme" "$i" "xcodebuild -project"
+check "iOS deploy builds for a device"     "$i" "-destination platform=iOS,id="
+check "iOS deploy installs via devicectl"  "$i" "devicectl device install app --device"
+check "iOS deploy launches the bundle"     "$i" "devicectl device process launch --device <udid> pl.filmowo.Filmowo"
+
+ipad="$(bash "$HERE/scripts/deploy-ios-ipad.sh")"
+check "iOS deploy can target the ipad"     "$ipad" "target device kind: ipad"
+
 if [[ $fail -eq 0 ]]; then echo "✓ all devpanel checks passed"; else echo "✗ devpanel checks failed"; exit 1; fi

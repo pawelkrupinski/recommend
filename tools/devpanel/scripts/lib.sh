@@ -132,3 +132,39 @@ wait_for_android_unlock() {
     sleep 2
   done
 }
+
+# ---- iOS (cabled iPhone/iPad) helpers ------------------------------------
+
+# ios_team — echo the DEVELOPMENT_TEAM id to sign device builds with.
+# $FILMOWO_DEV_TEAM wins; else the team (cert OU) of the first "Apple
+# Development" codesigning identity in the login keychain. Empty if none.
+ios_team() {
+  [[ -n "${FILMOWO_DEV_TEAM:-}" ]] && { echo "$FILMOWO_DEV_TEAM"; return 0; }
+  local name
+  name="$(security find-identity -v -p codesigning 2>/dev/null \
+          | grep -m1 'Apple Development' | sed -E 's/.*"([^"]+)".*/\1/')"
+  [[ -z "$name" ]] && return 0
+  security find-certificate -c "$name" -p 2>/dev/null \
+    | openssl x509 -noout -subject -nameopt multiline 2>/dev/null \
+    | sed -n 's/^ *organizationalUnitName *= *//p' | head -1
+}
+
+# ios_udid <iphone|ipad> — echo the UDID of the first available paired device of
+# that kind (via `xcrun devicectl`). $FILMOWO_IOS_UDID overrides. Empty if none.
+ios_udid() {
+  [[ -n "${FILMOWO_IOS_UDID:-}" ]] && { echo "$FILMOWO_IOS_UDID"; return 0; }
+  local want=iPhone; [[ "${1:-iphone}" == ipad ]] && want=iPad
+  local tmp; tmp="$(mktemp)"
+  if ! xcrun devicectl list devices --json-output "$tmp" >/dev/null 2>&1; then
+    rm -f "$tmp"; return 0
+  fi
+  /usr/bin/python3 - "$tmp" "$want" <<'PY'
+import json, sys
+data = json.load(open(sys.argv[1])); want = sys.argv[2]
+for d in data.get("result", {}).get("devices", []):
+    hw = d.get("hardwareProperties", {})
+    if hw.get("platform") == "iOS" and hw.get("deviceType") == want and hw.get("udid"):
+        print(hw["udid"]); break
+PY
+  rm -f "$tmp"
+}

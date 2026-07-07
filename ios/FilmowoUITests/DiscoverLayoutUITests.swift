@@ -50,4 +50,15 @@ final class DiscoverLayoutUITests: XCTestCase {
         XCTAssertEqual(matrixStars.frame.minY, gotStars.frame.minY, accuracy: 1,
                        "star rows line up across the row")
     }
+
+    /// The IMDb rating renders as the two-tone pill (an "IMDb" tab + the value),
+    /// matching Android / ../movies, rather than a bare starred number.
+    func testImdbRatingShowsAsLabelledPill() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        let matrix = app.otherElements["card-movie:603"]
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+        XCTAssertTrue(matrix.staticTexts["IMDb"].waitForExistence(timeout: 5),
+                      "the IMDb pill carries an 'IMDb' label tab")
+        XCTAssertTrue(matrix.staticTexts["8.7"].exists, "and its value")
+    }
 }

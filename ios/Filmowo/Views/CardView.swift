@@ -44,16 +44,14 @@ struct CardView: View {
         .accessibilityIdentifier(AXID.card(card.key))
     }
 
-    /// The title, reserving two lines so 1- and 2-line titles are the same height
-    /// (years stay aligned across the row) but bottom-aligned, so a short title
-    /// sits right above the year instead of leaving an empty reserved line as a
-    /// gap. The slack falls under the poster instead.
+    /// The title on a single line (truncated if long). One line keeps every card
+    /// the same height — so years stay aligned across the row — while holding the
+    /// poster and the year tight against it, with no reserved blank line as a gap.
     private var titleBlock: some View {
-        ZStack(alignment: .bottomLeading) {
-            Text("T\nT").font(.subheadline.weight(.semibold)).hidden()
-            Text(card.title).font(.subheadline.weight(.semibold)).lineLimit(2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        Text(card.title)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var posterWithServices: some View {
@@ -109,10 +107,7 @@ struct CardView: View {
     /// and their stars, poster tops, and year lines all line up across the grid.
     private var badgeRow: some View {
         ZStack(alignment: .leading) {
-            Label("0.0", systemImage: "star.circle.fill")
-                .labelStyle(.titleAndIcon)
-                .font(.caption2.weight(.semibold))
-                .hidden()
+            imdbPill(0).hidden() // reserve the pill's height
             if imdb != nil || meta != nil { badges }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -129,19 +124,36 @@ struct CardView: View {
 
     private var badges: some View {
         HStack(spacing: 6) {
-            if let imdb {
-                Label(String(format: "%.1f", imdb), systemImage: "star.circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.yellow)
-            }
+            if let imdb { imdbPill(imdb) }
             if let meta {
                 Text("MC \(meta)")
+                    .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 5).padding(.vertical, 1)
                     .background(metaColor(meta), in: RoundedRectangle(cornerRadius: 4))
                     .foregroundStyle(.white)
             }
         }
-        .font(.caption2.weight(.semibold))
+    }
+
+    /// The two-tone IMDb pill — a yellow "IMDb" tab joined to a dark value tab —
+    /// matching the Android app and ../movies (colours `#F5C518` / `#2A2A3E`).
+    private static let imdbYellow = Color(red: 245 / 255, green: 197 / 255, blue: 24 / 255)
+    private static let pillDark = Color(red: 42 / 255, green: 42 / 255, blue: 62 / 255)
+
+    private func imdbPill(_ value: Double) -> some View {
+        HStack(spacing: 0) {
+            Text("IMDb")
+                .font(.caption2.weight(.black))
+                .foregroundStyle(.black)
+                .padding(.horizontal, 4).padding(.vertical, 2)
+                .background(Self.imdbYellow)
+            Text(String(format: "%.1f", value))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Self.imdbYellow)
+                .padding(.horizontal, 4).padding(.vertical, 2)
+                .background(Self.pillDark)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 3))
     }
 
     private func metaColor(_ score: Int) -> Color {

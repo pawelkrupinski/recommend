@@ -171,35 +171,6 @@ PY
   rm -f "$tmp"
 }
 
-# _ios_pick — read "udid<TAB>type<TAB>transport<TAB>name" lines on stdin and echo
-# the UDID to target: prefer a wired (cabled) device over a wireless one — you
-# plug a device in to deploy to it — then the first of whichever set. Pure (no
-# devicectl, no stderr); the messaging lives in ios_udid.
-_ios_pick() {
-  local all wired; all="$(cat)"; [[ -z "$all" ]] && return 0
-  wired="$(printf '%s\n' "$all" | awk -F'\t' '$3 == "wired"')"
-  printf '%s\n' "${wired:-$all}" | head -1 | cut -f1
-}
-
-# ios_udid — echo the UDID of the iOS device to deploy to. $FILMOWO_IOS_UDID
-# wins; else prefer a cabled device over a wireless one (via _ios_pick), taking
-# the first of several and listing the rest (with transport) to stderr. Empty
-# when none is attached.
-ios_udid() {
-  [[ -n "${FILMOWO_IOS_UDID:-}" ]] && { echo "$FILMOWO_IOS_UDID"; return 0; }
-  local all wired chosen; all="$(ios_devices)"; [[ -z "$all" ]] && return 0
-  wired="$(printf '%s\n' "$all" | awk -F'\t' '$3 == "wired"')"
-  chosen="${wired:-$all}"
-  [[ -z "$wired" ]] && \
-    echo "  no cabled iOS device — using a wireless one (deploying over the network)." >&2
-  if [[ "$(printf '%s\n' "$chosen" | grep -c .)" -gt 1 ]]; then
-    { echo "  multiple iOS devices attached:"
-      printf '%s\n' "$chosen" | awk -F'\t' '{print "    · "$4" ("$2", "$3")"}'
-      echo "    using the first — set FILMOWO_IOS_UDID to pick a specific one."; } >&2
-  fi
-  printf '%s\n' "$all" | _ios_pick
-}
-
 # ios_device_name <udid> — a friendly "name (type, transport)" for logging.
 ios_device_name() {
   ios_devices | awk -F'\t' -v u="$1" '$1==u{print $4" ("$2", "$3")"; f=1} END{if(!f)print u}'

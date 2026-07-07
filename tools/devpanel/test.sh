@@ -41,17 +41,12 @@ t="$(bash "$HERE/scripts/test-android.sh")"
 check "tests run testDebugUnitTest"        "$t" "testDebugUnitTest"
 
 i="$(bash "$HERE/scripts/deploy-ios.sh")"
-check "iOS deploy builds the Filmowo scheme" "$i" "xcodebuild -project"
-check "iOS deploy builds for a device"     "$i" "-destination platform=iOS,id="
-check "iOS deploy installs via devicectl"  "$i" "devicectl device install app --device"
-check "iOS deploy launches the bundle"     "$i" "devicectl device process launch --device <udid> pl.filmowo.Filmowo"
-
-# Device selection prefers the cabled (wired) device over a wireless one, so
-# plugging in an iPad while an iPhone is on wifi targets the iPad.
-pick() { SCRIPT_DIR="$HERE/scripts" bash -c 'source "'"$HERE"'/scripts/lib.sh"; _ios_pick'; }
-w="$(printf 'UD-PHONE\tiPhone\tlocalNetwork\tPhone\nUD-PAD\tiPad\twired\tPad\n' | pick)"
-check "picks the cabled device over a wireless one" "$w" "UD-PAD"
-o="$(printf 'UD-PHONE\tiPhone\tlocalNetwork\tPhone\n' | pick)"
-check "falls back to the only (wireless) device"    "$o" "UD-PHONE"
+check "iOS deploy builds the Filmowo scheme"  "$i" "xcodebuild -project"
+check "iOS deploy builds once for any device" "$i" "-destination generic/platform=iOS"
+# Fans out install+launch to every device (self-test prints two placeholders).
+check "iOS deploy installs on device 1"       "$i" "devicectl device install app --device <udid-1>"
+check "iOS deploy installs on device 2"       "$i" "devicectl device install app --device <udid-2>"
+check "iOS deploy launches on device 1"       "$i" "devicectl device process launch --device <udid-1> pl.filmowo.Filmowo"
+check "iOS deploy launches on device 2"       "$i" "devicectl device process launch --device <udid-2> pl.filmowo.Filmowo"
 
 if [[ $fail -eq 0 ]]; then echo "✓ all devpanel checks passed"; else echo "✗ devpanel checks failed"; exit 1; fi

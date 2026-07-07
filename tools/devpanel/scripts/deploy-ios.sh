@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Build, sign, install and launch the Filmowo iOS app on the cabled/paired iOS
-# device (iPhone or iPad — one universal build serves both) via `xcodebuild` +
-# `xcrun devicectl`. The device is auto-detected; with more than one attached it
-# uses the first and lists the rest (override with FILMOWO_IOS_UDID). Signs with
-# the local Apple Development identity's team (auto-detected, override with
-# FILMOWO_DEV_TEAM); `-allowProvisioningUpdates` registers the device and mints a
-# development profile on first run. By default the build points at prod
-# (https://filmowo.fly.dev) so the app always loads even with no dev server
-# running; set FILMOWO_BASE_URL=http://<mac-lan-ip>:3000 to point a build at the
-# Mac's local dev server (a real device can't reach the Mac's localhost, so use
-# the LAN IP the panel header shows).
+# Build the Filmowo iOS app once and install+launch it on EVERY available iOS
+# device (iPhone and iPad, cabled or on the local network) via `xcodebuild` +
+# `xcrun devicectl`. One universal, team-signed generic build serves them all —
+# and a single locked device can't fail the build. Set FILMOWO_IOS_UDID=<udid>
+# to target just one. Signs with the local Apple Development team (auto-detected,
+# override FILMOWO_DEV_TEAM); -allowProvisioningUpdates keeps the team profile
+# current. Base URL defaults to prod; set FILMOWO_BASE_URL=http://<mac-lan-ip>:3000
+# for the Mac's local dev server (a device can't reach the Mac's localhost).
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
@@ -22,52 +19,69 @@ APP="$DERIVED/Build/Products/Debug-iphoneos/Filmowo.app"
 export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-https://filmowo.fly.dev}"
 printf '▶ target base URL: %s\n' "$FILMOWO_BASE_URL"
 
-build_cmd() { # <udid> <team>
+build_once() { # <team>
+  # A generic device build (not tied to one device) signed with the team's
+  # development profile: installs on any registered device, and doesn't fail
+  # just because one device happens to be locked.
   step xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Debug \
-    -destination "platform=iOS,id=$1" -derivedDataPath "$DERIVED" \
-    -allowProvisioningUpdates DEVELOPMENT_TEAM="$2" build
+    -destination "generic/platform=iOS" -derivedDataPath "$DERIVED" \
+    -allowProvisioningUpdates DEVELOPMENT_TEAM="$1" build
 }
+install_to() { step xcrun devicectl device install app --device "$1" "$APP"; }
+launch_on()  { step xcrun devicectl device process launch --device "$1" "$BUNDLE_ID"; }
 
-# Dry run for the DevPanel self-test: print the command shapes with placeholders
-# and touch neither devicectl nor the keychain.
+# Dry run for the DevPanel self-test: print the shapes for a two-device fan-out.
 if [[ "${DEVPANEL_PRINT_ONLY:-}" == "1" ]]; then
-  build_cmd "<udid>" "<team>"
-  step xcrun devicectl device install app --device "<udid>" "$APP"
-  step xcrun devicectl device process launch --device "<udid>" "$BUNDLE_ID"
+  build_once "<team>"
+  for udid in "<udid-1>" "<udid-2>"; do install_to "$udid"; launch_on "$udid"; done
   exit 0
 fi
 
 TEAM="$(ios_team)"
-UDID="$(ios_udid)"
-if [[ -z "$UDID" ]]; then
-  echo "🔌 No paired iOS device found. Connect an iPhone or iPad over USB, unlock"
-  echo "   it, trust this Mac, then retry. (override with FILMOWO_IOS_UDID=<udid>)"
-  exit 1
-fi
 if [[ -z "$TEAM" ]]; then
   echo "✋ No Apple Development signing identity found. Add your Apple ID in"
   echo "   Xcode ▸ Settings ▸ Accounts, or set FILMOWO_DEV_TEAM=<teamid>."
   exit 1
 fi
-printf '▶ target device: %s\n▶ signing team: %s\n' "$(ios_device_name "$UDID")" "$TEAM"
 
-if ! build_cmd "$UDID" "$TEAM"; then
-  echo "✋ Build for the device failed. If it mentions \"developer disk image could"
-  echo "   not be mounted\", the device isn't ready to receive a build — usually:"
-  echo "     • it's locked — unlock it and keep it awake, or"
-  echo "     • Developer Mode is off — Settings ▸ Privacy & Security ▸ Developer"
-  echo "       Mode ▸ On (then reboot + trust), or"
-  echo "     • it was just plugged in — give it a few seconds and retry."
+# Targets: the override, else every available iOS device.
+if [[ -n "${FILMOWO_IOS_UDID:-}" ]]; then
+  udids="$FILMOWO_IOS_UDID"
+else
+  udids="$(ios_devices | cut -f1)"
+fi
+if [[ -z "$udids" ]]; then
+  echo "🔌 No paired iOS device found. Connect/pair an iPhone or iPad, unlock it,"
+  echo "   trust this Mac, then retry."
+  exit 1
+fi
+echo "▶ devices:"; ios_devices | awk -F'\t' '{print "    · "$4" ("$2", "$3")"}'
+printf '▶ signing team: %s\n' "$TEAM"
+
+if ! build_once "$TEAM"; then
+  echo "✋ Build failed — see the xcodebuild output above."
   exit 1
 fi
 
-step xcrun devicectl device install app --device "$UDID" "$APP"
+ok=0; failed=()
+while IFS= read -r udid; do
+  [[ -z "$udid" ]] && continue
+  name="$(ios_device_name "$udid")"
+  printf '\n\033[1m▶ deploy → %s\033[0m\n' "$name"
+  if ! install_to "$udid"; then
+    echo "  ✗ install failed (device locked, not registered, or Developer Mode off)."
+    failed+=("$name"); continue
+  fi
+  # Launch is best-effort — a locked device declines it.
+  launch_on "$udid" || echo "  ⚠️ installed, but launch was declined — unlock the device and open Filmowo."
+  ok=$((ok + 1))
+done <<< "$udids"
 
-# The app is installed by this point; auto-launch can still be declined if the
-# device is locked or the developer isn't trusted yet. Don't hard-fail on it.
-if ! step xcrun devicectl device process launch --device "$UDID" "$BUNDLE_ID"; then
-  echo "⚠️  Installed OK, but auto-launch was declined."
-  echo "    • Unlock the device and reopen Filmowo from the Home Screen, and/or"
-  echo "    • first install only: Settings ▸ General ▸ VPN & Device Management ▸"
-  echo "      Apple Development: … ▸ Trust."
+echo
+echo "▶ done: installed on $ok device(s)."
+if [[ ${#failed[@]} -gt 0 ]]; then
+  echo "  not installed on: ${failed[*]}"
+  echo "  → unlock the device + enable Developer Mode (Settings ▸ Privacy &"
+  echo "    Security ▸ Developer Mode), or register it once via Xcode, then retry."
+  [[ $ok -eq 0 ]] && exit 1
 fi

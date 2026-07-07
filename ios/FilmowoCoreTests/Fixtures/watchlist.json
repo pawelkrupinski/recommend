@@ -1,0 +1,16 @@
+{
+  "watchlist": [
+    {
+      "tmdb_id": 27205,
+      "media_type": "movie",
+      "title": "Inception",
+      "year": 2010,
+      "poster_path": "/inception.jpg",
+      "genres": ["Action", "Thriller"],
+      "genreIds": [28, 53],
+      "services": [{ "id": 8, "name": "Netflix", "logo": "/netflix.jpg" }]
+    }
+  ],
+  "genres": [{ "id": 28, "name": "Action" }, { "id": 53, "name": "Thriller" }],
+  "byName": { "Action": 28, "Thriller": 53 }
+}

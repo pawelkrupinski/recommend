@@ -1,0 +1,43 @@
+{
+  "profileSize": 42,
+  "results": [
+    {
+      "tmdb_id": 603,
+      "media_type": "movie",
+      "imdb_id": "tt0133093",
+      "title": "The Matrix",
+      "year": 1999,
+      "runtime": 136,
+      "seasons": null,
+      "episodes": null,
+      "overview": "A hacker learns the truth about his reality.",
+      "poster_path": "/matrix.jpg",
+      "vote_average": 8.2,
+      "imdbRating": 8.7,
+      "imdbVotes": 1900000,
+      "metascore": 73,
+      "genres": ["Action", "Science Fiction"],
+      "genreIds": [28, 878],
+      "tones": [{ "slug": "mind-bending", "label": "Mind-bending" }, { "slug": "dystopian", "label": "Dystopian" }],
+      "director": "The Wachowskis",
+      "cast": ["Keanu Reeves", "Laurence Fishburne"],
+      "trailers": [{ "key": "vKQi3bBA1y8", "name": "Trailer" }],
+      "services": [{ "id": 8, "name": "Netflix", "logo": "/netflix.jpg" }],
+      "score": 0.91,
+      "collab": 0.4,
+      "features": { "stripped": true }
+    },
+    {
+      "tmdb_id": 1399,
+      "media_type": "tv",
+      "title": "Game of Thrones",
+      "year": 2011,
+      "seasons": 8,
+      "episodes": 73,
+      "poster_path": "/got.jpg",
+      "vote_average": 8.4,
+      "genres": ["Drama", "Fantasy"],
+      "genreIds": [18, 10765]
+    }
+  ]
+}

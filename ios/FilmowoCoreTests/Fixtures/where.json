@@ -1,0 +1,13 @@
+{
+  "region": "PL",
+  "tmdbLink": "https://www.themoviedb.org/movie/603/watch?locale=PL",
+  "flatrate": [
+    { "name": "Netflix", "logo": "/netflix.jpg" },
+    { "name": "HBO Max", "logo": "/hbo.jpg" }
+  ],
+  "deepLinks": [
+    { "service": "Netflix", "type": "flatrate", "link": "https://www.netflix.com/title/20557937", "providerId": 8 },
+    { "service": "HBO Max", "link": "https://play.hbomax.com/x", "providerId": 384 }
+  ],
+  "credits": { "director": "The Wachowskis", "cast": "Keanu Reeves, Laurence Fishburne" }
+}

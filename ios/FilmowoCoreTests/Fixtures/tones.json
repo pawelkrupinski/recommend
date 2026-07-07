@@ -1,0 +1,7 @@
+{
+  "tones": [
+    { "slug": "feel-good", "label": "Feel-good" },
+    { "slug": "dark", "label": "Dark" },
+    { "slug": "mind-bending", "label": "Mind-bending" }
+  ]
+}

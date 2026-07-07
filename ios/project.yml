@@ -22,6 +22,7 @@ targets:
     platform: iOS
     sources:
       - path: Filmowo
+      - path: FilmowoCore # Foundation-only shared logic, also its own SPM library (Package.swift)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: pl.filmowo.Filmowo

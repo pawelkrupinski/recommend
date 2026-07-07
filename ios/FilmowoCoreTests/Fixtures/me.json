@@ -1,0 +1,12 @@
+{
+  "user": { "email": "ada@example.com", "name": "Ada", "picture": "https://example.com/a.jpg" },
+  "anonymous": false,
+  "onboarded": true,
+  "providers": ["google", "facebook"],
+  "services": [8, 337, 119],
+  "country": "PL",
+  "language": "pl",
+  "watchlistSort": "added",
+  "detectedCountry": "PL",
+  "detectedLanguage": "pl"
+}

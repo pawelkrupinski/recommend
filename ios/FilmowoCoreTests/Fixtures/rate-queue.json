@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "tmdb_id": 238, "title": "The Godfather", "year": 1972, "poster_path": "/godfather.jpg", "overview": "Crime family saga.", "vote_average": 8.7 },
+    { "tmdb_id": 155, "title": "The Dark Knight", "year": 2008, "poster_path": "/tdk.jpg", "vote_average": 8.5 }
+  ],
+  "totalPages": 12
+}

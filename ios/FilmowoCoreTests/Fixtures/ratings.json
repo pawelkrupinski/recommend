@@ -1,0 +1,6 @@
+{
+  "ratings": [
+    { "tmdb_id": 603, "media_type": "movie", "rating": 9.0, "title": "The Matrix", "year": 1999, "source": "user", "rated_at": "2026-06-01T12:00:00Z" },
+    { "tmdb_id": 1399, "media_type": "tv", "rating": 7.5, "title": "Game of Thrones", "year": 2011 }
+  ]
+}

@@ -25,9 +25,7 @@ struct CardView: View {
         VStack(alignment: .leading, spacing: 6) {
             posterWithServices
 
-            Text(card.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2, reservesSpace: true)
+            titleBlock
 
             Text(metaLine)
                 .font(.caption)
@@ -44,6 +42,18 @@ struct CardView: View {
         .onTapGesture(perform: onTap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.card(card.key))
+    }
+
+    /// The title, reserving two lines so 1- and 2-line titles are the same height
+    /// (years stay aligned across the row) but bottom-aligned, so a short title
+    /// sits right above the year instead of leaving an empty reserved line as a
+    /// gap. The slack falls under the poster instead.
+    private var titleBlock: some View {
+        ZStack(alignment: .bottomLeading) {
+            Text("T\nT").font(.subheadline.weight(.semibold)).hidden()
+            Text(card.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var posterWithServices: some View {

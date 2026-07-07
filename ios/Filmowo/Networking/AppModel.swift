@@ -67,9 +67,15 @@ final class AppModel: ObservableObject {
     /// Called when onboarding completes (server already has `onboarded=true`).
     func finishOnboarding() { boot = .ready }
 
-    /// Refresh identity after sign-in / sign-out / settings changes.
+    /// Refresh identity after sign-in / sign-out / settings changes, and re-route
+    /// to match `me.onboarded` — so signing into an already-onboarded account on
+    /// the onboarding screen lands straight on Discover (mirrors Android, which
+    /// derives the screen reactively from `me`).
     func refreshMe() async {
-        if let me = try? await client.me() { apply(me) }
+        if let me = try? await client.me() {
+            apply(me)
+            boot = me.onboarded ? .ready : .onboarding
+        }
     }
 
     func signOut() async {

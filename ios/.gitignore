@@ -1,0 +1,14 @@
+# Xcode / SwiftPM build products
+build/
+.build/
+DerivedData/
+*.xcresult
+TestResults.xcresult/
+
+# Per-user Xcode state (the .xcodeproj itself IS checked in; only user cruft is not)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+
+# Misc
+.DS_Store

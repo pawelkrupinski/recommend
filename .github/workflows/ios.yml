@@ -1,0 +1,112 @@
+name: iOS
+
+on:
+  pull_request:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+# A newer push to the same ref cancels the older run mid-flight.
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+# Three lanes, mirroring the movies iOS app:
+#   - core-tests: the Foundation-only FilmowoCore SPM package (models, decoding,
+#     i18n, region logic) on a Linux Swift container — fast, no Xcode, no
+#     simulator. This is where the bulk of the logic tests live.
+#   - xcode-tests: the real app + XCTest + XCUITest targets on a macOS runner
+#     against an iOS simulator. xcodebuild's exit code decides pass/fail; a JUnit
+#     report is published best-effort like the Android lane.
+#   - build: an unsigned simulator build shipped as a workflow artifact
+#     (parallels Android's APK upload). Signing / TestFlight are left out until a
+#     signing cert exists.
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    container: swift:6.0
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+      - name: Swift package tests (FilmowoCore)
+        run: swift test
+
+  xcode-tests:
+    runs-on: macos-latest
+    permissions:
+      checks: write
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+
+      # Pick any available iPhone simulator by UDID rather than hard-coding a
+      # device name/OS — the runner's Xcode (and thus its simulators) drifts.
+      - name: Resolve a simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices[][] | select(.name|startswith("iPhone"))][0].udid')
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $UDID"
+
+      - name: Run unit + UI tests
+        run: |
+          xcodebuild test \
+            -project Filmowo.xcodeproj \
+            -scheme Filmowo \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Convert xcresult to JUnit (best-effort)
+        if: always()
+        run: |
+          brew install a7ex/homebrew-formulae/xcresultparser >/dev/null 2>&1 || true
+          if command -v xcresultparser >/dev/null; then
+            xcresultparser -o junit TestResults.xcresult > junit.xml || true
+          fi
+
+      - name: Publish test report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: 'ios/junit.xml'
+          check_name: iOS unit + UI tests
+          detailed_summary: true
+          include_passed: false
+          require_tests: false
+
+  build:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build app (unsigned, simulator)
+        run: |
+          xcodebuild build \
+            -project Filmowo.xcodeproj \
+            -scheme Filmowo \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload app bundle
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: filmowo-ios-app
+          path: ios/build/Build/Products/Debug-iphonesimulator/Filmowo.app
+          if-no-files-found: error

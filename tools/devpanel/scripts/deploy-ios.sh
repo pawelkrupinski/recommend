@@ -22,10 +22,24 @@ printf '▶ target base URL: %s\n' "$FILMOWO_BASE_URL"
 build_once() { # <team>
   # A generic device build (not tied to one device) signed with the team's
   # development profile: installs on any registered device, and doesn't fail
-  # just because one device happens to be locked.
+  # just because one device happens to be locked. The persistent derivedDataPath
+  # ($DERIVED) makes this incremental — unchanged files aren't recompiled — and
+  # COMPILER_INDEX_STORE_ENABLE=NO skips the index store a CLI build doesn't need.
   step xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Debug \
     -destination "generic/platform=iOS" -derivedDataPath "$DERIVED" \
-    -allowProvisioningUpdates DEVELOPMENT_TEAM="$1" build
+    -allowProvisioningUpdates DEVELOPMENT_TEAM="$1" \
+    COMPILER_INDEX_STORE_ENABLE=NO build
+}
+
+# needs_build — true if there's no built app yet, or any source (app, core, or
+# the project file) changed since it was last built. Lets a re-deploy with no
+# code change (e.g. to a second device, or after unlocking one) skip the ~4-5s
+# no-op rebuild and go straight to install.
+needs_build() {
+  local bin="$APP/Filmowo"
+  [[ -x "$bin" ]] || return 0
+  [[ -n "$(find "$REPO_ROOT/ios/Filmowo" "$REPO_ROOT/ios/FilmowoCore" \
+             "$PROJECT/project.pbxproj" -type f -newer "$bin" -print -quit 2>/dev/null)" ]]
 }
 install_to() { step xcrun devicectl device install app --device "$1" "$APP"; }
 launch_on()  { step xcrun devicectl device process launch --device "$1" "$BUNDLE_ID"; }
@@ -58,9 +72,13 @@ fi
 echo "▶ devices:"; ios_devices | awk -F'\t' '{print "    · "$4" ("$2", "$3")"}'
 printf '▶ signing team: %s\n' "$TEAM"
 
-if ! build_once "$TEAM"; then
-  echo "✋ Build failed — see the xcodebuild output above."
-  exit 1
+if needs_build; then
+  if ! build_once "$TEAM"; then
+    echo "✋ Build failed — see the xcodebuild output above."
+    exit 1
+  fi
+else
+  echo "▶ app is up to date — skipping the build."
 fi
 
 ok=0; failed=()

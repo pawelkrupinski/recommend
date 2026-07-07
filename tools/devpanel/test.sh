@@ -43,6 +43,7 @@ check "tests run testDebugUnitTest"        "$t" "testDebugUnitTest"
 i="$(bash "$HERE/scripts/deploy-ios.sh")"
 check "iOS deploy builds the Filmowo scheme"  "$i" "xcodebuild -project"
 check "iOS deploy builds once for any device" "$i" "-destination generic/platform=iOS"
+check "iOS deploy skips the index store"      "$i" "COMPILER_INDEX_STORE_ENABLE=NO"
 # Fans out install+launch to every device (self-test prints two placeholders).
 check "iOS deploy installs on device 1"       "$i" "devicectl device install app --device <udid-1>"
 check "iOS deploy installs on device 2"       "$i" "devicectl device install app --device <udid-2>"

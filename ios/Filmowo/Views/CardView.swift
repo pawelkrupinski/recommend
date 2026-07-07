@@ -34,8 +34,8 @@ struct CardView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            if imdb != nil || meta != nil { badges }
-            if !tones.isEmpty { toneChips }
+            badgeRow
+            toneRow
 
             RateStars(rating: ratedValue, onRate: onRate)
                 .padding(.top, 2)
@@ -92,6 +92,29 @@ struct CardView: View {
             parts.append("\(r) min")
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// The ratings badges, but always occupying a fixed height (a hidden template
+    /// badge reserves it) so cards with and without ratings stay the same height
+    /// and their stars, poster tops, and year lines all line up across the grid.
+    private var badgeRow: some View {
+        ZStack(alignment: .leading) {
+            Label("0.0", systemImage: "star.circle.fill")
+                .labelStyle(.titleAndIcon)
+                .font(.caption2.weight(.semibold))
+                .hidden()
+            if imdb != nil || meta != nil { badges }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The tone chips, likewise reserving a fixed row height even when absent.
+    private var toneRow: some View {
+        ZStack(alignment: .leading) {
+            Text("Tone").font(.caption2).padding(.vertical, 2).hidden()
+            if !tones.isEmpty { toneChips }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var badges: some View {

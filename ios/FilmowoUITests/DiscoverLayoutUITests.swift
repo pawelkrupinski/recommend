@@ -22,4 +22,32 @@ final class DiscoverLayoutUITests: XCTestCase {
         XCTAssertGreaterThan(filterType.frame.minY, navBar.frame.maxY,
                              "filter dropdowns sit directly beneath the top bar")
     }
+
+    /// Cards in a grid row line up — poster tops, year lines, and star rows — even
+    /// when one card has ratings badges and a tone chip and its neighbour has
+    /// neither (their reserved rows keep every card the same height).
+    func testGridRowCardsAlignPostersYearsAndStars() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        let matrix = app.otherElements["card-movie:603"]   // has badges + a tone chip
+        let got = app.otherElements["card-tv:1399"]         // has neither
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+        XCTAssertTrue(got.waitForExistence(timeout: 5))
+        // Make sure Matrix's extra content has loaded, so it is the taller-content card.
+        XCTAssertTrue(app.staticTexts["Mind-bending"].waitForExistence(timeout: 5))
+
+        XCTAssertEqual(matrix.frame.minY, got.frame.minY, accuracy: 1,
+                       "poster tops line up across the row")
+
+        let matrixYear = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "1999")).firstMatch
+        let gotYear = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "2011")).firstMatch
+        XCTAssertTrue(matrixYear.exists && gotYear.exists)
+        XCTAssertEqual(matrixYear.frame.minY, gotYear.frame.minY, accuracy: 1,
+                       "year lines line up across the row")
+
+        let matrixStars = matrix.otherElements["rate-stars"]
+        let gotStars = got.otherElements["rate-stars"]
+        XCTAssertTrue(matrixStars.exists && gotStars.exists)
+        XCTAssertEqual(matrixStars.frame.minY, gotStars.frame.minY, accuracy: 1,
+                       "star rows line up across the row")
+    }
 }

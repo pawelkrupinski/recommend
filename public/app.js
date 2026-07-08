@@ -83,11 +83,11 @@ function ratingBadges(m) {
   return imdb || mc ? `<div class="ratings">${imdb}${mc}</div>` : '';
 }
 
-// "2021 · ⭐ 7.8 · 1h 47m" — year, community rating and runtime, each shown only
-// when present so a not-yet-enriched card degrades cleanly instead of "· ⭐ 0.0".
+// "2021 · 1h 47m" — year and runtime, each shown only when present so a
+// not-yet-enriched card degrades cleanly. The TMDB community rating (⭐) was
+// dropped from the card in favour of the IMDb/Metacritic badges below it.
 function metaLine(m) {
   const parts = [m.year || ''];
-  if (m.vote_average != null) parts.push(`⭐ ${m.vote_average.toFixed(1)}`);
   const length = lengthLabel(m);
   if (length) parts.push(length);
   return parts.filter(Boolean).join(' · ');

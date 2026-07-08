@@ -51,6 +51,21 @@ final class DiscoverLayoutUITests: XCTestCase {
                        "star rows line up across the row")
     }
 
+    /// The card meta line shows the year (and runtime) but no longer the TMDB
+    /// community rating — the "⭐ 8.2" was dropped in favour of the IMDb/MC badges.
+    /// (movie:603's stub carries vote_average 8.2, so this would render before.)
+    func testCardMetaLineDropsTmdbStarRating() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        let matrix = app.otherElements["card-movie:603"]
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+        // The year line is still present…
+        let year = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "1999")).firstMatch
+        XCTAssertTrue(year.waitForExistence(timeout: 5), "the card still shows the year")
+        // …but nothing on the card carries the ⭐ TMDB rating.
+        let starred = matrix.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "⭐"))
+        XCTAssertEqual(starred.count, 0, "the card no longer shows the TMDB ⭐ rating")
+    }
+
     /// The IMDb rating renders as the two-tone pill (an "IMDb" tab + the value),
     /// matching Android / ../movies, rather than a bare starred number.
     func testImdbRatingShowsAsLabelledPill() {

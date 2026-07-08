@@ -61,7 +61,8 @@ test('rankCorpus yields the event loop while scoring a large corpus', async () =
   // the scoring-only fields stripped from the served card.
   assert.equal(result.length, 40);
   assert.ok(result.every((c) => typeof c.score === 'number' && c.tmdb_id != null));
-  // Scoring-only fields stripped from the served card; the displayed ⭐ vote_average kept.
+  // Scoring-only fields stripped from the served card; vote_average kept — no
+  // longer shown on the card, but still carried for the watchlist rating sort.
   assert.ok(result.every((c) => c.features === undefined && c.imdbRating === undefined
     && c.imdbVotes === undefined && c.metascore === undefined));
   assert.ok(result.every((c) => c.vote_average != null));

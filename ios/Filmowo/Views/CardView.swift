@@ -35,8 +35,10 @@ struct CardView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
-            badgeRow
-            toneRow
+            // 1.5× the stack's 6pt spacing (→9pt) above the rating pill and above
+            // the tone row, so the year, rating, and tones read as separate bands.
+            badgeRow.padding(.top, 3)
+            toneRow.padding(.top, 3)
 
             RateStars(rating: ratedValue, onRate: onRate)
                 .padding(.top, 2)
@@ -103,7 +105,6 @@ struct CardView: View {
     private var metaLine: String {
         var parts: [String] = []
         if let y = card.year { parts.append(String(y)) }
-        if let v = card.voteAverage, v > 0 { parts.append("⭐ \(String(format: "%.1f", v))") }
         if card.mediaType == "tv", let s = card.seasons {
             parts.append(s == 1 ? "1 season" : "\(s) seasons")
         } else if let r = card.runtime, r > 0 {

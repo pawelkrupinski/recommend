@@ -34,7 +34,7 @@ test('Discover cards keep the "Not interested" button at a constant height', asy
         <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" />
         <div class="meta">
           <div class="title">${title}</div>
-          <div class="year">2020 · ⭐ 7.5</div>
+          <div class="year">2020 · 1h 47m</div>
           ${badges}
           ${genres}
         </div>

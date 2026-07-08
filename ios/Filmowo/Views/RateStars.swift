@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Rating on the server's 1–10 scale, shown as ten stars in two rows of five.
 /// Tap a star to rate, or — like Android `RateStars` and the web widget — drag
@@ -7,11 +8,13 @@ import SwiftUI
 /// 6–10. `rating` is the current value (nil = unrated); `onRate` fires the
 /// chosen 1...10 value.
 ///
-/// One `DragGesture` on the whole block handles both tap and drag: the stars are
-/// plain (accessibility-only) images rather than buttons, because a per-star
-/// `Button` swallows the touch sequence and the drag never reaches the block
-/// (most visibly on iPad). XCUITest and VoiceOver still see ten `rate-star-N`
-/// buttons via the accessibility traits.
+/// Touch handling is a UIKit layer (`StarTouchLayer`), not a SwiftUI
+/// `DragGesture`: a SwiftUI drag on scroll content blocks the scroll even when
+/// simultaneous, so a vertical drag starting on the stars couldn't scroll the
+/// grid. The UIKit pan instead *fails* for a vertical drag (the cousin of
+/// Android's `awaitHorizontalTouchSlopOrCancellation`), leaving it to the scroll
+/// view, and only claims horizontal drags. XCUITest and VoiceOver still see ten
+/// `rate-star-N` buttons via the star images' accessibility traits.
 struct RateStars: View {
     let rating: Double?
     var onRate: (Double) -> Void
@@ -31,19 +34,30 @@ struct RateStars: View {
 
     var body: some View {
         GeometryReader { geo in
-            VStack(spacing: 0) {
-                ForEach(0..<rows, id: \.self) { row in
-                    HStack(spacing: 0) {
-                        ForEach(0..<perRow, id: \.self) { col in
-                            star(row * perRow + col + 1)
+            ZStack {
+                VStack(spacing: 0) {
+                    ForEach(0..<rows, id: \.self) { row in
+                        HStack(spacing: 0) {
+                            ForEach(0..<perRow, id: \.self) { col in
+                                star(row * perRow + col + 1)
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
+                StarTouchLayer(
+                    onDragChanged: { point in preview = starAt(point, geo.size) },
+                    onDragEnded: {
+                        if preview > 0 { onRate(Double(preview)) }
+                        preview = 0
+                    },
+                    onTap: { point in
+                        let value = starAt(point, geo.size)
+                        if value > 0 { onRate(Double(value)) }
+                    }
+                )
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .contentShape(Rectangle())
-            .gesture(dragToRate(size: geo.size))
             .overlay(alignment: .topTrailing) {
                 if preview > 0 {
                     Text("\(preview)/10")
@@ -64,30 +78,18 @@ struct RateStars: View {
             .font(.title3)
             .foregroundStyle(filled ? Color.yellow : Color.secondary)
             .frame(maxWidth: .infinity)
-            // Plain image; the block's drag gesture handles touches. Expose each
-            // star as a button to VoiceOver / XCUITest so a star can still be
-            // tapped by identifier.
+            // Plain image; the touch layer above handles touches. Expose each star
+            // as a button to VoiceOver / XCUITest so a star can still be tapped by
+            // identifier.
             .accessibilityElement()
             .accessibilityAddTraits(.isButton)
             .accessibilityIdentifier(AXID.rateStar(value))
             .accessibilityLabel("Rate \(value)")
     }
 
-    private func dragToRate(size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { g in
-                // A vertical-dominant move is a cancel (slide off), not a rating.
-                guard abs(g.translation.width) >= abs(g.translation.height) else {
-                    preview = 0
-                    return
-                }
-                let vSlop = size.height / CGFloat(rows) * 3
-                preview = Self.starAt(g.location.x, g.location.y, size.width, size.height, rows, vSlop)
-            }
-            .onEnded { _ in
-                if preview > 0 { onRate(Double(preview)) }
-                preview = 0
-            }
+    private func starAt(_ point: CGPoint, _ size: CGSize) -> Int {
+        let vSlop = size.height / CGFloat(rows) * 3
+        return Self.starAt(point.x, point.y, size.width, size.height, rows, vSlop)
     }
 
     /// The star (1...`starCount`) a touch at (`x`,`y`) falls on within a
@@ -102,5 +104,57 @@ struct RateStars: View {
         let row = min(max(Int(y / (height / CGFloat(rows))), 0), rows - 1)
         let col = min(max(Int((x / width) * CGFloat(perRow)), 0), perRow - 1)
         return row * perRow + col + 1
+    }
+}
+
+/// A transparent UIKit layer that reports horizontal drags and taps on the stars
+/// while leaving vertical drags to the enclosing scroll view. Locations are in
+/// the layer's own coordinate space (matching the stars block).
+private struct StarTouchLayer: UIViewRepresentable {
+    var onDragChanged: (CGPoint) -> Void
+    var onDragEnded: () -> Void
+    var onTap: (CGPoint) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let pan = HorizontalPanRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:)))
+        view.addGestureRecognizer(pan)
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tap(_:)))
+        view.addGestureRecognizer(tap)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.parent = self }
+
+    final class Coordinator: NSObject {
+        var parent: StarTouchLayer
+        init(_ parent: StarTouchLayer) { self.parent = parent }
+
+        @objc func pan(_ g: UIPanGestureRecognizer) {
+            switch g.state {
+            case .changed: parent.onDragChanged(g.location(in: g.view))
+            case .ended, .cancelled, .failed: parent.onDragEnded()
+            default: break
+            }
+        }
+
+        @objc func tap(_ g: UITapGestureRecognizer) {
+            parent.onTap(g.location(in: g.view))
+        }
+    }
+}
+
+/// A pan recognizer that only stays alive for a predominantly-horizontal drag:
+/// the moment a drag proves vertical it fails, so an enclosing scroll view takes
+/// it. This is what lets the grid scroll even when a finger starts on the stars.
+private final class HorizontalPanRecognizer: UIPanGestureRecognizer {
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        guard state == .began || state == .changed, let view else { return }
+        let t = translation(in: view)
+        if abs(t.y) > abs(t.x) { state = .failed }
     }
 }

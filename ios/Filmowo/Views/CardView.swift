@@ -26,25 +26,30 @@ struct CardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            posterWithServices
+            // Everything above the stars opens the detail sheet on tap. The stars
+            // are deliberately outside this tap target so a star tap rates without
+            // also opening the sheet (the stars own their touches — see RateStars).
+            VStack(alignment: .leading, spacing: 6) {
+                posterWithServices
 
-            titleBlock
+                titleBlock
 
-            Text(metaLine)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                Text(metaLine)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
-            // 1.5× the stack's 6pt spacing (→9pt) above the rating pill and above
-            // the tone row, so the year, rating, and tones read as separate bands.
-            badgeRow.padding(.top, 3)
-            toneRow.padding(.top, 3)
+                // 1.5× the stack's 6pt spacing (→9pt) above the rating pill and above
+                // the tone row, so the year, rating, and tones read as separate bands.
+                badgeRow.padding(.top, 3)
+                toneRow.padding(.top, 3)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTap)
 
             RateStars(rating: ratedValue, onRate: onRate)
                 .padding(.top, 2)
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.card(card.key))
     }

@@ -67,25 +67,26 @@ export const configured = () => process.env.TMDB_STUB !== '1';
 // datacenter fetch works; proxying it would only spend Decodo's per-IP auth cap on
 // a host that doesn't need it AND tie these deep links to the proxy's health (a
 // proxy outage would otherwise drop every logo back to the TMDB fallback — the very
-// thing this recovers). Returns null on any non-200 or failure → caller degrades.
+// thing this recovers). Throws on any non-200 or failure so watchPageLinks can
+// treat it as transient (below) — never a cached empty.
 async function watchPageHtml(url) {
-  try {
-    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA } });
-    return res.ok ? await res.text() : null;
-  } catch {
-    return null;
-  }
+  const res = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA } });
+  if (!res.ok) throw new Error(`TMDB watch page ${res.status}`);
+  return res.text();
 }
 
 // Per-service deep links for one title in one country, scraped from the TMDB watch
 // page and cached hard. A bare `/movie/{id}/watch?locale=CC` 301-redirects to the
-// slug URL with the locale intact. Returns [] on any miss (not configured, non-200,
-// empty/parse-nil) so the caller simply gets no extra links.
+// slug URL with the locale intact. A real page that lists nothing caches [] (a
+// genuine "no deep links"); a fetch FAILURE throws out of `produce` so readThrough
+// leaves it UNcached and the next call retries — never poisoning the durable cache
+// with a transient miss (that swallowed-error bug shipped once, cached [] for 30
+// days on a proxy outage, and made every logo fall back to the TMDB page). The `v2`
+// key namespace also sidesteps any such poisoned v1 entries.
 export async function watchPageLinks(tmdbId, mediaType = 'movie', country = 'US') {
   if (!configured()) return [];
   const cc = country.toUpperCase();
-  return readThrough(`tmdb-watch:${mediaType}:${tmdbId}:${cc}`, TTL, async () => {
-    const html = await watchPageHtml(`https://www.themoviedb.org/${mediaType}/${tmdbId}/watch?locale=${cc}`);
-    return html ? parseWatchLinks(html) : [];
-  });
+  const links = await readThrough(`tmdb-watch:v2:${mediaType}:${tmdbId}:${cc}`, TTL, () =>
+    watchPageHtml(`https://www.themoviedb.org/${mediaType}/${tmdbId}/watch?locale=${cc}`).then(parseWatchLinks));
+  return links || []; // readThrough yields null on a transient (uncached) fault
 }

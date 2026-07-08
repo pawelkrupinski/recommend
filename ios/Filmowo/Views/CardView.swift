@@ -2,8 +2,8 @@ import SwiftUI
 import FilmowoCore
 
 /// A recommendation card in the Discover / Watchlist grids: poster, service
-/// icons, a "year · ⭐rating · runtime" line, IMDb/Metacritic badges, tone chips,
-/// and tap-a-star rating. Mirrors the web card and Android `PosterGrid` item.
+/// icons, a "year · runtime" line, IMDb/Metacritic badges, tone chips, and
+/// tap-a-star rating. Mirrors the web card and Android `PosterGrid` item.
 struct CardView: View {
     let card: Card
     var enrichment: EnrichRow?

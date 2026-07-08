@@ -13,6 +13,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
+import { watchPageLinks } from './tmdb-watch-links.js';
 import { androidPackage } from './streaming-apps.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
@@ -67,6 +68,24 @@ export function matchTmdb(motnName, tmdbProviders) {
     }
   }
   return exact || sub;
+}
+
+// A chosen streaming logo the primary sources left without a deep link would fall
+// back to the region-level TMDB watch page — the one case worth scraping that page
+// for its embedded per-title link. Pure: true when this title offers a chosen
+// provider that no linked primary option resolves to (matched by name).
+export function needsWatchScrape(primary, regionProviders, chosen) {
+  const linkedIds = new Set(primary.filter((o) => o.link)
+    .map((o) => matchTmdb(o.service, regionProviders)?.provider_id).filter((pid) => pid != null));
+  return regionProviders.some((p) => chosen.has(p.provider_id) && !linkedIds.has(p.provider_id));
+}
+
+// Pure: scraped watch-page options for services the primary list left without a
+// link, deduped by normalized name so a provider JustWatch/MotN already linked
+// isn't doubled. These fold into the primary options before deep-link tagging.
+export function gapLinks(primary, scraped) {
+  const linked = new Set(primary.filter((o) => o.link).map((o) => norm(o.service)));
+  return scraped.filter((o) => o.link && !linked.has(norm(o.service)));
 }
 
 // Both the onboarding screen and Settings show this list; keep it to the top
@@ -399,7 +418,15 @@ async function api(req, res, url) {
       // source (availability.js) returns link-less options purely to assert
       // availability and spare MotN's quota — those render via `flatrate` above
       // (logos + per-service search links), not as deep links.
-      const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
+      const primary = (await streamingOptions(id, mt, region.toLowerCase())) || [];
+      // A chosen logo with no deep link would fall back to the region TMDB watch
+      // page. That page embeds JustWatch's per-title deep links keyed to this exact
+      // id, so scrape it once to recover them (tmdb-watch-links.js) — but only on an
+      // actual gap, so a title the primary sources already covered isn't scraped.
+      const options = needsWatchScrape(primary, regionProviders, chosen)
+        ? [...primary, ...gapLinks(primary, await watchPageLinks(id, mt, region))]
+        : primary;
+      const deepLinks = options
         .filter((o) => o.link)
         .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null, androidPackage: androidPackage(o.service) }))
         .filter((o) => o.providerId != null && chosen.has(o.providerId));

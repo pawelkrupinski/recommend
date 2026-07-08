@@ -62,8 +62,14 @@ struct CardView: View {
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 3) {
                     ForEach(card.services.prefix(3)) { svc in
-                        Button { onTapService(svc) } label: { ServiceLogo(service: svc) }
-                            .buttonStyle(.plain)
+                        // A tap on the logo jumps into that streaming app; the
+                        // innermost gesture wins, so taps elsewhere on the card
+                        // still open the detail sheet (the outer onTapGesture).
+                        // Kept as the plain ServiceLogo image (not a Button) so its
+                        // accessibility element stays an image, as the grid card
+                        // UI test asserts.
+                        ServiceLogo(service: svc)
+                            .onTapGesture { onTapService(svc) }
                     }
                 }
                 .padding(6)

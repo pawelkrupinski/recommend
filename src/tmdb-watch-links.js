@@ -15,7 +15,7 @@
 // and its monetization type. Cached hard (deep links rarely move) and OFF under
 // the deterministic TMDB stub, like the other scraped sources — only the pure
 // parser runs in tests, against a recorded fixture.
-import { proxiedText } from './fetch.js';
+import { fetchWithTimeout, BROWSER_UA } from './fetch.js';
 import { readThrough, DAY } from './cache.js';
 import { appLink } from './deeplinks.js';
 
@@ -62,6 +62,21 @@ export function parseWatchLinks(html) {
 // intercepts the TMDB API, not this www.themoviedb.org page).
 export const configured = () => process.env.TMDB_STUB !== '1';
 
+// GET the watch page directly — no residential proxy. Unlike the JustWatch /
+// Letterboxd / Filmweb scrapers, TMDB's own site isn't ASN-blocked, so a plain
+// datacenter fetch works; proxying it would only spend Decodo's per-IP auth cap on
+// a host that doesn't need it AND tie these deep links to the proxy's health (a
+// proxy outage would otherwise drop every logo back to the TMDB fallback — the very
+// thing this recovers). Returns null on any non-200 or failure → caller degrades.
+async function watchPageHtml(url) {
+  try {
+    const res = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA } });
+    return res.ok ? await res.text() : null;
+  } catch {
+    return null;
+  }
+}
+
 // Per-service deep links for one title in one country, scraped from the TMDB watch
 // page and cached hard. A bare `/movie/{id}/watch?locale=CC` 301-redirects to the
 // slug URL with the locale intact. Returns [] on any miss (not configured, non-200,
@@ -70,7 +85,7 @@ export async function watchPageLinks(tmdbId, mediaType = 'movie', country = 'US'
   if (!configured()) return [];
   const cc = country.toUpperCase();
   return readThrough(`tmdb-watch:${mediaType}:${tmdbId}:${cc}`, TTL, async () => {
-    const html = await proxiedText(`https://www.themoviedb.org/${mediaType}/${tmdbId}/watch?locale=${cc}`);
+    const html = await watchPageHtml(`https://www.themoviedb.org/${mediaType}/${tmdbId}/watch?locale=${cc}`);
     return html ? parseWatchLinks(html) : [];
   });
 }

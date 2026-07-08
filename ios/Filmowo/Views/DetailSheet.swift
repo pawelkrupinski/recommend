@@ -15,8 +15,12 @@ struct DetailSheet: View {
 
     @Environment(\.language) private var language
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var whereInfo: WhereInfo?
     @State private var loading = true
+
+    // The web's `.where a` gold accent (#f5c518), matching the IMDb pill.
+    private static let accentGold = Color(red: 245 / 255, green: 197 / 255, blue: 24 / 255)
 
     var body: some View {
         NavigationStack {
@@ -86,16 +90,17 @@ struct DetailSheet: View {
             if loading {
                 ProgressView()
             } else if let info = whereInfo, !info.deepLinks.isEmpty || !info.flatrate.isEmpty {
-                let links = info.deepLinks
-                if links.isEmpty {
-                    // No deep links, but we know the subscription services.
-                    Text(info.flatrate.map(\.name).joined(separator: ", ")).font(.subheadline)
-                } else {
-                    ForEach(links) { link in
-                        if let url = URL(string: link.link) {
-                            Link(destination: url) {
-                                Label(link.service, systemImage: "play.circle.fill")
-                            }
+                // Tappable banner chips that wrap, mirroring the web "where" pills.
+                // Deep links open the streaming app (universal-link hand-off, else
+                // Safari); the flatrate fallback opens the TMDB watch page.
+                FlowLayout(spacing: 8) {
+                    if !info.deepLinks.isEmpty {
+                        ForEach(info.deepLinks) { link in
+                            serviceBanner(link.service, type: link.type, logo: nil, urlString: link.link)
+                        }
+                    } else {
+                        ForEach(info.flatrate) { f in
+                            serviceBanner(f.name, type: nil, logo: f.logo, urlString: info.tmdbLink)
                         }
                     }
                 }
@@ -103,6 +108,36 @@ struct DetailSheet: View {
                 Text(I18n.t(language, "detail.notAvailable")).font(.subheadline).foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// One where-to-watch banner: a gold rounded chip with the service name (and
+    /// a logo for the flatrate fallback, or a play glyph for a deep link) plus an
+    /// optional muted type label. `.plain` button style keeps the gold tint.
+    @ViewBuilder
+    private func serviceBanner(_ name: String, type: String?, logo: String?, urlString: String?) -> some View {
+        Button {
+            if let urlString, let url = URL(string: urlString) { openURL(url) }
+        } label: {
+            HStack(spacing: 8) {
+                if let logo, let url = TMDBImage.url(logo, width: 92) {
+                    CachedAsyncImage(url: url) { Color.clear }
+                        .frame(width: 22, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 5))
+                } else {
+                    Image(systemName: "play.fill").font(.caption2)
+                }
+                Text(name).font(.subheadline.weight(.semibold))
+                if let type, !type.isEmpty {
+                    Text(type).font(.caption2).foregroundStyle(.secondary)
+                }
+            }
+            .foregroundStyle(Self.accentGold)
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+        }
+        .buttonStyle(.plain)
+        .disabled((urlString ?? "").isEmpty)
     }
 
     @ViewBuilder

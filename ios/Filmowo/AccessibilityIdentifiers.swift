@@ -34,7 +34,6 @@ enum AXID {
     // Card actions
     static let cardSave = "card-save"
     static let cardDismiss = "card-dismiss"
-    static let cardNotSeen = "card-not-seen"
 
     // Detail
     static let detailSheet = "detail-sheet"

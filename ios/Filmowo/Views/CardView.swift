@@ -13,7 +13,6 @@ struct CardView: View {
     var onRate: (Double) -> Void = { _ in }
     var onToggleSave: () -> Void = {}
     var onDismiss: () -> Void = {}
-    var onNotSeen: () -> Void = {}
     /// Tapping a service logo jumps straight into that streaming app (see the
     /// call sites, which resolve the deep link and open it).
     var onTapService: (Service) -> Void = { _ in }
@@ -66,45 +65,47 @@ struct CardView: View {
 
     private var posterWithServices: some View {
         PosterImage(path: card.posterPath)
+            // Not interested → an X, top-left (styled like the sibling Kinowo app's
+            // hide button: a bold glyph in a translucent black circle).
+            .overlay(alignment: .topLeading) {
+                cornerButton("xmark", size: 10, action: onDismiss)
+                    .accessibilityIdentifier(AXID.cardDismiss)
+                    .accessibilityLabel(I18n.t(language, "card.notInterested"))
+                    .padding(6)
+            }
+            // Add to watchlist → a + (✓ once saved), top-right, like the web card.
             .overlay(alignment: .topTrailing) {
+                cornerButton(isSaved ? "checkmark" : "plus", size: 12, action: onToggleSave)
+                    .accessibilityIdentifier(AXID.cardSave)
+                    .accessibilityLabel(I18n.t(language, isSaved ? "watchlist.remove" : "card.save"))
+                    .padding(6)
+            }
+            // Streaming-service logos sit bottom-right; a tap opens that app.
+            .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 3) {
                     ForEach(card.services.prefix(3)) { svc in
-                        // A tap on the logo jumps into that streaming app; the
-                        // innermost gesture wins, so taps elsewhere on the card
-                        // still open the detail sheet (the outer onTapGesture).
-                        // Kept as the plain ServiceLogo image (not a Button) so its
-                        // accessibility element stays an image, as the grid card
-                        // UI test asserts.
+                        // The innermost gesture wins, so a logo tap deep-links while
+                        // taps elsewhere still open the detail sheet. Kept as the
+                        // plain ServiceLogo image (not a Button) so its accessibility
+                        // element stays an image, as the grid card UI test asserts.
                         ServiceLogo(service: svc)
                             .onTapGesture { onTapService(svc) }
                     }
                 }
                 .padding(6)
             }
-            .overlay(alignment: .bottomTrailing) { actionMenu.padding(6) }
     }
 
-    private var actionMenu: some View {
-        HStack(spacing: 6) {
-            Button(action: onToggleSave) {
-                Image(systemName: isSaved ? "bookmark.fill" : "bookmark")
-                    .padding(6)
-                    .background(.thinMaterial, in: Circle())
-            }
-            .accessibilityIdentifier(AXID.cardSave)
-
-            Menu {
-                Button(I18n.t(language, "card.notInterested"), systemImage: "hand.thumbsdown", action: onDismiss)
-                Button(I18n.t(language, "card.notSeen"), systemImage: "eye.slash", action: onNotSeen)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .padding(6)
-                    .background(.thinMaterial, in: Circle())
-            }
-            .accessibilityIdentifier(AXID.cardDismiss)
+    /// A round translucent poster-corner control (dismiss X / watchlist +).
+    private func cornerButton(_ systemImage: String, size: CGFloat, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: size, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(.black.opacity(0.55), in: Circle())
         }
-        .font(.caption)
-        .foregroundStyle(.primary)
+        .buttonStyle(.plain)
     }
 
     private var metaLine: String {

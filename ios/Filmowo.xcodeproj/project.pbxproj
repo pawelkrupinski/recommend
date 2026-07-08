@@ -30,6 +30,7 @@
 		9FEC451C0A8C9267AABE3C40 /* FilmowoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 921D1DBD9B8BCACDE0328299 /* FilmowoCore */; };
 		A0A9F5107E1A9052440B836D /* FilmowoClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1EB6FE38B136B883276683E /* FilmowoClientTests.swift */; };
 		AA1130E409AD6147D6746CA0 /* RatingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09B244FE23C31B4779A9B9E0 /* RatingsStore.swift */; };
+		AE88497BD1BF56DC92197577 /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDC0148F20B67B13708A0A17 /* FlowLayout.swift */; };
 		B17793B4E9CF78B6B4EC223B /* PosterImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8516F36FE1065B71FDA11532 /* PosterImage.swift */; };
 		B1DCB3822FE0824FF80ED567 /* AccessibilityIdentifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35283668ABA5A9BC210D6158 /* AccessibilityIdentifiers.swift */; };
 		B4BEC787E6074E57ED531983 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CF3B7BAFE9D91DBC6CC57D1 /* AppModel.swift */; };
@@ -100,6 +101,7 @@
 		B4C56ECC26AA731DAC9CFF53 /* CountryCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CountryCatalog.swift; sourceTree = "<group>"; };
 		B79985D96654DA2492D6EB22 /* FilmowoTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FilmowoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverStore.swift; sourceTree = "<group>"; };
+		CDC0148F20B67B13708A0A17 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		D3EA2E73C462980C310545B5 /* UITestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestSupport.swift; sourceTree = "<group>"; };
 		D54F418094D292E901552A96 /* DiscoverFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverFlowUITests.swift; sourceTree = "<group>"; };
 		DBE91132606D22E239573FA3 /* DetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailSheet.swift; sourceTree = "<group>"; };
@@ -128,6 +130,7 @@
 				B4C56ECC26AA731DAC9CFF53 /* CountryCatalog.swift */,
 				DBE91132606D22E239573FA3 /* DetailSheet.swift */,
 				4C12FB67116791F24FE6FB79 /* DiscoverView.swift */,
+				CDC0148F20B67B13708A0A17 /* FlowLayout.swift */,
 				37E297BFE28F4065A6017E22 /* MainTabView.swift */,
 				30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */,
 				7B30ADA08055813C7B38ED7A /* RateStars.swift */,
@@ -395,6 +398,7 @@
 				4A33079419E3ABE6B08A77D0 /* DiscoverView.swift in Sources */,
 				4610262F32B3DA70E5D8D704 /* FilmowoApp.swift in Sources */,
 				752C03B75CA70E5EFE3B6ED4 /* FilmowoClient.swift in Sources */,
+				AE88497BD1BF56DC92197577 /* FlowLayout.swift in Sources */,
 				38C361246034B0934B852CB8 /* Localization.swift in Sources */,
 				00EA197B0BB98DE0172A6236 /* LocationRegionSource.swift in Sources */,
 				BF4CE22480496B35034CCCBB /* MainTabView.swift in Sources */,

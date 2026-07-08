@@ -60,6 +60,26 @@ final class DiscoverFlowUITests: XCTestCase {
         XCTAssertTrue(app.otherElements[AXIDs.detailSheet].waitForNonExistence(timeout: 5))
     }
 
+    func testDismissingAPickViaTheXRemovesIt() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        let matrix = app.otherElements["card-movie:603"]
+        XCTAssertTrue(matrix.waitForExistence(timeout: 10))
+        matrix.buttons["card-dismiss"].tap()
+        XCTAssertTrue(matrix.waitForNonExistence(timeout: 5), "the top-left X dismisses the pick")
+    }
+
+    func testDetailSheetShowsWhereToWatchBanner() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
+        app.staticTexts["The Matrix"].firstMatch.tap()
+        let sheet = app.otherElements[AXIDs.detailSheet]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        // The stub's /api/where returns a Netflix deep link; it renders as a
+        // tappable where-to-watch banner (a button labelled with the service).
+        XCTAssertTrue(sheet.buttons["Netflix"].waitForExistence(timeout: 5),
+                      "the streaming service shows as a tappable banner in the popup")
+    }
+
     func testRatingAPickRemovesItFromTheFeed() {
         let app = XCUIApplication.launch(scenario: "picks")
         let matrix = app.otherElements["card-movie:603"]

@@ -49,7 +49,6 @@ struct WatchlistView: View {
                         onRate: { v in Task { await store.rate(card, value: v) } },
                         onToggleSave: { Task { await store.remove(card) } },
                         onDismiss: { Task { await store.remove(card) } },
-                        onNotSeen: { Task { await store.remove(card) } },
                         onTapService: { svc in
                             openService(svc, where: { await store.whereToWatch(card) }) { openURL($0) }
                         }

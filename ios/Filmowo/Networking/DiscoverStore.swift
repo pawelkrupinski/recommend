@@ -142,11 +142,6 @@ final class DiscoverStore: ObservableObject {
         picks.removeAll { $0.key == card.key }
     }
 
-    func notSeen(_ card: Card) async {
-        try? await client.notSeen(tmdbId: card.tmdbId, mediaType: card.mediaType)
-        picks.removeAll { $0.key == card.key }
-    }
-
     // MARK: - Enrichment stream
 
     private func startEnrich() {

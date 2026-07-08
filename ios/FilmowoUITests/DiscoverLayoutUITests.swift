@@ -66,6 +66,27 @@ final class DiscoverLayoutUITests: XCTestCase {
         XCTAssertEqual(starred.count, 0, "the card no longer shows the TMDB ⭐ rating")
     }
 
+    /// The poster corner controls: the dismiss X sits top-left, the watchlist +
+    /// top-right (sharing the top row), and the streaming-service logos moved to
+    /// the bottom-right of the poster (below the top controls).
+    func testCardCornerControlsAreLaidOut() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        let card = app.otherElements["card-movie:603"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        let dismiss = card.buttons["card-dismiss"]
+        let save = card.buttons["card-save"]
+        let logo = card.images["service-logo-8"]
+        XCTAssertTrue(dismiss.exists && save.exists, "the X and + corner controls exist")
+        XCTAssertTrue(logo.waitForExistence(timeout: 5), "the service logo exists")
+
+        let midX = card.frame.midX
+        XCTAssertLessThan(dismiss.frame.maxX, midX, "the dismiss X is in the left half")
+        XCTAssertGreaterThan(save.frame.minX, midX, "the watchlist + is in the right half")
+        XCTAssertEqual(dismiss.frame.minY, save.frame.minY, accuracy: 2, "X and + share the top row")
+        XCTAssertGreaterThan(logo.frame.minY, save.frame.maxY, "service logos moved below the top controls")
+        XCTAssertGreaterThan(logo.frame.minX, midX, "…on the right side of the poster")
+    }
+
     /// The IMDb rating renders as the two-tone pill (an "IMDb" tab + the value),
     /// matching Android / ../movies, rather than a bare starred number.
     func testImdbRatingShowsAsLabelledPill() {

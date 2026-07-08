@@ -178,9 +178,6 @@ public final class FilmowoClient {
     public func dismiss(tmdbId: Int, mediaType: String) async throws {
         try await send("/api/dismiss", method: "POST", body: IdPayload(tmdb_id: tmdbId, media_type: mediaType))
     }
-    public func notSeen(tmdbId: Int, mediaType: String) async throws {
-        try await send("/api/not-seen", method: "POST", body: IdPayload(tmdb_id: tmdbId, media_type: mediaType))
-    }
     public func addToWatchlist(_ card: Card) async throws {
         try await send("/api/watchlist", method: "POST", body: card)
     }

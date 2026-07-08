@@ -103,7 +103,6 @@ struct DiscoverView: View {
                         onRate: { v in Task { await store.rate(card, value: v) } },
                         onToggleSave: { Task { await store.toggleWatchlist(card) } },
                         onDismiss: { Task { await store.dismiss(card) } },
-                        onNotSeen: { Task { await store.notSeen(card) } },
                         onTapService: { svc in
                             openService(svc, where: { await store.whereToWatch(card) }) { openURL($0) }
                         }

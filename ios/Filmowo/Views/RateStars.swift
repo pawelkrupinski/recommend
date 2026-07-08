@@ -51,6 +51,7 @@ struct RateStars: View {
                         if preview > 0 { onRate(Double(preview)) }
                         preview = 0
                     },
+                    onDragCancelled: { preview = 0 },
                     onTap: { point in
                         let value = starAt(point, geo.size)
                         if value > 0 { onRate(Double(value)) }
@@ -88,8 +89,8 @@ struct RateStars: View {
     }
 
     private func starAt(_ point: CGPoint, _ size: CGSize) -> Int {
-        let vSlop = size.height / CGFloat(rows) * 3
-        return Self.starAt(point.x, point.y, size.width, size.height, rows, vSlop)
+        // A small slack for finger drift; drag clearly off the block → 0 (no rating).
+        return Self.starAt(point.x, point.y, size.width, size.height, rows, 12)
     }
 
     /// The star (1...`starCount`) a touch at (`x`,`y`) falls on within a
@@ -113,6 +114,7 @@ struct RateStars: View {
 private struct StarTouchLayer: UIViewRepresentable {
     var onDragChanged: (CGPoint) -> Void
     var onDragEnded: () -> Void
+    var onDragCancelled: () -> Void
     var onTap: (CGPoint) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -136,7 +138,8 @@ private struct StarTouchLayer: UIViewRepresentable {
         @objc func pan(_ g: UIPanGestureRecognizer) {
             switch g.state {
             case .changed: parent.onDragChanged(g.location(in: g.view))
-            case .ended, .cancelled, .failed: parent.onDragEnded()
+            case .ended: parent.onDragEnded()          // lift over the stars → commit
+            case .cancelled, .failed: parent.onDragCancelled() // never commit
             default: break
             }
         }
@@ -147,14 +150,39 @@ private struct StarTouchLayer: UIViewRepresentable {
     }
 }
 
-/// A pan recognizer that only stays alive for a predominantly-horizontal drag:
-/// the moment a drag proves vertical it fails, so an enclosing scroll view takes
-/// it. This is what lets the grid scroll even when a finger starts on the stars.
+/// A pan recognizer that locks its mode by the drag's *initial* direction: once a
+/// drag clears the touch slop, a predominantly-horizontal move claims it (rate
+/// mode) and it never fails afterward — so you can still slide down into the
+/// second row — while a predominantly-vertical move fails it, handing the drag to
+/// the enclosing scroll view (so the grid scrolls even when a finger starts on
+/// the stars). The cousin of Android's `awaitHorizontalTouchSlopOrCancellation`.
 private final class HorizontalPanRecognizer: UIPanGestureRecognizer {
+    private var start: CGPoint?
+    private var locked = false
+    private let slop: CGFloat = 10
+
+    override func reset() {
+        super.reset()
+        start = nil
+        locked = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        start = touches.first?.location(in: view)
+    }
+
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesMoved(touches, with: event)
-        guard state == .began || state == .changed, let view else { return }
-        let t = translation(in: view)
-        if abs(t.y) > abs(t.x) { state = .failed }
+        if !locked {
+            guard let start, let point = touches.first?.location(in: view) else {
+                super.touchesMoved(touches, with: event); return
+            }
+            let dx = point.x - start.x, dy = point.y - start.y
+            // Wait for the drag to clear the slop, then decide once by direction.
+            if max(abs(dx), abs(dy)) < slop { return }
+            locked = true
+            if abs(dy) > abs(dx) { state = .failed; return } // vertical → scroll
+        }
+        super.touchesMoved(touches, with: event) // horizontal → rate (tracks all moves)
     }
 }

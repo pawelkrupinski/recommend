@@ -51,6 +51,25 @@ final class RateStarsDragUITests: XCTestCase {
         XCTFail("a vertical drag starting on the stars did not scroll, though the grid scrolls")
     }
 
+    /// Dragging across the stars and then off them (lifting outside the stars)
+    /// does not rate — starAt returns 0 off the block, so nothing commits.
+    func testDraggingOffTheStarsDoesNotRate() {
+        let app = XCUIApplication.launch(scenario: "ratequeue")
+        let card = app.otherElements["card-movie:238"]
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        let star = card.buttons["rate-star-1"].firstMatch
+        XCTAssertTrue(star.waitForExistence(timeout: 5))
+
+        // A horizontal drag that continues off the right end of the stars and lifts
+        // there — the finger left the stars, so nothing should be rated.
+        star.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.1,
+                   thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)))
+
+        XCTAssertTrue(card.waitForExistence(timeout: 3),
+                      "lifting off the stars leaves the item unrated (still in the queue)")
+    }
+
     /// Tapping a star rates the card (removing it from the feed) without also
     /// opening the detail sheet — the stars sit outside the card's tap target.
     func testTappingStarRatesWithoutOpeningDetail() {

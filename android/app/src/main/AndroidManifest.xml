@@ -6,6 +6,17 @@
          optional — the app falls back to network/SIM/locale country when denied. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- See installed streaming apps so a package-targeted Intent can open a movie
+         in the native app instead of the browser. Android 11+ hides other packages
+         by default; declaring the https VIEW intent makes every app that handles
+         web links (the streaming apps, and browsers) visible to startActivity. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"

@@ -13,6 +13,7 @@ import {
 } from './db.js';
 import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
+import { androidPackage } from './streaming-apps.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
@@ -400,7 +401,7 @@ async function api(req, res, url) {
       // (logos + per-service search links), not as deep links.
       const deepLinks = (await streamingOptions(id, mt, region.toLowerCase()) || [])
         .filter((o) => o.link)
-        .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null }))
+        .map((o) => ({ ...o, providerId: matchTmdb(o.service, regionProviders)?.provider_id ?? null, androidPackage: androidPackage(o.service) }))
         .filter((o) => o.providerId != null && chosen.has(o.providerId));
       // Cache in the browser for a week (private — it's per-user/region). Availability
       // barely moves, the sources are cached 30 days server-side, and the URL carries

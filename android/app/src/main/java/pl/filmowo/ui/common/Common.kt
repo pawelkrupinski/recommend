@@ -303,5 +303,26 @@ fun openUrl(context: Context, url: String?) {
     }
 }
 
+/**
+ * Open a streaming deep link in the installed native app when we know its
+ * package, falling back to the browser when it isn't installed. The web `link`
+ * is an App Link, but only a *verified* host auto-routes to its app; targeting
+ * the package (Intent.setPackage) opens the movie in the app deterministically —
+ * and ActivityNotFoundException (app absent or not visible) drops us to the web.
+ */
+fun openInStreamingApp(context: Context, link: String?, androidPackage: String?) {
+    if (link.isNullOrBlank()) return
+    if (!androidPackage.isNullOrBlank()) {
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link)).setPackage(androidPackage))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // App not installed (or not visible) — fall through to the browser.
+        } catch (_: Exception) {
+        }
+    }
+    openUrl(context, link)
+}
+
 @Composable
 fun rememberContext(): Context = LocalContext.current

@@ -7,6 +7,7 @@ import FilmowoCore
 struct DiscoverView: View {
     @ObservedObject var store: DiscoverStore
     @Environment(\.language) private var language
+    @Environment(\.openURL) private var openURL
     @State private var selected: Card?
 
     // Adaptive columns with a small enough minimum that even the narrowest iPhone
@@ -102,7 +103,10 @@ struct DiscoverView: View {
                         onRate: { v in Task { await store.rate(card, value: v) } },
                         onToggleSave: { Task { await store.toggleWatchlist(card) } },
                         onDismiss: { Task { await store.dismiss(card) } },
-                        onNotSeen: { Task { await store.notSeen(card) } }
+                        onNotSeen: { Task { await store.notSeen(card) } },
+                        onTapService: { svc in
+                            openService(svc, where: { await store.whereToWatch(card) }) { openURL($0) }
+                        }
                     )
                 }
             }

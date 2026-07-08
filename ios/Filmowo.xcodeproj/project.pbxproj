@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		004B014D0AAC29F146779538 /* CardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BDA064E8531145F61DED250 /* CardView.swift */; };
 		00EA197B0BB98DE0172A6236 /* LocationRegionSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */; };
+		0A6DE25B69575A514E33CB61 /* StreamingOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B34728C11973C66FCA7B9CC /* StreamingOpen.swift */; };
 		0B3FE73890294EA88F67EA61 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8EA6323985747B5FD6702F0 /* SettingsView.swift */; };
 		26BF511B781D1C67DE04EA1F /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843B128BB3832005924CF81C /* SettingsStore.swift */; };
 		2850193A8F71697D5536AF64 /* DiscoverStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */; };
@@ -86,6 +87,7 @@
 		7218C798A82711CE2A165D4B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7A335C1A5AD691E04D18A7AE /* RateStarsDragUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStarsDragUITests.swift; sourceTree = "<group>"; };
 		7B30ADA08055813C7B38ED7A /* RateStars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStars.swift; sourceTree = "<group>"; };
+		7B34728C11973C66FCA7B9CC /* StreamingOpen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingOpen.swift; sourceTree = "<group>"; };
 		7BD8ABD7EBAB969DA4EEC02F /* ios */ = {isa = PBXFileReference; lastKnownFileType = folder; name = ios; path = .; sourceTree = SOURCE_ROOT; };
 		83F46537A1D17468923528D7 /* Filmowo.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Filmowo.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		843B128BB3832005924CF81C /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 				7B30ADA08055813C7B38ED7A /* RateStars.swift */,
 				17F774659FF5E09EEE898D04 /* RatingsView.swift */,
 				A8EA6323985747B5FD6702F0 /* SettingsView.swift */,
+				7B34728C11973C66FCA7B9CC /* StreamingOpen.swift */,
 				4361582255FA1B36483067B3 /* WatchlistView.swift */,
 			);
 			path = Views;
@@ -404,6 +407,7 @@
 				C5BFC02ED39DC7955AD858E8 /* RootView.swift in Sources */,
 				26BF511B781D1C67DE04EA1F /* SettingsStore.swift in Sources */,
 				0B3FE73890294EA88F67EA61 /* SettingsView.swift in Sources */,
+				0A6DE25B69575A514E33CB61 /* StreamingOpen.swift in Sources */,
 				91975556CC0FD4FA1B937AA8 /* UITestStub.swift in Sources */,
 				61B448BF2A140F330E4A113C /* WatchlistStore.swift in Sources */,
 				C8F1D707B4D57378D6668C82 /* WatchlistView.swift in Sources */,

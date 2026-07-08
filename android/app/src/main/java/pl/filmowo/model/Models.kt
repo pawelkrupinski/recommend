@@ -123,6 +123,9 @@ data class DeepLink(
     val type: String? = null,
     val link: String,
     val providerId: Int? = null,
+    // Package of the service's Android app, when known (server: streaming-apps.js).
+    // Lets the client force-open the installed app instead of the browser.
+    val androidPackage: String? = null,
 )
 
 @Serializable

@@ -33,6 +33,7 @@ import pl.filmowo.ui.DetailState
 import pl.filmowo.ui.common.PosterImage
 import pl.filmowo.ui.common.RateStars
 import pl.filmowo.ui.common.RatingBadges
+import pl.filmowo.ui.common.openInStreamingApp
 import pl.filmowo.ui.common.openUrl
 import pl.filmowo.ui.theme.Link
 import pl.filmowo.ui.theme.TextMuted
@@ -107,7 +108,7 @@ private fun WhereLinks(loading: Boolean, where: WhereInfo?, pick: Pick, context:
             Text(
                 "▶ ${dl.service}${dl.type?.let { " · $it" } ?: ""}",
                 color = Link,
-                modifier = Modifier.fillMaxWidth().clickable { openUrl(context, dl.link) }.padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().clickable { openInStreamingApp(context, dl.link, dl.androidPackage) }.padding(vertical = 4.dp),
             )
         }
     } else if (flat.isNotEmpty()) {

@@ -14,6 +14,9 @@ struct CardView: View {
     var onToggleSave: () -> Void = {}
     var onDismiss: () -> Void = {}
     var onNotSeen: () -> Void = {}
+    /// Tapping a service logo jumps straight into that streaming app (see the
+    /// call sites, which resolve the deep link and open it).
+    var onTapService: (Service) -> Void = { _ in }
 
     @Environment(\.language) private var language
 
@@ -59,7 +62,8 @@ struct CardView: View {
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 3) {
                     ForEach(card.services.prefix(3)) { svc in
-                        ServiceLogo(service: svc)
+                        Button { onTapService(svc) } label: { ServiceLogo(service: svc) }
+                            .buttonStyle(.plain)
                     }
                 }
                 .padding(6)

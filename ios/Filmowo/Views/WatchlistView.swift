@@ -6,6 +6,7 @@ import FilmowoCore
 struct WatchlistView: View {
     @ObservedObject var store: WatchlistStore
     @Environment(\.language) private var language
+    @Environment(\.openURL) private var openURL
     @State private var selected: Card?
 
     private let columns = [GridItem(.adaptive(minimum: 155, maximum: 240), spacing: 12)]
@@ -48,7 +49,10 @@ struct WatchlistView: View {
                         onRate: { v in Task { await store.rate(card, value: v) } },
                         onToggleSave: { Task { await store.remove(card) } },
                         onDismiss: { Task { await store.remove(card) } },
-                        onNotSeen: { Task { await store.remove(card) } }
+                        onNotSeen: { Task { await store.remove(card) } },
+                        onTapService: { svc in
+                            openService(svc, where: { await store.whereToWatch(card) }) { openURL($0) }
+                        }
                     )
                 }
             }

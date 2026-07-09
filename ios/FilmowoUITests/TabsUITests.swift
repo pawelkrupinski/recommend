@@ -21,10 +21,34 @@ final class TabsUITests: XCTestCase {
         let app = XCUIApplication.launch(scenario: "picks")
         app.tapTab("Ratings")
         XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
+        // Let the slide settle so Discover (whose cards also read "The Matrix") is
+        // fully off-screen — its dismiss "X" is the marker that it's gone.
+        XCTAssertTrue(app.buttons["card-dismiss"].firstMatch.waitForNonExistence(timeout: 5))
         // The visible per-row trash button (alongside swipe-to-remove).
         app.buttons["rating-remove-movie:603"].tap()
         XCTAssertTrue(app.staticTexts["The Matrix"].waitForNonExistence(timeout: 5),
                       "the per-row remove button deletes the rating")
+    }
+
+    func testRatingsRowShowsTitleAndYearOnOneRowWithStarsBelow() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        app.tapTab("Ratings")
+        XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
+        // Let the slide settle so only the Ratings screen is on-screen (Discover
+        // cards share the "The Matrix" / "rate-stars" labels mid-transition).
+        XCTAssertTrue(app.buttons["card-dismiss"].firstMatch.waitForNonExistence(timeout: 5))
+        let title = app.staticTexts["The Matrix"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        let year = app.staticTexts["1999"]
+        XCTAssertTrue(year.waitForExistence(timeout: 5))
+        // Title and year now share one row (before: year sat on its own line below).
+        XCTAssertLessThan(abs(title.frame.minY - year.frame.minY), 8,
+                          "title and year are on the same row")
+        // On iPhone (compact) the stars drop to the row below the title.
+        let firstStar = app.buttons["rate-star-1"].firstMatch
+        XCTAssertTrue(firstStar.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(firstStar.frame.minY, title.frame.minY,
+                             "stars sit on the row below the title")
     }
 
     func testWatchlistHasNoCountHeader() {

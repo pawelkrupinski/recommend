@@ -34,7 +34,9 @@ final class WatchlistStore: ObservableObject {
     }
 
     func load() async {
-        loading = true
+        // Only blank to a spinner on the first load; a refresh keeps the grid
+        // visible (the screen re-runs this each time it slides back into view).
+        if all.isEmpty { loading = true }
         if let resp = try? await client.watchlist() {
             all = resp.watchlist
             genres = resp.genres

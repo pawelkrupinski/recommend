@@ -50,8 +50,11 @@ final class DiscoverStore: ObservableObject {
         RecommendQuery(type: type, genre: genre, tag: tone, indie: indie, excludeUs: excludeUs)
     }
 
-    /// First load: catalog + membership once, then the feed.
+    /// First load: catalog + membership once, then the feed. Re-run each time the
+    /// screen slides back into view, so skip it once we already have a feed —
+    /// otherwise every return to Discover would re-dim and refetch the grid.
     func loadInitial() async {
+        if catalogLoaded && (!picks.isEmpty || !queue.isEmpty) { return }
         if !catalogLoaded {
             async let g = client.genres()
             async let t = client.tones()

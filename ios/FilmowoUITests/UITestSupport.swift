@@ -9,15 +9,12 @@ extension XCUIApplication {
         return app
     }
 
-    /// Tap a tab by its visible name, robust across iPhone (bottom tab bar) and
-    /// iPad (where `TabView` renders tabs outside a `tabBar`).
+    /// Tap a tab by its visible name (the custom bottom bar exposes each tab as a
+    /// button labelled with the localized name).
     func tapTab(_ name: String) {
-        let inBar = tabBars.buttons[name]
-        if inBar.waitForExistence(timeout: 3) {
-            inBar.tap()
-        } else {
-            buttons[name].firstMatch.tap()
-        }
+        let button = buttons[name].firstMatch
+        _ = button.waitForExistence(timeout: 5)
+        button.tap()
     }
 
     /// The card container elements currently on screen (identifier `card-<key>`,

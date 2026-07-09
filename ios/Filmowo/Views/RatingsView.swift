@@ -6,6 +6,7 @@ import FilmowoCore
 struct RatingsView: View {
     @ObservedObject var store: RatingsStore
     @Environment(\.language) private var language
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         NavigationStack {
@@ -31,19 +32,11 @@ struct RatingsView: View {
             Section(I18n.t(language, "ratings.count", ["n": String(store.ratings.count)])) {
                 ForEach(store.ratings) { rating in
                     HStack(alignment: .center, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(rating.title ?? "#\(rating.tmdbId)").font(.subheadline.weight(.semibold))
-                            if let year = rating.year {
-                                Text(String(year)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            RateStars(rating: rating.rating) { v in
-                                Task { await store.update(rating, value: v) }
-                            }
-                        }
-                        // Keep the row (card) identifier on the text/stars column only —
-                        // applied to the whole row it overrides the remove button's own
-                        // identifier, hiding it from the tests.
-                        .accessibilityIdentifier(AXID.card(rating.key))
+                        ratingContent(rating)
+                            // Keep the row (card) identifier on the text/stars content
+                            // only — applied to the whole row it overrides the remove
+                            // button's own identifier, hiding it from the tests.
+                            .accessibilityIdentifier(AXID.card(rating.key))
                         Spacer(minLength: 8)
                         removeButton(rating)
                     }
@@ -53,6 +46,38 @@ struct RatingsView: View {
                         } label: { Label(I18n.t(language, "ratings.remove"), systemImage: "trash") }
                     }
                 }
+            }
+        }
+    }
+
+    /// Title + year on one line, with all ten stars in a single row: beside the
+    /// title on a roomy iPad width, or on the row below it on a compact iPhone.
+    @ViewBuilder
+    private func ratingContent(_ rating: Rating) -> some View {
+        let stars = RateStars(rating: rating.rating, rows: 1) { v in
+            Task { await store.update(rating, value: v) }
+        }
+        if sizeClass == .regular {
+            HStack(alignment: .center, spacing: 12) {
+                titleAndYear(rating)
+                Spacer(minLength: 12)
+                stars.frame(maxWidth: 240)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                titleAndYear(rating)
+                stars
+            }
+        }
+    }
+
+    private func titleAndYear(_ rating: Rating) -> some View {
+        HStack(spacing: 6) {
+            Text(rating.title ?? "#\(rating.tmdbId)")
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            if let year = rating.year {
+                Text(String(year)).font(.caption).foregroundStyle(.secondary)
             }
         }
     }

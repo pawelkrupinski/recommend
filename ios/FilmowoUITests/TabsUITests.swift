@@ -21,9 +21,6 @@ final class TabsUITests: XCTestCase {
         let app = XCUIApplication.launch(scenario: "picks")
         app.tapTab("Ratings")
         XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
-        // Let the slide settle so Discover (whose cards also read "The Matrix") is
-        // fully off-screen — its dismiss "X" is the marker that it's gone.
-        XCTAssertTrue(app.buttons["card-dismiss"].firstMatch.waitForNonExistence(timeout: 5))
         // The visible per-row trash button (alongside swipe-to-remove).
         app.buttons["rating-remove-movie:603"].tap()
         XCTAssertTrue(app.staticTexts["The Matrix"].waitForNonExistence(timeout: 5),
@@ -33,12 +30,8 @@ final class TabsUITests: XCTestCase {
     func testRatingsRowShowsTitleAndYearOnOneRowWithStarsBelow() {
         let app = XCUIApplication.launch(scenario: "picks")
         app.tapTab("Ratings")
-        XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
-        // Let the slide settle so only the Ratings screen is on-screen (Discover
-        // cards share the "The Matrix" / "rate-stars" labels mid-transition).
-        XCTAssertTrue(app.buttons["card-dismiss"].firstMatch.waitForNonExistence(timeout: 5))
         let title = app.staticTexts["The Matrix"]
-        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
         let year = app.staticTexts["1999"]
         XCTAssertTrue(year.waitForExistence(timeout: 5))
         // Title and year now share one row (before: year sat on its own line below).

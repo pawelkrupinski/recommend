@@ -13,9 +13,7 @@ final class RatingsStore: ObservableObject {
     init(client: FilmowoClient) { self.client = client }
 
     func load() async {
-        // Only blank to a spinner on the first load; a refresh keeps the list
-        // visible (the screen re-runs this each time it slides back into view).
-        if ratings.isEmpty { loading = true }
+        loading = true
         ratings = (try? await client.ratings())?.ratings ?? []
         loading = false
     }

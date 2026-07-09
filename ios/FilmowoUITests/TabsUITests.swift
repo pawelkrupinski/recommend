@@ -44,6 +44,24 @@ final class TabsUITests: XCTestCase {
                              "stars sit on the row below the title")
     }
 
+    func testRatingsRowShowsValueOutOfTenAfterStarsAndUpdatesOnRate() {
+        let app = XCUIApplication.launch(scenario: "picks")
+        app.tapTab("Ratings")
+        XCTAssertTrue(app.staticTexts["The Matrix"].waitForExistence(timeout: 10))
+        // The Matrix is rated 9/10 in the stub; the readout sits after the stars.
+        let value = app.staticTexts["9/10"]
+        XCTAssertTrue(value.waitForExistence(timeout: 5), "the rating shows as x/10")
+        let firstStar = app.buttons["rate-star-1"].firstMatch
+        XCTAssertTrue(firstStar.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(value.frame.minX, firstStar.frame.minX,
+                             "the x/10 readout sits after (right of) the stars")
+        // Re-rating updates the readout (a tap is the discrete case of the drag).
+        app.buttons["rate-star-5"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["5/10"].waitForExistence(timeout: 5),
+                      "the readout reflects the new rating")
+        XCTAssertFalse(app.staticTexts["9/10"].exists)
+    }
+
     func testWatchlistHasNoCountHeader() {
         let app = XCUIApplication.launch(scenario: "picks")
         app.tapTab("Watchlist")

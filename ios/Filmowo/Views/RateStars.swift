@@ -22,6 +22,9 @@ struct RateStars: View {
 
     static let starCount = 10
     var rows: Int = 2
+    /// Show a live "x/10" readout after the stars (used on the ratings list); it
+    /// tracks the value under the finger while dragging.
+    var showsValue: Bool = false
     private var perRow: Int { Self.starCount / rows }
     /// Fixed row height so the `GeometryReader` reports a stable block size.
     private let rowHeight: CGFloat = 30
@@ -34,6 +37,20 @@ struct RateStars: View {
     }
 
     var body: some View {
+        HStack(spacing: 8) {
+            starsBlock
+            if showsValue {
+                Text("\(displayValue)/10")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(preview > 0 ? Color.yellow : .secondary)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(AXID.rateStars)
+    }
+
+    private var starsBlock: some View {
         GeometryReader { geo in
             ZStack {
                 VStack(spacing: 0) {
@@ -61,7 +78,9 @@ struct RateStars: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .overlay(alignment: .topTrailing) {
-                if preview > 0 {
+                // Floating preview during a drag — only when there's no inline
+                // "x/10" readout already tracking the value.
+                if preview > 0 && !showsValue {
                     Text("\(preview)/10")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.yellow)
@@ -69,9 +88,8 @@ struct RateStars: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity)
         .frame(height: rowHeight * CGFloat(rows))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(AXID.rateStars)
     }
 
     private func star(_ value: Int) -> some View {

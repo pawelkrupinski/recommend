@@ -54,9 +54,9 @@ struct RatingsView: View {
     /// title on a roomy iPad width, or on the row below it on a compact iPhone.
     @ViewBuilder
     private func ratingContent(_ rating: Rating) -> some View {
-        let stars = RateStars(rating: rating.rating, rows: 1) { v in
+        let stars = RateStars(rating: rating.rating, onRate: { v in
             Task { await store.update(rating, value: v) }
-        }
+        }, rows: 1, showsValue: true)
         if sizeClass == .regular {
             HStack(alignment: .center, spacing: 12) {
                 titleAndYear(rating)

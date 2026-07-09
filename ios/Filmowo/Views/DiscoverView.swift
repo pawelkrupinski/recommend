@@ -25,6 +25,7 @@ struct DiscoverView: View {
                             Task { await store.loadFeed(refresh: true) }
                         } label: { Image(systemName: "arrow.clockwise") }
                         .accessibilityIdentifier(AXID.discoverRefresh)
+                        .disabled(store.reloading)
                     }
                 }
                 .safeAreaInset(edge: .top) {
@@ -68,7 +69,12 @@ struct DiscoverView: View {
         case .onboarding:
             onboardingGrid
         case .picks:
+            // A filter change / refresh reloads in place: dim and lock the grid and
+            // show the filter-bar spinner so the wait is visible (it was silent).
             picksGrid
+                .opacity(store.reloading ? 0.4 : 1)
+                .allowsHitTesting(!store.reloading)
+                .animation(.default, value: store.reloading)
         }
     }
 
@@ -138,6 +144,10 @@ struct DiscoverView: View {
                 }
                 Toggle("Indie", isOn: Binding(get: { store.indie }, set: { store.indie = $0; reload() }))
                     .toggleStyle(.button).font(.caption)
+                if store.reloading {
+                    ProgressView().controlSize(.small).padding(.leading, 4)
+                        .accessibilityIdentifier(AXID.discoverReloading)
+                }
             }
             .padding(.horizontal)
             .padding(.vertical, 6)

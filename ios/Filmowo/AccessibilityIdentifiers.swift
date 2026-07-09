@@ -22,6 +22,7 @@ enum AXID {
     static let discoverFilterType = "discover-filter-type"
     static let discoverFilterGenre = "discover-filter-genre"
     static let discoverRefresh = "discover-refresh"
+    static let discoverReloading = "discover-reloading"
     static func card(_ key: String) -> String { "card-\(key)" }
 
     // Rating
@@ -49,4 +50,5 @@ enum AXID {
     static let watchlistSort = "watchlist-sort"
     static let watchlistEmpty = "watchlist-empty"
     static let ratingsEmpty = "ratings-empty"
+    static func ratingRemove(_ key: String) -> String { "rating-remove-\(key)" }
 }

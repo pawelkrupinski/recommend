@@ -15,6 +15,10 @@ final class DiscoverStore: ObservableObject {
     private let client: FilmowoClient
 
     @Published var phase: Phase = .loading
+    /// True while a filter change or refresh reloads picks that are already on
+    /// screen — the grid stays visible (phase stays `.picks`) so the view shows an
+    /// inline spinner rather than blanking to the full-screen loading state.
+    @Published var reloading = false
     @Published var picks: [Card] = []
     @Published var queue: [RateQueueItem] = []
     @Published var leftToRate = rateGoal
@@ -64,7 +68,8 @@ final class DiscoverStore: ObservableObject {
 
     /// Fetch `/api/recommend` and route to onboarding / building / picks.
     func loadFeed(refresh: Bool = false) async {
-        if picks.isEmpty && queue.isEmpty { phase = .loading }
+        if picks.isEmpty && queue.isEmpty { phase = .loading } else { reloading = true }
+        defer { reloading = false }
         var q = query; q.refresh = refresh
         do {
             let recs = try await client.recommend(q)

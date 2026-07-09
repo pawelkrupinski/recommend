@@ -18,49 +18,73 @@ struct CardView: View {
     var onTapService: (Service) -> Void = { _ in }
 
     @Environment(\.language) private var language
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var imdb: Double? { enrichment?.imdbRating ?? card.imdbRating }
     private var meta: Int? { enrichment?.metascore ?? card.metascore }
     private var tones: [Tone] { enrichment?.tones.isEmpty == false ? enrichment!.tones : card.tones }
 
+    /// The stars share the title+year row on a roomy (iPad / regular) width and
+    /// drop to their own row below on a compact (iPhone) width.
+    private var starsBesideTitle: Bool { sizeClass == .regular }
+
     var body: some View {
+        // Everything except the stars opens the detail sheet on tap. The stars are
+        // deliberately outside those tap targets so a star tap rates without also
+        // opening the sheet (the stars own their touches — see RateStars).
         VStack(alignment: .leading, spacing: 6) {
-            // Everything above the stars opens the detail sheet on tap. The stars
-            // are deliberately outside this tap target so a star tap rates without
-            // also opening the sheet (the stars own their touches — see RateStars).
-            VStack(alignment: .leading, spacing: 6) {
-                posterWithServices
+            posterWithServices
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onTap)
 
-                titleBlock
-
-                Text(metaLine)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-
-                // 1.5× the stack's 6pt spacing (→9pt) above the rating pill and above
-                // the tone row, so the year, rating, and tones read as separate bands.
-                badgeRow.padding(.top, 3)
-                toneRow.padding(.top, 3)
+            if starsBesideTitle {
+                HStack(alignment: .center, spacing: 8) {
+                    titleAndYear
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: onTap)
+                    stars.frame(maxWidth: 150)
+                }
+            } else {
+                titleAndYear
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: onTap)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(perform: onTap)
 
-            RateStars(rating: ratedValue, onRate: onRate)
-                .padding(.top, 2)
+            // 1.5× the stack's 6pt spacing (→9pt) above the rating pill and above
+            // the tone row, so the year, rating, and tones read as separate bands.
+            badgeRow.padding(.top, 3)
+                .contentShape(Rectangle()).onTapGesture(perform: onTap)
+            toneRow.padding(.top, 3)
+                .contentShape(Rectangle()).onTapGesture(perform: onTap)
+
+            if !starsBesideTitle {
+                stars.padding(.top, 2)
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AXID.card(card.key))
     }
 
-    /// The title on a single line (truncated if long). One line keeps every card
-    /// the same height — so years stay aligned across the row — while holding the
-    /// poster and the year tight against it, with no reserved blank line as a gap.
-    private var titleBlock: some View {
-        Text(card.title)
-            .font(.subheadline.weight(.semibold))
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
+    private var stars: some View {
+        RateStars(rating: ratedValue, onRate: onRate, rows: 1)
+    }
+
+    /// Title and year on one line — the title truncating first so the year (a
+    /// separate text element that still begins with the year, which the layout
+    /// UI test asserts on) always stays visible at the trailing edge.
+    private var titleAndYear: some View {
+        HStack(spacing: 6) {
+            Text(card.title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(metaLine)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .layoutPriority(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var posterWithServices: some View {

@@ -1,12 +1,13 @@
 import SwiftUI
 import UIKit
 
-/// Rating on the server's 1–10 scale, shown as ten stars in two rows of five.
+/// Rating on the server's 1–10 scale, shown as ten stars laid out in `rows`
+/// (default two rows of five; the grid card passes `rows: 1` for a single row).
 /// Tap a star to rate, or — like Android `RateStars` and the web widget — drag
 /// horizontally across the stars to preview the value under your finger and lift
-/// to commit; sliding down from the top row into the bottom moves 1–5 up to
-/// 6–10. `rating` is the current value (nil = unrated); `onRate` fires the
-/// chosen 1...10 value.
+/// to commit; with two rows, sliding down from the top row into the bottom moves
+/// 1–5 up to 6–10. `rating` is the current value (nil = unrated); `onRate` fires
+/// the chosen 1...10 value.
 ///
 /// Touch handling is a UIKit layer (`StarTouchLayer`), not a SwiftUI
 /// `DragGesture`: a SwiftUI drag on scroll content blocks the scroll even when
@@ -20,7 +21,7 @@ struct RateStars: View {
     var onRate: (Double) -> Void
 
     static let starCount = 10
-    private let rows = 2
+    var rows: Int = 2
     private var perRow: Int { Self.starCount / rows }
     /// Fixed row height so the `GeometryReader` reports a stable block size.
     private let rowHeight: CGFloat = 30
@@ -75,8 +76,9 @@ struct RateStars: View {
 
     private func star(_ value: Int) -> some View {
         let filled = value <= displayValue
+        // Ten stars across a single row need a smaller glyph to fit a narrow card.
         return Image(systemName: filled ? "star.fill" : "star")
-            .font(.title3)
+            .font(rows == 1 ? .subheadline : .title3)
             .foregroundStyle(filled ? Color.yellow : Color.secondary)
             .frame(maxWidth: .infinity)
             // Plain image; the touch layer above handles touches. Expose each star

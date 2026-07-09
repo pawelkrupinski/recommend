@@ -36,9 +36,6 @@ struct WatchlistView: View {
 
     private var grid: some View {
         ScrollView {
-            Text(I18n.t(language, "watchlist.count", ["n": String(store.all.count)]))
-                .font(.caption).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal)
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(store.visible) { card in
                     CardView(

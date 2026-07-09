@@ -10,6 +10,7 @@ struct MainTabView: View {
     @StateObject private var watchlist: WatchlistStore
     @StateObject private var ratings: RatingsStore
     @StateObject private var settings: SettingsStore
+    @State private var selection = 0
 
     init(app: AppModel) {
         _discover = StateObject(wrappedValue: DiscoverStore(client: app.client))
@@ -21,23 +22,42 @@ struct MainTabView: View {
 
     private var language: String { app.language }
 
+    private static let tabCount = 4
+
     var body: some View {
-        TabView {
+        TabView(selection: $selection) {
             DiscoverView(store: discover)
                 .tabItem { Label(I18n.t(language, "nav.discover"), systemImage: "sparkles") }
                 .accessibilityIdentifier(AXID.tabDiscover)
+                .tag(0)
 
             WatchlistView(store: watchlist)
                 .tabItem { Label(I18n.t(language, "nav.watchlist"), systemImage: "bookmark") }
                 .accessibilityIdentifier(AXID.tabWatchlist)
+                .tag(1)
 
             RatingsView(store: ratings)
                 .tabItem { Label(I18n.t(language, "nav.ratings"), systemImage: "star") }
                 .accessibilityIdentifier(AXID.tabRatings)
+                .tag(2)
 
             SettingsView(store: settings)
                 .tabItem { Label(I18n.t(language, "nav.settings"), systemImage: "gearshape") }
                 .accessibilityIdentifier(AXID.tabSettings)
+                .tag(3)
         }
+        // Swipe left/right anywhere on a screen to move to the next/previous tab.
+        // A plain (low-priority) gesture so child scroll views and the star-rating
+        // drag still win their touches; it only fires on a clearly-horizontal drag.
+        .gesture(
+            DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                .onEnded { value in
+                    let dx = value.translation.width, dy = value.translation.height
+                    guard abs(dx) > 60, abs(dx) > abs(dy) * 1.5 else { return }
+                    let next = selection + (dx < 0 ? 1 : -1)
+                    guard next >= 0, next < Self.tabCount else { return }
+                    withAnimation { selection = next }
+                }
+        )
     }
 }

@@ -30,23 +30,43 @@ struct RatingsView: View {
         List {
             Section(I18n.t(language, "ratings.count", ["n": String(store.ratings.count)])) {
                 ForEach(store.ratings) { rating in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(rating.title ?? "#\(rating.tmdbId)").font(.subheadline.weight(.semibold))
-                        if let year = rating.year {
-                            Text(String(year)).font(.caption).foregroundStyle(.secondary)
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(rating.title ?? "#\(rating.tmdbId)").font(.subheadline.weight(.semibold))
+                            if let year = rating.year {
+                                Text(String(year)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            RateStars(rating: rating.rating) { v in
+                                Task { await store.update(rating, value: v) }
+                            }
                         }
-                        RateStars(rating: rating.rating) { v in
-                            Task { await store.update(rating, value: v) }
-                        }
+                        // Keep the row (card) identifier on the text/stars column only —
+                        // applied to the whole row it overrides the remove button's own
+                        // identifier, hiding it from the tests.
+                        .accessibilityIdentifier(AXID.card(rating.key))
+                        Spacer(minLength: 8)
+                        removeButton(rating)
                     }
-                    .accessibilityIdentifier(AXID.card(rating.key))
                     .swipeActions {
                         Button(role: .destructive) {
                             Task { await store.unrate(rating) }
-                        } label: { Label("Remove", systemImage: "trash") }
+                        } label: { Label(I18n.t(language, "ratings.remove"), systemImage: "trash") }
                     }
                 }
             }
         }
+    }
+
+    /// A visible per-row remove control (alongside the swipe-to-remove action), so
+    /// a rating can be deleted without discovering the swipe gesture.
+    private func removeButton(_ rating: Rating) -> some View {
+        Button(role: .destructive) {
+            Task { await store.unrate(rating) }
+        } label: {
+            Image(systemName: "trash").foregroundStyle(.red)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityIdentifier(AXID.ratingRemove(rating.key))
+        .accessibilityLabel(I18n.t(language, "ratings.remove"))
     }
 }

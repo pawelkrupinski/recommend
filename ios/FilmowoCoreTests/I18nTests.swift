@@ -26,6 +26,6 @@ final class I18nTests: XCTestCase {
 
     func testPlaceholderFillsAreSubstituted() {
         XCTAssertEqual(I18n.t("en", "discover.rateMore", ["n": "3"]), "Rate 3 more to unlock your picks")
-        XCTAssertEqual(I18n.t("pl", "watchlist.count", ["n": "7"]), "Zapisane tytuły: 7")
+        XCTAssertEqual(I18n.t("pl", "ratings.count", ["n": "7"]), "Ocenione tytuły: 7")
     }
 }

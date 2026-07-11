@@ -12,8 +12,10 @@
 		0A6DE25B69575A514E33CB61 /* StreamingOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B34728C11973C66FCA7B9CC /* StreamingOpen.swift */; };
 		0B3FE73890294EA88F67EA61 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8EA6323985747B5FD6702F0 /* SettingsView.swift */; };
 		26BF511B781D1C67DE04EA1F /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 843B128BB3832005924CF81C /* SettingsStore.swift */; };
+		27A86630C372D1D340E74869 /* SearchStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC9527CFBA94406F7487E26 /* SearchStore.swift */; };
 		2850193A8F71697D5536AF64 /* DiscoverStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */; };
 		2D70C22487B10D82E5AD4858 /* RateStars.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B30ADA08055813C7B38ED7A /* RateStars.swift */; };
+		30CCA2861A0B9CAA4D41AFF8 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4627A5A0C2F8CDC317E2695E /* SearchView.swift */; };
 		371C629EF39D5F021B201D40 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F04DD2F3D03BC136C540D70B /* Assets.xcassets */; };
 		38C361246034B0934B852CB8 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3B1AB92B1F064547BA548DC /* Localization.swift */; };
 		4610262F32B3DA70E5D8D704 /* FilmowoApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F404784530ADEDAE519851 /* FilmowoApp.swift */; };
@@ -80,11 +82,13 @@
 		37E297BFE28F4065A6017E22 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		3BDA064E8531145F61DED250 /* CardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardView.swift; sourceTree = "<group>"; };
 		4361582255FA1B36483067B3 /* WatchlistView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchlistView.swift; sourceTree = "<group>"; };
+		4627A5A0C2F8CDC317E2695E /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		4857C9D9AEB52B8106BC3970 /* FilmowoUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FilmowoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		4C12FB67116791F24FE6FB79 /* DiscoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverView.swift; sourceTree = "<group>"; };
 		4FC1187A719F2FD25D57F1AD /* DiscoverLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiscoverLayoutUITests.swift; sourceTree = "<group>"; };
 		50F404784530ADEDAE519851 /* FilmowoApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmowoApp.swift; sourceTree = "<group>"; };
 		640BEC22E5E045C4BC5EA658 /* LocationRegionSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationRegionSource.swift; sourceTree = "<group>"; };
+		6AC9527CFBA94406F7487E26 /* SearchStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchStore.swift; sourceTree = "<group>"; };
 		7218C798A82711CE2A165D4B /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7A335C1A5AD691E04D18A7AE /* RateStarsDragUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStarsDragUITests.swift; sourceTree = "<group>"; };
 		7B30ADA08055813C7B38ED7A /* RateStars.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RateStars.swift; sourceTree = "<group>"; };
@@ -135,6 +139,7 @@
 				30A7E3603CDA9DDAFE5B62BF /* OnboardingView.swift */,
 				7B30ADA08055813C7B38ED7A /* RateStars.swift */,
 				17F774659FF5E09EEE898D04 /* RatingsView.swift */,
+				4627A5A0C2F8CDC317E2695E /* SearchView.swift */,
 				A8EA6323985747B5FD6702F0 /* SettingsView.swift */,
 				7B34728C11973C66FCA7B9CC /* StreamingOpen.swift */,
 				4361582255FA1B36483067B3 /* WatchlistView.swift */,
@@ -262,6 +267,7 @@
 				BDAB4A8FC35754DC123F36E6 /* DiscoverStore.swift */,
 				001FF82D30B022693ABD8C5C /* FilmowoClient.swift */,
 				09B244FE23C31B4779A9B9E0 /* RatingsStore.swift */,
+				6AC9527CFBA94406F7487E26 /* SearchStore.swift */,
 				843B128BB3832005924CF81C /* SettingsStore.swift */,
 				1C7B5D7E337A2061945F0418 /* WatchlistStore.swift */,
 			);
@@ -409,6 +415,8 @@
 				AA1130E409AD6147D6746CA0 /* RatingsStore.swift in Sources */,
 				E645299722BC9B6BE794FDF8 /* RatingsView.swift in Sources */,
 				C5BFC02ED39DC7955AD858E8 /* RootView.swift in Sources */,
+				27A86630C372D1D340E74869 /* SearchStore.swift in Sources */,
+				30CCA2861A0B9CAA4D41AFF8 /* SearchView.swift in Sources */,
 				26BF511B781D1C67DE04EA1F /* SettingsStore.swift in Sources */,
 				0B3FE73890294EA88F67EA61 /* SettingsView.swift in Sources */,
 				0A6DE25B69575A514E33CB61 /* StreamingOpen.swift in Sources */,

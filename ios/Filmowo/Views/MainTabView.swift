@@ -10,7 +10,9 @@ struct MainTabView: View {
     @StateObject private var watchlist: WatchlistStore
     @StateObject private var ratings: RatingsStore
     @StateObject private var settings: SettingsStore
+    @StateObject private var search: SearchStore
     @State private var selection = 0
+    @State private var showingSearch = false
 
     init(app: AppModel) {
         _discover = StateObject(wrappedValue: DiscoverStore(client: app.client))
@@ -18,6 +20,7 @@ struct MainTabView: View {
             sort: WatchlistStore.Sort(rawValue: app.me?.watchlistSort ?? "added") ?? .added))
         _ratings = StateObject(wrappedValue: RatingsStore(client: app.client))
         _settings = StateObject(wrappedValue: SettingsStore(app: app))
+        _search = StateObject(wrappedValue: SearchStore(client: app.client))
     }
 
     private var language: String { app.language }
@@ -59,5 +62,27 @@ struct MainTabView: View {
                     withAnimation { selection = next }
                 }
         )
+        // A floating search button hovering above every tab (bottom-trailing,
+        // padded off the edge and clear of the tab bar): tap it to search titles
+        // by name across the user's streaming services.
+        .overlay(alignment: .bottomTrailing) { searchButton }
+        .sheet(isPresented: $showingSearch) {
+            SearchView(store: search).language(language)
+        }
+    }
+
+    private var searchButton: some View {
+        Button { showingSearch = true } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Color.accentColor, in: Circle())
+                .shadow(radius: 4, y: 2)
+        }
+        .accessibilityIdentifier(AXID.searchButton)
+        .accessibilityLabel(I18n.t(language, "nav.search"))
+        .padding(.trailing, 20)
+        .padding(.bottom, 60)
     }
 }

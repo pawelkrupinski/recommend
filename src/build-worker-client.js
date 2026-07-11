@@ -9,7 +9,11 @@
 // respawns a fresh worker, so a single bad build can't wedge all future ones.
 import { Worker } from 'node:worker_threads';
 
-export function createWorkerBuildRunner() {
+// `backpressure` is the SharedArrayBuffer from createBackpressure() (build-backpressure.js);
+// it's forwarded to every (re)spawned worker via workerData so the build can park itself
+// while the server serves a latency-sensitive request. Optional — omit it and the worker
+// simply never parks on request pressure.
+export function createWorkerBuildRunner(backpressure) {
   const pending = new Map(); // message id -> { resolve, reject }
   let worker;
   let nextId = 1;
@@ -23,7 +27,7 @@ export function createWorkerBuildRunner() {
   }
 
   function spawn() {
-    worker = new Worker(new URL('./build-worker.js', import.meta.url));
+    worker = new Worker(new URL('./build-worker.js', import.meta.url), { workerData: { backpressure } });
     worker.on('message', ({ id, ok, error }) => {
       const entry = pending.get(id);
       if (!entry) return; // a reply for an already-failed/terminated call

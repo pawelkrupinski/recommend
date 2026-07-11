@@ -6,6 +6,7 @@
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
 import { isMainThread } from 'node:worker_threads';
 import { details, tmdbConfigured, pickTrailers, personImdbId, searchMulti, watchProviders, genres } from './tmdb.js';
+import { parkIfBusy } from './build-backpressure.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch, toCount } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -106,21 +107,18 @@ function poolTonesLookup(items) {
 // unchanged — only the interleaving differs.
 const YIELD_EVERY = 16;
 // HOW we yield depends on the thread. A build runs in a worker thread (build-worker.js),
-// and the box has ONE shared CPU core, so the worker and the main process time-slice
-// it. A bare setImmediate does NOT relinquish the core: the worker's event loop just
-// re-queues and keeps the core pinned, starving the main process's request handling
-// (measured in prod as 10–60s request stalls). A real timer PARKS the worker thread for
-// a beat, so the OS scheduler hands the core to the main process to serve requests —
-// builds run a little slower in exchange, an easy trade since a build is a background job
-// and request latency is what users feel. On the MAIN thread (buildProfile runs here on
-// the request path), setImmediate is right: it lets the loop breathe between chunks
-// WITHOUT adding wall-clock latency to the very request we're serving.
-const WORKER_YIELD_MS = 4;
-// `park` picks the yield: a real timer (parks the thread, freeing the core) in a build
-// worker, or setImmediate (poll-phase yield, no added latency) on the main thread.
-// Exported so a test can pin both branches without a live worker.
+// and the box has ONE shared CPU core, so the worker and the main process time-slice it.
+// At each yield the WORKER calls parkIfBusy(): while a latency-sensitive request (a user's
+// search) is being served, it parks this thread (Atomics.wait frees the core) until the
+// request finishes — request-scoped preemption, so builds get out of the way exactly when
+// a user is waiting and run full-speed otherwise. Then a setImmediate lets the loop breathe.
+// On the MAIN thread (buildProfile runs here on the request path) parkIfBusy is a no-op
+// (Atomics.wait is illegal on main), so it's a plain setImmediate — no added request latency.
+// This layers on top of the worker's OS nice (build-worker.js), which the Linux scheduler
+// uses to favour the serving thread between yields too.
+// `park` selects the worker variant; exported so a test can pin both branches.
 export const makeBreathe = (park) => (park
-  ? () => new Promise((resolve) => setTimeout(resolve, WORKER_YIELD_MS))
+  ? async () => { parkIfBusy(); await new Promise((resolve) => setImmediate(resolve)); }
   : () => new Promise((resolve) => setImmediate(resolve)));
 const breathe = makeBreathe(!isMainThread);
 

@@ -17,6 +17,7 @@ import { watchPageLinks } from './tmdb-watch-links.js';
 import { androidPackage } from './streaming-apps.js';
 import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, searchTitles, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
+import { createBackpressure, enterLatencySensitive, exitLatencySensitive } from './build-backpressure.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
 import { handleAuth, getOrCreateUser, enabledProviders, sessionClearingCookie } from './auth.js';
@@ -396,8 +397,16 @@ async function api(req, res, url) {
       const region = getUserSetting(uid, 'country', 'PL');
       const providerIds = getUserSetting(uid, 'providers', []);
       const language = tmdbLang(langFor(uid, req));
-      const results = await searchTitles({ query: q, region, providerIds, language });
-      return json(req, res, 200, { results });
+      // Tell any running build to park the shared CPU core for the duration of this
+      // search, so a user's lookup isn't stuck behind a background rebuild. Paired in a
+      // finally so a throw can't leave the build parked forever.
+      enterLatencySensitive();
+      try {
+        const results = await searchTitles({ query: q, region, providerIds, language });
+        return json(req, res, 200, { results });
+      } finally {
+        exitLatencySensitive();
+      }
     }
 
     // ---- where to watch (TMDB providers + availability deep links) ----
@@ -537,7 +546,7 @@ if (isMain) {
   // /health. Wired BEFORE warmRecommendations so the boot-time prebuilds run in the
   // worker too. Tests/imports don't reach this branch, so they keep the inline
   // default builder.
-  setBuildRunner(createWorkerBuildRunner());
+  setBuildRunner(createWorkerBuildRunner(createBackpressure()));
 
   server.listen(PORT, () => {
     log.info(`🎬  recommend running →  http://localhost:${PORT}`);

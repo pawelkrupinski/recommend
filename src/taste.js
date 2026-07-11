@@ -1001,15 +1001,12 @@ export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', regio
 
 // ---- by-name title search --------------------------------------------------
 // How many multi-search hits we shape into cards — the top TMDB-popularity matches
-// for the name, which is what a title lookup wants. Kept equal to SEARCH_CONCURRENCY
-// so every hit's provider lookup fires in ONE round-trip wave (not two), which is
-// what keeps a cold search sub-second; warm searches are ~instant off the day-long
-// TMDB cache regardless.
+// for the name, which is what a title lookup wants.
 const SEARCH_RESULT_CAP = 12;
-// Search must feel instant, so its per-hit provider lookup fans out wider than the
-// scraper-bound ENRICH_CONCURRENCY — /watch/providers is a tiny, TMDB-only response
-// with no scraper behind it, so a wider pool just means fewer round-trip waves.
-const SEARCH_CONCURRENCY = 12;
+// Background provider-warm fan-out for the misses a search left off-service — a tiny
+// TMDB-only call each, run OFF the response path, so the next search of the same term
+// shows their icons. Kept modest so it can't pile CPU onto the shared-core box.
+const SEARCH_WARM_CONCURRENCY = 6;
 
 // id→name genre maps for both media types in the user's language, built from the
 // hard-cached genres() lists (genres change ~never, so this is a couple of warm
@@ -1022,14 +1019,13 @@ async function searchGenreMaps(language) {
   return { movie: toMap(mv), tv: toMap(tv) };
 }
 
-// Shape one multi-search hit into a card WITHOUT the heavy per-title detail fetch:
-// the list result already carries poster/title/year/overview/rating/genre_ids, and
-// the only extra call is the tiny /watch/providers lookup that resolves the user's
-// chosen services. runtime/season-count/director/cast/trailers and the IMDb/MC
-// badges are all filled lazily afterwards — the badges by the client's /api/enrich
-// pass (same as Discover), the rest when the detail sheet opens — so the search
-// itself stays sub-second. `wp` is the /watch/providers response (or null on a
-// failed lookup → no services, i.e. treated as off-service).
+// Shape one multi-search hit into a card from the LIST result alone (poster/title/
+// year/overview/rating/genre_ids) plus whatever streaming providers we already have
+// cached — never a network fetch. `wp` is the cached /watch/providers response, or
+// null when we haven't looked this title up yet (→ no services, treated as
+// off-service and queued for a background warm so the next search shows its icons).
+// runtime/cast/trailers and the IMDb/MC badges fill in lazily elsewhere (detail sheet
+// + /api/enrich), same as Discover.
 function cardFromSearchHit(hit, wp, genreMap, region, providerSet) {
   const ids = hit.genre_ids || [];
   return {
@@ -1047,15 +1043,39 @@ function cardFromSearchHit(hit, wp, genreMap, region, providerSet) {
   };
 }
 
-// Find films and series by name and return them as ready-to-render cards, the
-// user's chosen streaming services already resolved onto each. TMDB-only — spends
-// NO MotN quota. Built to be sub-second: it shapes each card from the multi-search
-// list result plus one tiny /watch/providers lookup, NOT a full detail fetch (that
-// heavy append_to_response call, ×20, was the 10–20s wall). Rating/tone badges and
-// the runtime/cast/trailer detail fill in lazily (via /api/enrich and the detail
-// sheet), exactly as elsewhere. Cards on one of the user's services sort first; the
-// rest follow in TMDB popularity order so a search never comes up empty (they render
-// with no streaming icons, as their `services` array is empty).
+// Resolve one hit into a card using ONLY the caches — no network on the hot path.
+// Best case: the title's full detail is already cached (it was in the user's
+// recommendations or watchlist, so the build fetched it) → a fully rich card, services
+// and all. Next best: its /watch/providers is cached → a list card with services.
+// Otherwise a list card with no services, and its id is returned via `misses` so the
+// caller can warm the provider lookup in the background. Every read is cacheOnly, so
+// this stays synchronous-fast even on a contended box.
+async function searchCardCacheOnly(hit, genreMaps, region, providerSet, language, misses) {
+  const full = await details(hit.id, hit.media_type, language, { cacheOnly: true }).catch(() => null);
+  if (full) return cardFromDetail(full, { region, providerIds: [...providerSet], language });
+  const wp = await watchProviders(hit.id, hit.media_type, { cacheOnly: true }).catch(() => null);
+  if (!wp) misses.push({ id: hit.id, media_type: hit.media_type });
+  return cardFromSearchHit(hit, wp, genreMaps[hit.media_type], region, providerSet);
+}
+
+// Warm the /watch/providers cache for the titles a search couldn't resolve on-service,
+// off the response path — best-effort, bounded, failures ignored — so a repeat search
+// of the same term paints their streaming icons. Overridable in tests (which run with
+// no real network) via setSearchWarmer.
+let warmSearchProviders = (misses) =>
+  mapPool(misses, SEARCH_WARM_CONCURRENCY, (m) => watchProviders(m.id, m.media_type).catch(() => {}));
+export function setSearchWarmer(fn) { warmSearchProviders = fn; }
+
+// Find films and series by name and return them as ready-to-render cards, the user's
+// chosen streaming services already resolved onto each. TMDB-only — spends NO MotN
+// quota. Built to be sub-second even on the shared-CPU box: the hot path makes ZERO
+// blocking per-title network calls — the only unavoidable fetch is the single
+// /search/multi (cached per term), and every card is then shaped from caches. Titles
+// the user has already seen in recommendations/watchlist come back as full rich cards
+// instantly (their detail is warm); never-seen titles paint immediately from the list
+// fields and have their providers warmed in the background for next time. Cards on one
+// of the user's services sort first; the rest follow in TMDB popularity order so a
+// search never comes up empty (rendered without streaming icons — empty `services`).
 export async function searchTitles({ query, region, providerIds, language }) {
   if (!query?.trim()) return [];
   const res = await searchMulti(query.trim(), language);
@@ -1065,15 +1085,11 @@ export async function searchTitles({ query, region, providerIds, language }) {
   if (!hits.length) return [];
   const providerSet = new Set((providerIds || []).map(Number));
   const genreMaps = await searchGenreMaps(language);
-  const cards = new Array(hits.length);
-  // mapPool discards return values (it's side-effect only) and passes each item's
-  // original index, so write cards into their slots to preserve TMDB's popularity order.
-  await mapPool(hits, SEARCH_CONCURRENCY, async (hit, i) => {
-    // The provider lookup is the only per-hit network call; a failure just leaves
-    // the title off-service (mapPool isolates the throw) rather than sinking the search.
-    const wp = await watchProviders(hit.id, hit.media_type).catch(() => null);
-    cards[i] = cardFromSearchHit(hit, wp, genreMaps[hit.media_type], region, providerSet);
-  });
+  const misses = [];
+  // All cache-only reads, so this whole map resolves without hitting the network.
+  const cards = await Promise.all(hits.map((hit) =>
+    searchCardCacheOnly(hit, genreMaps, region, providerSet, language, misses)));
+  if (misses.length) warmSearchProviders(misses); // fire-and-forget; not awaited
   // Stable partition: on-service titles first, off-service after, each keeping
   // TMDB's popularity order.
   return cards.filter(Boolean).sort((a, b) => (b.services.length > 0) - (a.services.length > 0));

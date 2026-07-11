@@ -20,21 +20,35 @@ function auth() {
     : { headers: {}, query: `api_key=${key}` };
 }
 
-async function tmdb(path, params = {}, { cacheMs = DAY } = {}) {
-  // Test mode: serve canned fixtures instead of hitting the network, so the
-  // suite runs offline and deterministically. Gated behind TMDB_STUB=1.
-  if (process.env.TMDB_STUB === '1') {
-    const { stub } = await import('./tmdb-stub.js');
-    return stub(path, params);
-  }
-  const { headers, query } = auth();
+// `cacheOnly: true` returns the cached value or null WITHOUT a network fetch — for
+// callers on a latency-critical path (title search) that want to reuse a warm cache
+// but must never block on TMDB, warming any miss separately in the background.
+async function tmdb(path, params = {}, { cacheMs = DAY, cacheOnly = false } = {}) {
+  // Cache key is independent of the api key (so it survives key rotation and is
+  // computable in stub mode, which has no key). params never carry the key here —
+  // the v3 key is appended to the request URL only, below.
   const usp = new URLSearchParams(params);
-  if (query) usp.set(...query.split('=').map(decodeURIComponent));
-  const url = `${BASE}${path}?${usp.toString()}`;
+  const cacheKey = `tmdb:${BASE}${path}?${usp.toString()}`;
 
-  const cacheKey = `tmdb:${url.replace(/api_key=[^&]+/, '')}`;
+  // Test mode: serve canned fixtures instead of hitting the network, so the suite
+  // runs offline and deterministically (gated behind TMDB_STUB=1). Still honours the
+  // cache both ways — a cacheOnly read hits/misses the cache, a normal call populates
+  // it — so tests exercise the real cache-first paths without a network.
+  if (process.env.TMDB_STUB === '1') {
+    if (cacheOnly) return tmdbCacheGet(cacheKey, cacheMs) ?? null;
+    const { stub } = await import('./tmdb-stub.js');
+    const val = stub(path, params);
+    tmdbCacheSet(cacheKey, val);
+    return val;
+  }
+
   const cached = tmdbCacheGet(cacheKey, cacheMs);
   if (cached) return cached;
+  if (cacheOnly) return null; // cache miss and the caller won't wait on the network
+
+  const { headers, query } = auth();
+  if (query) usp.set(...query.split('=').map(decodeURIComponent));
+  const url = `${BASE}${path}?${usp.toString()}`;
 
   // Retry transient failures (network errors, 429 rate-limit, 5xx) with backoff.
   // TMDB allows retries freely; this keeps the recommender resilient to blips.
@@ -108,12 +122,12 @@ export async function personImdbId(personId) {
 // pickTrailers); include_video_language widens the videos block beyond the main
 // `language` so the trailer can fall back to English when there's no localized
 // one (TMDB otherwise returns only videos tagged with `language`).
-export const details = async (id, mediaType = 'movie', language) =>
+export const details = async (id, mediaType = 'movie', language, opts) =>
   normalizeDetail(await tmdb(`/${mediaType}/${id}`, {
     append_to_response: 'keywords,credits,external_ids,watch/providers,videos',
     include_video_language: videoLanguages(language),
     ...(language ? { language } : {}),
-  }), mediaType);
+  }, opts), mediaType);
 
 // TMDB names a TV series' fields differently from a movie's (name/first_air_date/
 // number_of_seasons) and nests its appended keywords under `results` instead of
@@ -203,8 +217,8 @@ export const similar = (id, mediaType = 'movie', language) =>
 export const trending = (mediaType = 'movie', language) =>
   tmdb(`/trending/${mediaType}/week`, language ? { language } : {});
 
-export const watchProviders = (id, mediaType = 'movie') =>
-  tmdb(`/${mediaType}/${id}/watch/providers`);
+export const watchProviders = (id, mediaType = 'movie', opts) =>
+  tmdb(`/${mediaType}/${id}/watch/providers`, {}, opts);
 
 // A canonical set of widely-seen, highly-rated films to seed a new user's rate
 // queue. TMDB's /movie/popular is recency-biased — it surfaces whatever is

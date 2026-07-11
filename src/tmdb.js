@@ -70,6 +70,14 @@ export const tmdbConfigured = () =>
 export const search = (query, year, language) =>
   tmdb('/search/movie', { query, ...(year ? { year } : {}), ...(language ? { language } : {}) });
 
+// Free-text search across BOTH films and series (and people, which the caller
+// drops) in one call — backs the by-name title search. Unlike `search`
+// (movie-only), /search/multi tags each result with its own `media_type`, so a
+// hit round-trips straight into the movie-or-TV card pipeline. Cached through
+// tmdb() like every other read.
+export const searchMulti = (query, language) =>
+  tmdb('/search/multi', { query, ...(language ? { language } : {}) });
+
 // Resolve a free-text title (+ optional year) to its best-match TMDB movie id, or
 // null. Scraped sources that only yield titles (Filmweb) lean on this; TMDB
 // indexes localized titles, so a Polish ranking title resolves to the same id as

@@ -274,6 +274,21 @@ export function stub(path, params = {}) {
   if (path === '/trending/movie/week') {
     return { page, total_pages: 1, results: TRENDING.map((m) => card(m, params.language)) };
   }
+  // Free-text multi-search (movies + TV + people) backing the by-name title
+  // search. A deliberately mixed set: a movie that streams only on the backfill
+  // provider (OFF a provider-8 user's services), a person (which searchTitles must
+  // drop), a series on TV_PROVIDER (also off a movie user's services), and a movie
+  // on the default test provider (ON-service). The on-service title is placed LAST
+  // so a test proves searchTitles re-sorts it to the front. searchTitles re-fetches
+  // each hit's full detail by id, so only `id`/`media_type` matter here.
+  if (path === '/search/multi') {
+    return { page, total_pages: 1, results: [
+      { id: 5001, media_type: 'movie', title: 'Stub Deep 1' },
+      { id: 601, media_type: 'person', name: 'Stub Person' },
+      { id: 401, media_type: 'tv', name: 'Stub Series One' },
+      { id: 201, media_type: 'movie', title: 'Stub Streamable One' },
+    ] };
+  }
 
   // ---- TV endpoints -------------------------------------------------------
   if (path === '/genre/tv/list') {

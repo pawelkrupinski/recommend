@@ -4,7 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, tmdbConfigured, pickTrailers, personImdbId } from './tmdb.js';
+import { details, tmdbConfigured, pickTrailers, personImdbId, searchMulti } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch, toCount } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -952,22 +952,22 @@ export function warmLandingPool(userId) {
 }
 
 // ---- watchlist card enrichment --------------------------------------------
-// Re-derive the rich card fields for one already-saved title, server side, so a
-// title saved before save-time capture (or whose capture failed) renders exactly
-// like a fresh Discover pick — same fields buildCorpus() produces, minus score
-// (a saved title has no recommendation rank). Hits TMDB details (cached) + the
-// IMDb/Metacritic scrape; no MotN quota is spent.
-export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', region, providerIds, language }) {
-  const full = await details(tmdb_id, media_type, language);
+// Shape a full TMDB detail into the movie-or-TV card the clients render — every
+// field a Discover pick carries EXCEPT the score, the scraped IMDb/Metacritic
+// badges, and the freshly-resolved tone feeders (the caller adds those when it
+// wants them). Pure over the passed detail + user context: no network, no
+// scrape, no MotN quota. Shared by watchlist backfill and by-name search so the
+// two can't drift in what a card looks like. `services` is the user's chosen
+// services that stream this title in their region (empty = not on any of them).
+export function cardFromDetail(full, { region, providerIds, language }) {
   const crew = full.credits?.crew || [];
-  // Resolve the per-title tone feeders for this saved title (TTL-skipped) so its
-  // tones match a Discover pick's, then read them back (live ∪ stored) below.
-  await resolveTones({ tmdb_id, imdb_id: full.external_ids?.imdb_id || null, title: full.title,
-    year: Number((full.release_date || '').slice(0, 4)) || null, overview: full.overview }, media_type);
-  const item = {
+  return {
+    tmdb_id: full.id,
+    media_type: full.media_type,
     imdb_id: full.external_ids?.imdb_id || null, // attachRatings needs this; not stored
     title: full.title,                           // ditto (metacritic lookup keys on title)
     year: Number((full.release_date || '').slice(0, 4)) || null, // gates rating resolution; not stored
+    poster_path: full.poster_path || null,
     runtime: full.runtime || null,
     seasons: full.seasons ?? null,   // TV-only — rendered in place of runtime
     episodes: full.episodes ?? null,
@@ -975,14 +975,61 @@ export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', regio
     vote_average: full.vote_average ?? null,
     genres: (full.genres || []).map((g) => g.name),
     genreIds: (full.genres || []).map((g) => g.id), // canonical, language-independent — the genre filter consolidates on these
-    tones: tonesForMovie(full, media_type),
+    tones: tonesForMovie(full, full.media_type),
     director: crew.filter((c) => c.job === 'Director').map((c) => c.name).join(', ') || null,
     cast: (full.credits?.cast || []).slice(0, CAST_DEPTH).map((c) => c.name),
     trailers: pickTrailers(full.videos, language),
     services: userServices(full, region, new Set((providerIds || []).map(Number))),
   };
+}
+
+// Re-derive the rich card fields for one already-saved title, server side, so a
+// title saved before save-time capture (or whose capture failed) renders exactly
+// like a fresh Discover pick — same fields buildCorpus() produces, minus score
+// (a saved title has no recommendation rank). Hits TMDB details (cached) + the
+// IMDb/Metacritic scrape; no MotN quota is spent.
+export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', region, providerIds, language }) {
+  const full = await details(tmdb_id, media_type, language);
+  // Resolve the per-title tone feeders for this saved title (TTL-skipped) so its
+  // tones match a Discover pick's, then read them back (live ∪ stored) in cardFromDetail.
+  await resolveTones({ tmdb_id, imdb_id: full.external_ids?.imdb_id || null, title: full.title,
+    year: Number((full.release_date || '').slice(0, 4)) || null, overview: full.overview }, media_type);
+  const item = cardFromDetail(full, { region, providerIds, language });
   await attachRatings([item]); // adds imdbRating + metascore (or leaves them null)
   return item;
+}
+
+// ---- by-name title search --------------------------------------------------
+// How many multi-search hits we shape into cards. TMDB returns ~20 per page
+// already ranked by popularity; keeping the whole first page is plenty for a
+// name lookup and bounds the per-search detail fetches.
+const SEARCH_RESULT_CAP = 20;
+
+// Find films and series by name and return them as ready-to-render cards, the
+// user's chosen streaming services already resolved onto each. TMDB-only — spends
+// NO MotN quota (availability comes from watch/providers, same as Discover). Rating
+// badges and tones are deliberately NOT resolved here (that would hammer the
+// IMDb/Metacritic scrapers on every keystroke); the client fills them in via the
+// existing /api/enrich pass over the visible cards, exactly like Discover. Cards
+// that stream on one of the user's services sort first; the rest follow in TMDB
+// popularity order so a search never comes up empty (with no streaming icons, as
+// their `services` array is empty).
+export async function searchTitles({ query, region, providerIds, language }) {
+  if (!query?.trim()) return [];
+  const res = await searchMulti(query.trim(), language);
+  const hits = (res.results || [])
+    .filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
+    .slice(0, SEARCH_RESULT_CAP);
+  const cards = new Array(hits.length);
+  // mapPool discards return values (it's side-effect only) and passes each item's
+  // original index, so write cards into their slots to preserve TMDB's popularity order.
+  await mapPool(hits, ENRICH_CONCURRENCY, async (hit, i) => {
+    const full = await details(hit.id, hit.media_type, language); // a throw here is isolated by mapPool → slot stays empty
+    cards[i] = cardFromDetail(full, { region, providerIds, language });
+  });
+  // Stable partition: on-service titles first, off-service after (drop the empty
+  // slots left by any failed detail fetch), each keeping TMDB's popularity order.
+  return cards.filter(Boolean).sort((a, b) => (b.services.length > 0) - (a.services.length > 0));
 }
 
 // How many of the visible cards we resolve ratings/tones for at once — the same

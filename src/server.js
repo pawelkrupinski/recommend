@@ -15,7 +15,7 @@ import * as tmdb from './tmdb.js';
 import { streamingOptions } from './availability.js';
 import { watchPageLinks } from './tmdb-watch-links.js';
 import { androidPackage } from './streaming-apps.js';
-import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, setBuildRunner } from './taste.js';
+import { recommend, resolveFilters, invalidateRecommendations, warmRecommendations, warmSharedDetails, warmLandingPool, enrichPicks, backfillWatchlistCards, creditImdbIds, searchTitles, setBuildRunner } from './taste.js';
 import { createWorkerBuildRunner } from './build-worker-client.js';
 import { learnedProfile } from './insights.js';
 import { toneList } from './tones.js';
@@ -383,6 +383,21 @@ async function api(req, res, url) {
     // Per-user (their own data), so no extra gate beyond the session.
     if (p === '/api/insights' && req.method === 'GET') {
       return json(req, res, 200, await learnedProfile(uid));
+    }
+
+    // ---- search titles by name (movies + TV on the user's chosen services) ----
+    // Free-text lookup over TMDB's whole catalogue, each hit shaped into the same
+    // card Discover serves with the user's streaming services resolved onto it.
+    // TMDB-only (no MotN quota); rating/tone badges fill in via /api/enrich, same
+    // as Discover. Titles on the user's services sort first, the rest follow.
+    if (p === '/api/search' && req.method === 'GET') {
+      const q = (url.searchParams.get('q') || '').trim();
+      if (!q) return json(req, res, 200, { results: [] });
+      const region = getUserSetting(uid, 'country', 'PL');
+      const providerIds = getUserSetting(uid, 'providers', []);
+      const language = tmdbLang(langFor(uid, req));
+      const results = await searchTitles({ query: q, region, providerIds, language });
+      return json(req, res, 200, { results });
     }
 
     // ---- where to watch (TMDB providers + availability deep links) ----

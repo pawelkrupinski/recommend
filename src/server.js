@@ -27,6 +27,7 @@ import { reverseGeocode } from './geocode.js';
 import { CONTINENTS } from './geo.js';
 import { log } from './log.js';
 import { startPerfMonitor } from './perf.js';
+import { metricsText, metricsContentType, observeHttp } from './metrics.js';
 
 const PORT = process.env.PORT || 9002;
 const PUBLIC = new URL('../public/', import.meta.url).pathname;
@@ -34,6 +35,18 @@ const PUBLIC = new URL('../public/', import.meta.url).pathname;
 // The client-routed tab paths. A GET to any of these serves the SPA shell
 // (index.html) so the app can boot into that tab — mirrors TAB_NAMES in app.js.
 const APP_ROUTES = new Set(['/discover', '/watchlist', '/ratings', '/settings']);
+
+// Collapse a request path to a low-cardinality metric label. The /api/* handlers are
+// a fixed set (safe to label by their exact path); everything else — hashed static
+// assets, the SPA shell, auth callbacks — is bucketed so the label set stays bounded
+// and a Prometheus series can't explode per unique asset URL or query string.
+function routeLabel(pathname) {
+  if (pathname === '/health' || pathname === '/metrics') return pathname;
+  if (pathname.startsWith('/api/')) return pathname;
+  if (pathname.startsWith('/auth/')) return '/auth';
+  if (pathname === '/' || pathname === '/index.html' || APP_ROUTES.has(pathname)) return 'app-shell';
+  return 'static';
+}
 
 // JSON responses go through send(): brotli/gzip when the client accepts it, plus
 // an ETag so an unchanged GET (e.g. a ratings list that didn't move) costs a 304
@@ -476,7 +489,15 @@ async function api(req, res, url) {
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://localhost:${PORT}`);
+    // Record every response once it's flushed — method, bucketed route, status, and
+    // handler wall-clock — for the HTTP rate/latency panels. One listener covers every
+    // branch below (health, metrics, api, static) regardless of how it ends the response.
+    const startedAt = performance.now();
+    res.on('finish', () => observeHttp(req.method, routeLabel(url.pathname), res.statusCode, (performance.now() - startedAt) / 1000));
     if (url.pathname === '/health') { res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'no-store' }); return res.end('ok'); }
+    // Prometheus exposition, scraped over the Fly private network by kinowo-grafana's
+    // VictoriaMetrics sidecar (filmowo.internal:9002). No secrets — just perf counters.
+    if (url.pathname === '/metrics') { res.writeHead(200, { 'content-type': metricsContentType, 'cache-control': 'no-store' }); return res.end(await metricsText()); }
     if (url.pathname.startsWith('/auth/') && (await handleAuth(req, res, url))) return;
     if (url.pathname.startsWith('/facebook/') && (await handleFacebook(req, res, url))) return;
     if (url.pathname.startsWith('/api/')) return api(req, res, url);

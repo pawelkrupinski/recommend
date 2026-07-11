@@ -14,6 +14,7 @@
 // seam is injectable so a test can assert the emitted lines without real stdout.
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { log as defaultLog } from './log.js';
+import { observeDb, observeStall } from './metrics.js';
 
 // nanoseconds → milliseconds, one decimal. An empty histogram reports NaN for
 // mean/percentile; render that as 0.0 so a quiet interval never logs "NaNms".
@@ -32,6 +33,7 @@ let dbCallsTotal = 0;
 export function recordDbTime(durationMs) {
   dbMsTotal += durationMs;
   dbCallsTotal += 1;
+  observeDb(durationMs / 1000); // mirror into the Prometheus counter (main thread only)
 }
 export function dbCounters() {
   return { ms: dbMsTotal, calls: dbCallsTotal };
@@ -65,9 +67,12 @@ export function startPerfMonitor({
     const now = Date.now();
     const lag = now - expected;
     expected = now + stallTickMs;
-    if (lag > stallThresholdMs && now - lastStallLog >= stallLogMinGapMs) {
-      lastStallLog = now;
-      log.warn(`[perf] event-loop-stall lag=${lag}ms (>${stallThresholdMs}ms)`);
+    if (lag > stallThresholdMs) {
+      observeStall(); // count every stall (the log below is rate-limited; the metric isn't)
+      if (now - lastStallLog >= stallLogMinGapMs) {
+        lastStallLog = now;
+        log.warn(`[perf] event-loop-stall lag=${lag}ms (>${stallThresholdMs}ms)`);
+      }
     }
   }, stallTickMs);
 

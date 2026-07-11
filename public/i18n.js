@@ -31,6 +31,9 @@ export const MESSAGES = {
     'tab.watchlist': 'Watchlist',
     'tab.ratings': 'My ratings',
     'tab.settings': 'Settings',
+    // title search
+    'search.placeholder': 'Search titles…',
+    'search.empty': 'Nothing found on your services for that title.',
     // login overlay
     'login.intro': 'Sign in to sync your ratings and picks across devices. Your current picks come with you.',
     'login.privacy': 'Privacy policy',
@@ -125,6 +128,9 @@ export const MESSAGES = {
     'tab.watchlist': 'Do obejrzenia',
     'tab.ratings': 'Moje oceny',
     'tab.settings': 'Ustawienia',
+    // title search
+    'search.placeholder': 'Szukaj tytułów…',
+    'search.empty': 'Nie znaleziono takiego tytułu w Twoich serwisach.',
     // login overlay
     'login.intro': 'Zaloguj się, aby synchronizować oceny i propozycje na różnych urządzeniach. Twoje obecne propozycje pozostaną z Tobą.',
     'login.privacy': 'Polityka prywatności',

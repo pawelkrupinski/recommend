@@ -4,7 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
-import { details, tmdbConfigured, pickTrailers, personImdbId, searchMulti } from './tmdb.js';
+import { details, tmdbConfigured, pickTrailers, personImdbId, searchMulti, watchProviders, genres } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch, toCount } from './db.js';
 import { tmdbLang, DEFAULT_LANGUAGE } from './locale.js';
@@ -1000,35 +1000,82 @@ export async function enrichWatchlistItem({ tmdb_id, media_type = 'movie', regio
 }
 
 // ---- by-name title search --------------------------------------------------
-// How many multi-search hits we shape into cards. TMDB returns ~20 per page
-// already ranked by popularity; keeping the whole first page is plenty for a
-// name lookup and bounds the per-search detail fetches.
-const SEARCH_RESULT_CAP = 20;
+// How many multi-search hits we shape into cards — the top TMDB-popularity matches
+// for the name, which is what a title lookup wants. Kept equal to SEARCH_CONCURRENCY
+// so every hit's provider lookup fires in ONE round-trip wave (not two), which is
+// what keeps a cold search sub-second; warm searches are ~instant off the day-long
+// TMDB cache regardless.
+const SEARCH_RESULT_CAP = 12;
+// Search must feel instant, so its per-hit provider lookup fans out wider than the
+// scraper-bound ENRICH_CONCURRENCY — /watch/providers is a tiny, TMDB-only response
+// with no scraper behind it, so a wider pool just means fewer round-trip waves.
+const SEARCH_CONCURRENCY = 12;
+
+// id→name genre maps for both media types in the user's language, built from the
+// hard-cached genres() lists (genres change ~never, so this is a couple of warm
+// reads). Movie and TV have distinct id spaces, so each hit is mapped with the map
+// for its own media type. Lets a search card show genre names without the full
+// detail fetch — the multi-search list only carries `genre_ids`.
+async function searchGenreMaps(language) {
+  const [mv, tv] = await Promise.all([genres('movie', language), genres('tv', language)]);
+  const toMap = (list) => new Map((list.genres || []).map((g) => [g.id, g.name]));
+  return { movie: toMap(mv), tv: toMap(tv) };
+}
+
+// Shape one multi-search hit into a card WITHOUT the heavy per-title detail fetch:
+// the list result already carries poster/title/year/overview/rating/genre_ids, and
+// the only extra call is the tiny /watch/providers lookup that resolves the user's
+// chosen services. runtime/season-count/director/cast/trailers and the IMDb/MC
+// badges are all filled lazily afterwards — the badges by the client's /api/enrich
+// pass (same as Discover), the rest when the detail sheet opens — so the search
+// itself stays sub-second. `wp` is the /watch/providers response (or null on a
+// failed lookup → no services, i.e. treated as off-service).
+function cardFromSearchHit(hit, wp, genreMap, region, providerSet) {
+  const ids = hit.genre_ids || [];
+  return {
+    tmdb_id: hit.id,
+    media_type: hit.media_type,
+    title: hit.title ?? hit.name,
+    year: Number((hit.release_date || hit.first_air_date || '').slice(0, 4)) || null,
+    poster_path: hit.poster_path || null,
+    overview: hit.overview || null,
+    vote_average: hit.vote_average ?? null,
+    genreIds: ids,
+    genres: ids.map((id) => genreMap.get(id)).filter(Boolean),
+    tones: [], // filled by the client's /api/enrich pass, like Discover
+    services: userServices({ 'watch/providers': wp }, region, providerSet),
+  };
+}
 
 // Find films and series by name and return them as ready-to-render cards, the
 // user's chosen streaming services already resolved onto each. TMDB-only — spends
-// NO MotN quota (availability comes from watch/providers, same as Discover). Rating
-// badges and tones are deliberately NOT resolved here (that would hammer the
-// IMDb/Metacritic scrapers on every keystroke); the client fills them in via the
-// existing /api/enrich pass over the visible cards, exactly like Discover. Cards
-// that stream on one of the user's services sort first; the rest follow in TMDB
-// popularity order so a search never comes up empty (with no streaming icons, as
-// their `services` array is empty).
+// NO MotN quota. Built to be sub-second: it shapes each card from the multi-search
+// list result plus one tiny /watch/providers lookup, NOT a full detail fetch (that
+// heavy append_to_response call, ×20, was the 10–20s wall). Rating/tone badges and
+// the runtime/cast/trailer detail fill in lazily (via /api/enrich and the detail
+// sheet), exactly as elsewhere. Cards on one of the user's services sort first; the
+// rest follow in TMDB popularity order so a search never comes up empty (they render
+// with no streaming icons, as their `services` array is empty).
 export async function searchTitles({ query, region, providerIds, language }) {
   if (!query?.trim()) return [];
   const res = await searchMulti(query.trim(), language);
   const hits = (res.results || [])
     .filter((r) => r.media_type === 'movie' || r.media_type === 'tv')
     .slice(0, SEARCH_RESULT_CAP);
+  if (!hits.length) return [];
+  const providerSet = new Set((providerIds || []).map(Number));
+  const genreMaps = await searchGenreMaps(language);
   const cards = new Array(hits.length);
   // mapPool discards return values (it's side-effect only) and passes each item's
   // original index, so write cards into their slots to preserve TMDB's popularity order.
-  await mapPool(hits, ENRICH_CONCURRENCY, async (hit, i) => {
-    const full = await details(hit.id, hit.media_type, language); // a throw here is isolated by mapPool → slot stays empty
-    cards[i] = cardFromDetail(full, { region, providerIds, language });
+  await mapPool(hits, SEARCH_CONCURRENCY, async (hit, i) => {
+    // The provider lookup is the only per-hit network call; a failure just leaves
+    // the title off-service (mapPool isolates the throw) rather than sinking the search.
+    const wp = await watchProviders(hit.id, hit.media_type).catch(() => null);
+    cards[i] = cardFromSearchHit(hit, wp, genreMaps[hit.media_type], region, providerSet);
   });
-  // Stable partition: on-service titles first, off-service after (drop the empty
-  // slots left by any failed detail fetch), each keeping TMDB's popularity order.
+  // Stable partition: on-service titles first, off-service after, each keeping
+  // TMDB's popularity order.
   return cards.filter(Boolean).sort((a, b) => (b.services.length > 0) - (a.services.length > 0));
 }
 

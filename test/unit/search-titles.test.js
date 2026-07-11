@@ -13,6 +13,7 @@ import { freshDbEnv } from '../helpers/env.js';
 
 freshDbEnv();
 const { searchTitles } = await import('../../src/taste.js');
+const { stubCalls, resetStubCalls } = await import('../../src/tmdb-stub.js');
 
 test('empty/blank query returns no results without hitting TMDB', async () => {
   assert.deepEqual(await searchTitles({ query: '', region: 'PL', providerIds: [8] }), []);
@@ -47,6 +48,18 @@ test('a card shapes into the Discover contract (poster, genres, no scraped badge
   // pass) — the shaped card leaves them unset so it never hammers the scrapers.
   assert.equal(onService.imdbRating, undefined);
   assert.equal(onService.metascore, undefined);
+});
+
+test('stays sub-second: shapes cards from the list + a light provider lookup, NOT a per-title detail fetch', async () => {
+  resetStubCalls();
+  await searchTitles({ query: 'stub', region: 'PL', providerIds: [8] });
+  // The heavy /movie/:id and /tv/:id detail fetch (append_to_response=credits,videos,
+  // keywords,…) was the 10–20s wall; the fix must never call it during a search.
+  const detailFetch = /^\/(movie|tv)\/\d+$/;
+  assert.deepEqual(stubCalls.filter((p) => detailFetch.test(p)), [], 'no full detail fetch during search');
+  // What it DOES call: one multi-search + a tiny per-title /watch/providers lookup.
+  assert.ok(stubCalls.includes('/search/multi'));
+  assert.ok(stubCalls.some((p) => /^\/movie\/\d+\/watch\/providers$/.test(p)), 'uses the light provider lookup instead');
 });
 
 test('with no chosen services every hit is off-service but still returned', async () => {

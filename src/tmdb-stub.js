@@ -179,6 +179,22 @@ const card = (m, language) => ({
   genre_ids: m.genreId ? [m.genreId] : [28],
 });
 
+// Which service a movie streams on, by id — the single source of truth shared by
+// the full detail (below) and the standalone /watch/providers lookup, so the
+// by-name search (which uses only the light provider call) sees the same
+// availability the recommender's detail fetch does. Genre-only titles stream on
+// GENRE_ONLY_PROVIDER; tone-only on TONE_ONLY_PROVIDER; the backfill pool on
+// BACKFILL_PROVIDER; everything else on the default 8.
+function movieProvider(id) {
+  return GENRE_ONLY_IDS.has(id)
+    ? { provider_id: GENRE_ONLY_PROVIDER, provider_name: 'Paramount Plus Test', logo_path: '/paramount.png' }
+    : TONE_ONLY_IDS.has(id)
+      ? { provider_id: TONE_ONLY_PROVIDER, provider_name: 'Apple TV Test', logo_path: '/apple.png' }
+      : id >= DEEP_DISCOVER[0].id
+        ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
+        : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
+}
+
 // Full /movie/:id detail with the appended blocks taste.js reads.
 function details(id, language) {
   const known = [...POPULAR, ...DISCOVER, ...TRENDING, ...GENRE_ONLY, ...TONE_ONLY].find((m) => m.id === id);
@@ -186,15 +202,7 @@ function details(id, language) {
   const genreId = known?.genreId || 28;
   const country = known?.country || 'US';
   const companyId = known?.companyId || 99999;
-  // Genre-only titles stream on GENRE_ONLY_PROVIDER; tone-only on TONE_ONLY_PROVIDER;
-  // the backfill pool on BACKFILL_PROVIDER; everything else on the default 8.
-  const provider = GENRE_ONLY_IDS.has(id)
-    ? { provider_id: GENRE_ONLY_PROVIDER, provider_name: 'Paramount Plus Test', logo_path: '/paramount.png' }
-    : TONE_ONLY_IDS.has(id)
-      ? { provider_id: TONE_ONLY_PROVIDER, provider_name: 'Apple TV Test', logo_path: '/apple.png' }
-      : id >= DEEP_DISCOVER[0].id
-        ? { provider_id: BACKFILL_PROVIDER, provider_name: 'Amazon Prime Test', logo_path: '/prime.png' }
-        : { provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' };
+  const provider = movieProvider(id);
   return {
     id,
     title,
@@ -230,9 +238,17 @@ function details(id, language) {
   };
 }
 
+// Every path stub() is asked for, in call order — lets a test assert which TMDB
+// endpoints a code path touches (e.g. that search does NOT make the heavy per-title
+// detail fetch). Reset between assertions with resetStubCalls(). Test-only, like the
+// whole module (it's reached only under TMDB_STUB=1).
+export const stubCalls = [];
+export const resetStubCalls = () => { stubCalls.length = 0; };
+
 // Map a TMDB path + params to a fixture. Throws on unknown paths so a typo in a
 // test surfaces loudly rather than silently returning undefined.
 export function stub(path, params = {}) {
+  stubCalls.push(path);
   const page = Number(params.page) || 1;
 
   if (path === '/genre/movie/list') {
@@ -279,14 +295,16 @@ export function stub(path, params = {}) {
   // provider (OFF a provider-8 user's services), a person (which searchTitles must
   // drop), a series on TV_PROVIDER (also off a movie user's services), and a movie
   // on the default test provider (ON-service). The on-service title is placed LAST
-  // so a test proves searchTitles re-sorts it to the front. searchTitles re-fetches
-  // each hit's full detail by id, so only `id`/`media_type` matter here.
+  // so a test proves searchTitles re-sorts it to the front. searchTitles builds the
+  // card straight from these list fields (poster/genre_ids/date/overview) plus a
+  // light /watch/providers lookup — no full detail fetch — so the list results carry
+  // the same shape TMDB's /search/multi returns.
   if (path === '/search/multi') {
     return { page, total_pages: 1, results: [
-      { id: 5001, media_type: 'movie', title: 'Stub Deep 1' },
+      { ...card({ id: 5001, title: 'Stub Deep 1' }, params.language), media_type: 'movie' },
       { id: 601, media_type: 'person', name: 'Stub Person' },
-      { id: 401, media_type: 'tv', name: 'Stub Series One' },
-      { id: 201, media_type: 'movie', title: 'Stub Streamable One' },
+      { ...tvCard(TV[0], params.language), media_type: 'tv' },
+      { ...card(DISCOVER[0], params.language), media_type: 'movie' },
     ] };
   }
 
@@ -335,7 +353,7 @@ export function stub(path, params = {}) {
   const wp = path.match(/^\/movie\/(\d+)\/watch\/providers$/);
   if (wp) {
     return { results: { [REGION]: { link: 'https://example.test/watch',
-      flatrate: [{ provider_id: PROVIDER_ID, provider_name: 'Netflix Test', logo_path: '/netflix.png' }] } } };
+      flatrate: [movieProvider(Number(wp[1]))] } } };
   }
   const det = path.match(/^\/movie\/(\d+)$/);
   if (det) return details(Number(det[1]), params.language);

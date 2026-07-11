@@ -53,6 +53,8 @@ import pl.filmowo.ui.DiscoverState
 import pl.filmowo.ui.common.ErrorRetry
 import pl.filmowo.ui.common.PosterGridCells
 import pl.filmowo.ui.common.PosterImage
+import pl.filmowo.ui.common.PosterPrefetch
+import pl.filmowo.ui.common.tmdbImage
 import pl.filmowo.ui.common.SelectableMenuItem
 import pl.filmowo.ui.common.RateStars
 import pl.filmowo.ui.common.RatingBadges
@@ -160,6 +162,11 @@ private fun PicksGrid(
     onRefresh: () -> Unit,
     gridState: LazyGridState,
 ) {
+    // Warm Coil's disk cache for every pick's poster ahead of scroll (nearest
+    // first), so cards paint from disk instead of the network as they appear.
+    // The grid items map 1:1 to state.picks, so the URL list aligns with the
+    // grid index with no blank header slots.
+    PosterPrefetch(state.picks.map { tmdbImage(it.posterPath, "w342") ?: "" }, gridState)
     PullToRefreshBox(
         isRefreshing = state.loading,
         onRefresh = onRefresh,

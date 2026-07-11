@@ -3,9 +3,9 @@ import FilmowoCore
 
 /// Builds TMDB poster URLs and renders them with a placeholder. Server payloads
 /// carry a bare `poster_path` (e.g. `/matrix.jpg`); the app prefixes the TMDB
-/// image CDN base, matching the web app and Android (Coil). A disk-caching
-/// `PosterStore` layers on in a later slice; `AsyncImage` handles the memory
-/// cache for now.
+/// image CDN base, matching the web app and Android (Coil). Posters render
+/// through ``CachedAsyncImage``, which serves them from ``FilmowoCore/PosterStore``'s
+/// on-disk cache so they survive relaunch and work offline.
 enum TMDBImage {
     static let base = "https://image.tmdb.org/t/p"
 

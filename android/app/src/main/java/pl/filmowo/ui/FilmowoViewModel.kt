@@ -5,6 +5,8 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,6 +56,14 @@ data class WatchlistState(
     val loading: Boolean = false,
 )
 
+/** Floating title search: the live query, its [Pick] results (server-sorted
+ *  on-service-first), and whether a debounced fetch is in flight. */
+data class SearchState(
+    val query: String = "",
+    val results: List<Pick> = emptyList(),
+    val loading: Boolean = false,
+)
+
 /** The open where-to-watch sheet. `fromWatchlist` enables the rate-to-remove flow. */
 data class DetailState(
     val pick: Pick,
@@ -91,6 +101,9 @@ class FilmowoViewModel(
     private val _watchlist = MutableStateFlow(WatchlistState())
     val watchlist: StateFlow<WatchlistState> = _watchlist.asStateFlow()
 
+    private val _search = MutableStateFlow(SearchState())
+    val search: StateFlow<SearchState> = _search.asStateFlow()
+
     private val _ratings = MutableStateFlow<List<Rating>>(emptyList())
     val ratings: StateFlow<List<Rating>> = _ratings.asStateFlow()
 
@@ -120,6 +133,9 @@ class FilmowoViewModel(
     val bootError: StateFlow<String?> = _bootError.asStateFlow()
 
     private var queuePage = 1
+
+    // The in-flight debounced search; a new keystroke cancels it before it fires.
+    private var searchJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -265,7 +281,7 @@ class FilmowoViewModel(
     fun setTone(tone: String) { _discover.update { it.copy(tone = tone) }; loadDiscover() }
 
     fun ratePick(pick: Pick, star: Int) {
-        removeFromDiscover(pick)
+        removeCard(pick)
         viewModelScope.launch {
             runCatching { api.rate(pick.tmdbId, pick.mediaType, star, pick.title, pick.year) }
             loadRatings()
@@ -273,20 +289,23 @@ class FilmowoViewModel(
     }
 
     fun dismissPick(pick: Pick) {
-        removeFromDiscover(pick)
+        removeCard(pick)
         viewModelScope.launch { runCatching { api.dismiss(pick.tmdbId, pick.mediaType) } }
     }
 
     fun savePick(pick: Pick) {
-        removeFromDiscover(pick)
+        removeCard(pick)
         viewModelScope.launch {
             runCatching { api.saveToWatchlist(pick) }
             loadWatchlist()
         }
     }
 
-    private fun removeFromDiscover(pick: Pick) {
+    // A rated / dismissed / saved card leaves every grid it appears in immediately
+    // (Discover and the search results share these actions and the same Pick keys).
+    private fun removeCard(pick: Pick) {
         _discover.update { it.copy(picks = it.picks.filterNot { p -> p.key == pick.key }) }
+        _search.update { it.copy(results = it.results.filterNot { p -> p.key == pick.key }) }
     }
 
     // ---- onboarding rate queue --------------------------------------------
@@ -377,6 +396,27 @@ class FilmowoViewModel(
 
     private fun sortWatchlist(items: List<Pick>, sort: String): List<Pick> =
         if (sort == "rating") items.sortedByDescending { it.score ?: it.voteAverage ?: 0.0 } else items
+
+    // ---- search ------------------------------------------------------------
+    /** Live title search: update the query immediately (so the text field stays
+     *  responsive) and fire the network fetch behind a 300ms debounce so we don't
+     *  hit /api/search on every keystroke. A blank query just clears the results. */
+    fun search(query: String) {
+        _search.update { it.copy(query = query) }
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _search.update { it.copy(results = emptyList(), loading = false) }
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(300)
+            _search.update { it.copy(loading = true) }
+            val results = runCatching { api.search(query) }
+                .onFailure { Log.w("Filmowo", "search failed: ${it.javaClass.simpleName}: ${it.message}") }
+                .getOrDefault(emptyList())
+            _search.update { it.copy(results = results, loading = false) }
+        }
+    }
 
     // ---- ratings -----------------------------------------------------------
     fun loadRatings() {

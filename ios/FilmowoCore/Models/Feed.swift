@@ -19,6 +19,22 @@ public struct Recommendations: Codable, Hashable {
     }
 }
 
+/// `/api/search?q=…` → `{results}`: cards matching the query by name, already
+/// server-sorted on-service-first (an empty `services` means the title isn't on
+/// the user's chosen streaming services).
+public struct SearchResponse: Codable, Hashable {
+    public let results: [Card]
+
+    enum CodingKeys: String, CodingKey { case results }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        results = try c.decode([Card].self, forKey: .results, default: [])
+    }
+
+    public init(results: [Card] = []) { self.results = results }
+}
+
 /// `/api/watchlist` → `{watchlist, genres}` (the server also sends `byName`,
 /// which we ignore, matching Android).
 public struct WatchlistResponse: Codable, Hashable {

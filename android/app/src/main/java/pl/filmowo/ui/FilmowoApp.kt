@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -31,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -43,6 +46,7 @@ import pl.filmowo.ui.detail.DetailSheet
 import pl.filmowo.ui.discover.DiscoverScreen
 import pl.filmowo.ui.onboarding.OnboardingScreen
 import pl.filmowo.ui.ratings.RatingsScreen
+import pl.filmowo.ui.search.SearchScreen
 import pl.filmowo.ui.settings.SettingsScreen
 import pl.filmowo.ui.watchlist.WatchlistScreen
 
@@ -120,11 +124,21 @@ private fun MainScaffold(vm: FilmowoViewModel) {
     val watchlistGrid = rememberLazyGridState()
     val ratingsList = rememberLazyListState()
 
+    val current by nav.currentBackStackEntryAsState()
+    val route = current?.destination?.route
+
     Scaffold(
+        // Floating title search: reachable from any main tab, its own NavHost route
+        // so opening a card's detail sheet still works (the sheet lives below).
+        floatingActionButton = {
+            if (route != "search") {
+                FloatingActionButton(onClick = { nav.navigate("search") { launchSingleTop = true } }) {
+                    Icon(Icons.Filled.Search, contentDescription = t("nav.search"))
+                }
+            }
+        },
         bottomBar = {
             NavigationBar {
-                val current by nav.currentBackStackEntryAsState()
-                val route = current?.destination?.route
                 TABS.forEach { tab ->
                     NavigationBarItem(
                         selected = route == tab.route,
@@ -158,6 +172,7 @@ private fun MainScaffold(vm: FilmowoViewModel) {
             composable("watchlist") { WatchlistTab(vm, watchlistGrid) }
             composable("ratings") { RatingsTab(vm, ratingsList) }
             composable("settings") { SettingsTab(vm) }
+            composable("search") { SearchTab(vm, nav) }
         }
     }
 
@@ -177,6 +192,18 @@ private fun DiscoverTab(vm: FilmowoViewModel, gridState: LazyGridState) {
         onRatePick = vm::ratePick, onSave = vm::savePick, onDismiss = vm::dismissPick,
         onRateQueue = vm::rateQueueItem, onSkipQueue = vm::skipQueueItem,
         gridState = gridState,
+    )
+}
+
+@Composable
+private fun SearchTab(vm: FilmowoViewModel, nav: NavController) {
+    val state by vm.search.collectAsStateWithLifecycle()
+    SearchScreen(
+        state = state,
+        onQuery = vm::search,
+        onOpen = { vm.openDetail(it) },
+        onRatePick = vm::ratePick, onSave = vm::savePick, onDismiss = vm::dismissPick,
+        onBack = { nav.popBackStack() },
     )
 }
 

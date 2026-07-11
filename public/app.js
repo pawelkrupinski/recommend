@@ -119,6 +119,12 @@ function posterAndMeta(m) {
 // between them; the server serves the SPA shell for every app path.
 const tabs = $('#tabs');
 const TAB_NAMES = ['discover', 'watchlist', 'ratings', 'settings'];
+// The title-search results live in their own panel (#search-panel), shown over the
+// active tab while the search box has text and hidden again when it's cleared.
+// It's not a routable tab — the box drives it — so it stays out of TAB_NAMES.
+const searchBox = $('#search-box');
+const searchPanel = $('#search-panel');
+let tabBeforeSearch = null; // the tab to restore when the query is cleared
 
 // The path is the tab (/discover, /watchlist…) and the query carries the Discover
 // filters, e.g. "/discover?genre=28&origin=c:EU&excludeUs=1". Parse it into
@@ -142,6 +148,11 @@ function parseRoute() {
 
 function activateTab(t) {
   if (!TAB_NAMES.includes(t)) t = 'discover';
+  // Switching to a real tab (nav click, back/forward) exits search: drop its text
+  // and hide the panel so the tab underneath shows through.
+  if (searchBox.value) searchBox.value = '';
+  searchPanel.classList.remove('active');
+  tabBeforeSearch = null;
   for (const b of tabs.children) b.classList.toggle('active', b.dataset.tab === t);
   for (const s of document.querySelectorAll('.tab')) s.classList.toggle('active', s.id === t);
   if (t === 'discover') loadDiscover();
@@ -526,9 +537,11 @@ function recCard(m) {
   el.dataset.id = m.tmdb_id;   // lets refillPicks tell which titles are already on screen
   el.dataset.key = pickKey(m); // the (media_type, id) pair refillPicks dedups on
   el._pick = m;                // the pick object, so deferred /api/enrich can patch this card's badges
-  const hi = m.score >= 75 ? 'hi' : '';
+  // Discover cards carry a personalised score; by-name search results don't, so
+  // omit the corner badge rather than paint a stray "undefined".
+  const scoreBadge = Number.isFinite(m.score) ? `<div class="score ${m.score >= 75 ? 'hi' : ''}">${m.score}</div>` : '';
   el.innerHTML = `
-    <div class="score ${hi}">${m.score}</div>
+    ${scoreBadge}
     ${watchBtnMarkup()}
     ${posterAndMeta(m)}
     ${ratingRow()}`;
@@ -587,6 +600,51 @@ function wireServiceLinks(el, m, { dismissable = true } = {}) {
 }
 
 $('#refresh').onclick = () => loadRecs(true);
+
+// ---- title search ---------------------------------------------------------
+// Coalesce a burst of keystrokes into one call: run `fn` only after `ms` of quiet.
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+}
+
+// Show the search results panel over the current tab (remembering which one to
+// return to) / restore that tab when the query clears. The panel isn't a routable
+// tab, so we toggle its `.active` directly rather than through activateTab.
+function showSearchPanel() {
+  if (tabBeforeSearch === null) tabBeforeSearch = parseRoute().tab; // where to return on clear
+  for (const s of document.querySelectorAll('.tab')) s.classList.remove('active');
+  searchPanel.classList.add('active');
+}
+function exitSearch() {
+  const back = tabBeforeSearch ?? 'discover';
+  searchPanel.classList.remove('active');
+  tabBeforeSearch = null;
+  activateTab(back);
+}
+
+// Search any title streamable on the user's chosen services (server-side, sorted
+// on-service first). Results are the same card shape Discover uses, so recCard
+// wires rate / add-to-watchlist / streaming-icon for free, and enrichGrid fills
+// the IMDb/Metacritic badges in the exact same deferred pass Discover runs.
+const runSearch = debounce(async () => {
+  const q = searchBox.value.trim();
+  if (!q) { exitSearch(); return; }
+  showSearchPanel();
+  const grid = $('#search-grid');
+  try {
+    const { results } = await api('/api/search?q=' + encodeURIComponent(q));
+    if (searchBox.value.trim() !== q) return; // a newer keystroke won the race — drop this result
+    grid.innerHTML = '';
+    if (!results.length) { grid.innerHTML = `<p class="empty">${t('search.empty')}</p>`; return; }
+    for (const m of results) grid.append(recCard(m));
+    enrichGrid(grid);
+  } catch (e) {
+    if (searchBox.value.trim() !== q) return;
+    grid.innerHTML = `<p class="empty">⚠ ${e.message}</p>`;
+  }
+}, 300);
+searchBox.addEventListener('input', runSearch);
 
 // ---- shared rate + dismiss widget -----------------------------------------
 // Stars (1–10 → rating/10) plus a "Not interested / seen it" button.

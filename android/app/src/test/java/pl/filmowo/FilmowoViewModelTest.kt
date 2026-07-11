@@ -173,6 +173,79 @@ class FilmowoViewModelTest {
     }
 
     @Test
+    fun `search fetches matches after the debounce and populates results`() {
+        serve(
+            mapOf(
+                "/api/me" to me,
+                "/api/ratings" to """{"ratings":[]}""",
+                "/api/watchlist" to """{"watchlist":[]}""",
+                "/api/rate-queue" to """{"items":[],"totalPages":1}""",
+                "/api/search" to """{"results":[{"tmdb_id":7,"media_type":"movie","title":"Solaris","services":[]}]}""",
+            ),
+        )
+        val vm = viewModel()
+        await(vm.me) { it != null }
+        vm.search("solaris")
+        val s = await(vm.search) { it.results.isNotEmpty() }
+        assertEquals("Solaris", s.results.first().title)
+        assertEquals("solaris", s.query)
+        assertFalse(s.loading)
+    }
+
+    @Test
+    fun `rating a search result optimistically removes it from the results grid`() {
+        serve(
+            mapOf(
+                "/api/me" to me,
+                "/api/ratings" to """{"ratings":[]}""",
+                "/api/watchlist" to """{"watchlist":[]}""",
+                "/api/rate-queue" to """{"items":[],"totalPages":1}""",
+                "/api/search" to """{"results":[
+                    {"tmdb_id":7,"media_type":"movie","title":"Solaris"},
+                    {"tmdb_id":8,"media_type":"movie","title":"Stalker"}]}""",
+            ),
+        )
+        val vm = viewModel()
+        await(vm.me) { it != null }
+        vm.search("s")
+        val loaded = await(vm.search) { it.results.size == 2 }
+        vm.ratePick(loaded.results.first(), 9)
+        val after = await(vm.search) { it.results.size == 1 }
+        assertTrue(after.results.none { it.tmdbId == 7 })
+        assertNotNull(after.results.firstOrNull { it.tmdbId == 8 })
+    }
+
+    @Test
+    fun `a blank search query clears the results without a fetch`() {
+        val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse {
+                val path = request.path.orEmpty().substringBefore('?')
+                requests.add(path)
+                val body = when (path) {
+                    "/api/me" -> me
+                    "/api/search" -> """{"results":[{"tmdb_id":7,"media_type":"movie","title":"Solaris"}]}"""
+                    else -> "{}"
+                }
+                return MockResponse().setBody(body)
+            }
+        }
+        val vm = viewModel()
+        await(vm.me) { it != null }
+        vm.search("solaris")
+        await(vm.search) { it.results.isNotEmpty() }
+        vm.search("")
+        val cleared = await(vm.search) { it.results.isEmpty() && it.query.isEmpty() }
+        assertTrue(cleared.results.isEmpty())
+        // Clearing the box must not fire another /api/search.
+        val searchesAfterClear = runBlocking {
+            delay(350) // longer than the debounce window
+            synchronized(requests) { requests.count { it == "/api/search" } }
+        }
+        assertEquals(1, searchesAfterClear)
+    }
+
+    @Test
     fun `removing a watchlist item re-syncs from the server`() {
         val requests = java.util.Collections.synchronizedList(mutableListOf<String>())
         var removed = false

@@ -69,6 +69,24 @@ class FilmowoApiTest {
     }
 
     @Test
+    fun `search url-encodes the query and parses the pick results`() = runTest {
+        server.enqueue(
+            MockResponse().setBody(
+                """{"results":[{"tmdb_id":7,"media_type":"tv","title":"The Wire","seasons":5,"services":[]}]}""",
+            ),
+        )
+        val results = api.search("the wire")
+        assertEquals(1, results.size)
+        assertEquals("The Wire", results.first().title)
+        assertEquals(5, results.first().seasons)
+        assertTrue(results.first().services.isEmpty()) // strict parser tolerates an empty services array
+
+        val req = server.takeRequest()
+        assertEquals("/api/search", req.requestUrl?.encodedPath)
+        assertEquals("the wire", req.requestUrl?.queryParameter("q"))
+    }
+
+    @Test
     fun `recommend sends the cached hash and surfaces a 304 as notModified`() = runTest {
         server.enqueue(MockResponse().setResponseCode(304))
         val recs = api.recommend(emptyMap(), etag = "\"abc\"")

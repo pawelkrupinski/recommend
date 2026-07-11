@@ -180,8 +180,12 @@ private fun PicksGrid(
     }
 }
 
+/** The rich poster card shared by Discover and Search: poster (tap → detail),
+ *  a save-to-watchlist "+" corner button, rating badges, star rating, and a
+ *  not-interested/seen dismiss button. No on-card streaming icons — the user
+ *  reaches the watch link through the detail sheet (tap the poster). */
 @Composable
-private fun PickCard(
+fun PickCard(
     pick: Pick,
     onOpen: (Pick) -> Unit,
     onRate: (Pick, Int) -> Unit,

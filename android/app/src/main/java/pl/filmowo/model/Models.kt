@@ -78,6 +78,12 @@ data class Pick(
 @Serializable
 data class Recommendations(val profileSize: Int = 0, val results: List<Pick> = emptyList())
 
+/** /api/search — title-name matches (server-sorted on-service-first), same
+ *  [Pick] shape as Discover. `services` may be empty when a match isn't on the
+ *  user's chosen services. */
+@Serializable
+data class SearchResponse(val results: List<Pick> = emptyList())
+
 @Serializable
 data class WatchlistResponse(
     val watchlist: List<Pick> = emptyList(),

@@ -73,6 +73,12 @@
         <a href="/ratings" data-tab="ratings" data-i18n="tab.ratings">My ratings</a>
         <a href="/settings" data-tab="settings" data-i18n="tab.settings">Settings</a>
       </nav>
+      <!-- Search any title on the user's services (not just the watchlist). A
+           non-empty query swaps in the #search-panel over the active tab; clearing
+           it restores that tab. See the search wiring in app.js. -->
+      <input id="search-box" type="search" placeholder="Search titles…"
+        data-i18n-placeholder="search.placeholder" data-i18n-aria-label="search.placeholder"
+        aria-label="Search titles" autocomplete="off" />
       <div id="userbar"></div>
     </header>
 
@@ -149,6 +155,14 @@
             <button id="delete-account" class="danger" data-i18n="settings.deleteAccount">Delete account</button>
           </div>
         </div>
+      </section>
+
+      <!-- Title-search results. Not a routable tab (it's driven by #search-box,
+           not the nav), but it reuses the .tab show/hide machinery and the shared
+           .card grid — the cards are built by recCard(), so rate / add-to-watchlist
+           / streaming-icon all work exactly as on Discover. -->
+      <section id="search-panel" class="tab" data-tab="search">
+        <div id="search-grid" class="grid"></div>
       </section>
     </main>
   </div>

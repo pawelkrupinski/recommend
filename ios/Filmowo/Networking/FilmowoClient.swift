@@ -110,6 +110,12 @@ public final class FilmowoClient {
         try await get(ProvidersResponse.self, "/api/providers", region.map { [URLQueryItem(name: "region", value: $0)] } ?? [])
     }
 
+    /// `/api/search?q=…` → the cards whose title matches `q`, server-sorted
+    /// on-service-first. Mirrors the web/floating search box.
+    public func search(_ q: String) async throws -> [Card] {
+        try await get(SearchResponse.self, "/api/search", [URLQueryItem(name: "q", value: q)]).results
+    }
+
     public func rateQueue(page: Int) async throws -> RateQueue {
         try await get(RateQueue.self, "/api/rate-queue", [URLQueryItem(name: "page", value: String(page))])
     }

@@ -25,6 +25,12 @@ enum AXID {
     static let discoverReloading = "discover-reloading"
     static func card(_ key: String) -> String { "card-\(key)" }
 
+    // Search (floating title search)
+    static let searchButton = "search-button"
+    static let searchField = "search-field"
+    static let searchGrid = "search-grid"
+    static let searchClose = "search-close"
+
     // Rating
     static let rateStars = "rate-stars"
     static func rateStar(_ value: Int) -> String { "rate-star-\(value)" }

@@ -22,6 +22,7 @@ import pl.filmowo.model.ProvidersResponse
 import pl.filmowo.model.RateQueue
 import pl.filmowo.model.RatingsResponse
 import pl.filmowo.model.Recommendations
+import pl.filmowo.model.SearchResponse
 import pl.filmowo.model.TonesResponse
 import pl.filmowo.model.WatchlistResponse
 import pl.filmowo.model.WhereInfo
@@ -53,6 +54,11 @@ class FilmowoApi(
      *  client keeps its local copy instead of re-shipping the whole screenful. */
     suspend fun recommend(params: Map<String, String>, etag: String? = null): Conditional<Recommendations> =
         conditionalGet("/api/recommend", params, etag, Recommendations.serializer())
+
+    /** Free-text title search across the user's chosen services (server-sorted
+     *  on-service-first). Same rich [Pick] cards as Discover. */
+    suspend fun search(q: String): List<Pick> =
+        get("/api/search", mapOf("q" to q), SearchResponse.serializer()).results
 
     suspend fun watchlist(): WatchlistResponse = get("/api/watchlist", serializer = WatchlistResponse.serializer())
 

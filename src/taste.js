@@ -4,6 +4,7 @@
 // director, top cast, decade) correlate with above-average liking. Then score
 // unseen-but-streamable candidates by how many of those features they carry.
 // Everything is per-user: profiles, candidate pools, caches, and prebuilds.
+import { isMainThread } from 'node:worker_threads';
 import { details, tmdbConfigured, pickTrailers, personImdbId, searchMulti, watchProviders, genres } from './tmdb.js';
 import { getRatings, getDismissed, getWatchlistIds, getUserSetting, setUserSetting, cacheGet, cacheSet, listUsers,
   watchlistNeedingEnrichment, setWatchlistCard, getMovieToneSlugs, getMovieToneSlugsBatch, toCount } from './db.js';
@@ -100,13 +101,28 @@ function poolTonesLookup(items) {
 // node:sqlite is fully synchronous and warm TMDB cache hits resolve without real
 // I/O, so a recommendation build otherwise runs as one unbroken microtask chain:
 // the event loop never reaches its poll phase, starving /health and live
-// requests until the whole build finishes. On a shared-CPU host that overruns
-// the platform's 5s health-check timeout and the instance is killed mid-build (a
-// boot/​use crash loop). Yielding to the macrotask queue every YIELD_EVERY units
-// of work lets the loop service /health and real traffic between chunks. Output
-// is unchanged — only the interleaving differs.
+// requests until the whole build finishes. Yielding every YIELD_EVERY units of
+// work lets the loop service /health and real traffic between chunks. Output is
+// unchanged — only the interleaving differs.
 const YIELD_EVERY = 16;
-const breathe = () => new Promise((resolve) => setImmediate(resolve));
+// HOW we yield depends on the thread. A build runs in a worker thread (build-worker.js),
+// and the box has ONE shared CPU core, so the worker and the main process time-slice
+// it. A bare setImmediate does NOT relinquish the core: the worker's event loop just
+// re-queues and keeps the core pinned, starving the main process's request handling
+// (measured in prod as 10–60s request stalls). A real timer PARKS the worker thread for
+// a beat, so the OS scheduler hands the core to the main process to serve requests —
+// builds run a little slower in exchange, an easy trade since a build is a background job
+// and request latency is what users feel. On the MAIN thread (buildProfile runs here on
+// the request path), setImmediate is right: it lets the loop breathe between chunks
+// WITHOUT adding wall-clock latency to the very request we're serving.
+const WORKER_YIELD_MS = 4;
+// `park` picks the yield: a real timer (parks the thread, freeing the core) in a build
+// worker, or setImmediate (poll-phase yield, no added latency) on the main thread.
+// Exported so a test can pin both branches without a live worker.
+export const makeBreathe = (park) => (park
+  ? () => new Promise((resolve) => setTimeout(resolve, WORKER_YIELD_MS))
+  : () => new Promise((resolve) => setImmediate(resolve)));
+const breathe = makeBreathe(!isMainThread);
 
 const EMPTY_PROFILE = () => ({
   pos: new Map(), neg: new Map(), counts: new Map(), mean: 7, count: 0,
@@ -385,6 +401,7 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
       const batch = pool.slice(i, i + DETAIL_FETCH_CONCURRENCY);
       for (const s of await Promise.all(batch.map(fetchSurvivor))) if (s) survivors.push(s);
       fetched += batch.length;
+      await breathe(); // park between batches: a run of cache hits fetches nothing, so nothing else yields the core
     }
     complete = fetched >= pool.length;
   } else {
@@ -410,6 +427,7 @@ async function buildCorpus({ userId, region, providerIds, genreId, ratings, lang
       fetched += 1;
       if (s) survived += 1;
       if (!starved && fetched >= STARVATION_PROBE && survived < STARVATION_MIN) starved = true;
+      if (fetched % YIELD_EVERY === 0) await breathe(); // pace cache-hit bursts (fetchSurvivor returns without I/O on a hit)
     });
     survivors = slots.filter(Boolean);
     // A bailed (starved) pool is treated as fully explored — deepening it would just

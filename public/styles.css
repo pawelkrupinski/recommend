@@ -87,6 +87,9 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 80px; }
 .tab.active { display: block; }
 .bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }
 .bar #discover-info { margin-right: auto; }
+/* While the picks are still building, the status line reads yellow to signal
+   work in progress; the settled picks-summary reverts to the default text. */
+.bar #discover-info.building { color: var(--accent); }
 .bar .toggle { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; cursor: pointer; }
 .bar .toggle input { cursor: pointer; accent-color: var(--accent); }
 /* Every filter/sort dropdown in a toolbar shares one dark style so they read as a

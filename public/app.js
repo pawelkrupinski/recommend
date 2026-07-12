@@ -302,12 +302,21 @@ async function loadDiscover(force = false) {
   await fillOnboardQueue(true);
 }
 
+// The Discover status line (#discover-info) doubles as the "building…" spinner
+// and the settled picks-summary. Route every write through here so the yellow
+// `.building` styling is on only while a build message shows and is cleared the
+// instant real content (or an error) replaces it.
+function setInfo(text, building = false) {
+  const el = $('#discover-info');
+  el.textContent = text;
+  el.classList.toggle('building', building);
+}
+
 // Header line for the onboarding queue: how many more ratings until picks appear.
 function updateOnboardInfo() {
   const left = Math.max(0, RATE_GOAL - obRated);
-  $('#discover-info').textContent = left
-    ? t('discover.onboardCountdown', { left })
-    : t('discover.buildingPersonalized');
+  // Only the "building" message (goal reached) is yellow; the countdown is not.
+  setInfo(left ? t('discover.onboardCountdown', { left }) : t('discover.buildingPersonalized'), !left);
 }
 
 // Pull acclaimed titles to rate into the Discover grid, skipping pages already
@@ -330,7 +339,7 @@ async function fillOnboardQueue(reset) {
       added += items.length;
     }
   } finally { obFilling = false; }
-  if (!added && reset) $('#discover-info').textContent = t('discover.ratedEverything');
+  if (!added && reset) setInfo(t('discover.ratedEverything'));
 }
 
 // An onboarding-queue card's write landed (rated or "haven't seen"): track the
@@ -392,7 +401,7 @@ function discoverParams({ refresh = false } = {}) {
 let renderedPicksKey = null;
 
 async function loadRecs(force = false) {
-  const info = $('#discover-info'), grid = $('#recs');
+  const grid = $('#recs');
   // Restore the filters from the URL (options exist now that loadGenres /
   // loadOrigins ran) so a refresh or back/forward repaints the same view.
   const h = parseRoute();
@@ -407,7 +416,7 @@ async function loadRecs(force = false) {
   // Same view, no rating/dismiss/watchlist/settings change since, grid intact →
   // the rebuild would be byte-identical. Skip it: no clear, no spinner, no fetch.
   if (!force && !picksStale && renderedPicksKey === key && grid.children.length) return;
-  info.textContent = t('discover.building');
+  setInfo(t('discover.building'), true);
   grid.innerHTML = '';
   try {
     const qs = discoverParams({ refresh: force });
@@ -419,7 +428,7 @@ async function loadRecs(force = false) {
     renderedPicksKey = key;
     picksStale = false;
   } catch (e) {
-    info.textContent = '';
+    setInfo('');
     grid.innerHTML = `<p class="empty">⚠ ${e.message}</p>`;
   }
 }
@@ -427,18 +436,18 @@ async function loadRecs(force = false) {
 // Paint the personalized picks grid — shared by a normal Discover load and the
 // seamless onboarding→picks swap.
 function renderRecs(results, profileSize, genre) {
-  const info = $('#discover-info'), grid = $('#recs');
+  const grid = $('#recs');
   // Titles already on the watchlist have been dealt with — keep them out of the
   // picks grid rather than showing a card the user has to dismiss again.
   const picks = results.filter((m) => !watchlistIds.has(pickKey(m)));
   if (!picks.length) {
-    info.textContent = '';
+    setInfo('');
     grid.innerHTML = `<p class="empty">${t(genre ? 'discover.emptyGenre' : 'discover.emptyNoPicks')}</p>`;
     return;
   }
-  info.textContent = genre
+  setInfo(genre
     ? t('discover.picksSummaryGenre', { count: picks.length, genre: $('#genre-filter').selectedOptions[0].textContent, profile: profileSize })
-    : t('discover.picksSummary', { count: picks.length, profile: profileSize });
+    : t('discover.picksSummary', { count: picks.length, profile: profileSize }));
   grid.innerHTML = '';
   for (const m of picks) grid.append(recCard(m));
   enrichVisible();

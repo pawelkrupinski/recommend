@@ -68,6 +68,40 @@ test('dragging a finger over the stars previews the rating and lifting commits i
   await expect(row.locator('.r')).toHaveText('7');
 });
 
+test('dragging through the gap between two stars keeps the preview (each star owns a square area)', async ({ page }) => {
+  await login(page, uniqEmail('touchgap'));
+
+  const target = '#recs .card:has(.title:text-is("Stub Popular Five"))';
+  await expect(page.locator(target)).toBeVisible();
+  const card = page.locator(target);
+
+  // Start on star 1, then move the finger into the 4px gap between star 3 and
+  // star 4 (a point 1px past star 3's right edge, so it snaps to star 3). The
+  // gap is empty backdrop — elementFromPoint lands on the .stars container, not
+  // a span — so before the fix the preview cleared to nothing here, flickering
+  // mid-drag. It must instead hold at 3 as if the stars tiled the box.
+  await card.locator('.stars').evaluate((box) => {
+    const rect = (n) => box.querySelector(`span[data-n="${n}"]`).getBoundingClientRect();
+    const s1 = rect(1);
+    const start = { x: s1.left + s1.width / 2, y: s1.top + s1.height / 2 };
+    const g = rect(3);
+    const gap = { x: g.right + 1, y: g.top + g.height / 2 }; // just past star 3, in the gap
+    const fire = (name, p) => {
+      const t = new Touch({ identifier: 1, target: box, clientX: p.x, clientY: p.y });
+      box.dispatchEvent(new TouchEvent(name, {
+        touches: name === 'touchend' ? [] : [t], changedTouches: [t],
+        bubbles: true, cancelable: true,
+      }));
+    };
+    fire('touchstart', start);
+    fire('touchmove', gap);
+  });
+
+  // The preview held at 3 through the gap instead of blanking.
+  await expect(card.locator('.rating-num')).toHaveText('3 / 10');
+  await expect(card.locator('.stars span.on')).toHaveCount(3);
+});
+
 test('a vertical drag on the stars scrolls the page instead of rating', async ({ page }) => {
   await login(page, uniqEmail('touchscroll'));
 

@@ -677,11 +677,23 @@ function wireStars(el, commit) {
   // hover), lifting commits it. The star under the finger is found by
   // hit-testing, so the drag need not start on the eventual target.
   if (starsBox) {
-    // The star under the finger, or 0 when the finger is off the stars.
+    // The star under the finger, or 0 when the finger is off the widget. Within
+    // the stars box each star owns a rectangular slice — the finger snaps to the
+    // nearest star, so the 4px gaps between them (and the gap between the two
+    // rows) still rate instead of clearing the preview mid-drag.
     const starAt = (t) => {
-      const hit = document.elementFromPoint(t.clientX, t.clientY);
-      const span = hit && hit.closest('.stars span');
-      return span && starsBox.contains(span) ? Number(span.dataset.n) : 0;
+      const x = t.clientX, y = t.clientY;
+      const box = starsBox.getBoundingClientRect();
+      if (x < box.left || x > box.right || y < box.top || y > box.bottom) return 0;
+      let best = 0, bestDist = Infinity;
+      stars.forEach((s) => {
+        const r = s.getBoundingClientRect();
+        const dx = Math.max(r.left - x, 0, x - r.right);
+        const dy = Math.max(r.top - y, 0, y - r.bottom);
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) { bestDist = d; best = Number(s.dataset.n); }
+      });
+      return best;
     };
     // A touch that starts on the stars is ambiguous: a horizontal drag rates,
     // a vertical drag should scroll the page (touch-action: pan-y lets the

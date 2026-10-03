@@ -19,11 +19,11 @@ import pl.filmowo.net.PersistentCookieJar
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34]) // Robolectric doesn't ship an SDK 37 sandbox yet; pin a supported one.
 class PersistentCookieJarTest {
-    private val url = "https://filmowo.fly.dev/api/me".toHttpUrl()
+    private val url = "https://filmowo.kinowo.net/api/me".toHttpUrl()
 
     private fun ridCookie() = Cookie.Builder()
         .name("rid").value("session-token")
-        .domain("filmowo.fly.dev").path("/")
+        .domain("filmowo.kinowo.net").path("/")
         .expiresAt(System.currentTimeMillis() + 30L * 24 * 60 * 60 * 1000)
         .httpOnly().secure()
         .build()

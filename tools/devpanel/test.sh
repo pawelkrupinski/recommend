@@ -23,7 +23,7 @@ export DEVPANEL_PRINT_ONLY=1 DEVPANEL_REPO_ROOT="$REPO_ROOT" DEVPANEL_ADB=adb
 
 d="$(bash "$HERE/scripts/deploy-android.sh")"
 check "deploy builds the releaseFast APK"  "$d" "assembleReleaseFast"
-check "deploy points at prod by default"   "$d" "target base URL: https://filmowo.fly.dev"
+check "deploy points at prod by default"   "$d" "target base URL: https://filmowo.kinowo.net"
 check "deploy installs the releaseFast APK" "$d" "install -r -d app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 check "deploy launches the main activity"  "$d" "am start -n net.pawel.filmowo/pl.filmowo.MainActivity"
 # The Gradle daemon is what makes the cable loop fast; --no-daemon (a cold JVM

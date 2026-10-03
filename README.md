@@ -63,10 +63,10 @@ and `${BASE_URL}/auth/facebook/callback` (plus local equivalents for dev).
 
 ## Deploy
 
-See [`DEPLOY.md`](./DEPLOY.md). Ships with a `Dockerfile` and a Render
-`render.yaml` (web service + 1 GB persistent disk for the SQLite DB at
-`/var/data`). Any single-instance host with a persistent volume works; for
-multi-instance scaling, swap SQLite for Turso/libSQL or Postgres.
+See [`DEPLOY.md`](./DEPLOY.md): one pod on the Hetzner k3s node behind
+`https://filmowo.kinowo.net`, SQLite made durable by Litestream → R2. It must
+stay single-instance (one Litestream writer); for multi-instance scaling, swap
+SQLite for Turso/libSQL or Postgres.
 
 ## Run as a background service (macOS)
 

@@ -103,7 +103,7 @@ jobs:
       #   https://github.com/${{ github.repository }}/releases/download/android-latest/filmowo.apk
       # We ship the DEBUG APK: it's auto-signed with the debug keystore (so it
       # installs AND updates in place across builds), whereas the release APK is
-      # unsigned here and won't install. It points at https://filmowo.fly.dev. The
+      # unsigned here and won't install. It points at https://filmowo.kinowo.net. The
       # release AAB rides along for a future Play upload. Swap to the signed
       # release APK once a keystore secret exists. Main pushes / manual only.
       - name: Publish rolling APK release
@@ -119,6 +119,6 @@ jobs:
             --target "$GITHUB_SHA" \
             --prerelease \
             --title "Filmowo Android (latest)" \
-            --notes "Debug build from the latest \`main\` commit (${GITHUB_SHA:0:7}), talking to https://filmowo.fly.dev. Sideload \`filmowo.apk\` on Android (enable installing from unknown sources). \`filmowo.aab\` is the (unsigned) Play bundle." \
+            --notes "Debug build from the latest \`main\` commit (${GITHUB_SHA:0:7}), talking to https://filmowo.kinowo.net. Sideload \`filmowo.apk\` on Android (enable installing from unknown sources). \`filmowo.aab\` is the (unsigned) Play bundle." \
             "$RUNNER_TEMP/filmowo.apk" \
             "$RUNNER_TEMP/filmowo.aab"

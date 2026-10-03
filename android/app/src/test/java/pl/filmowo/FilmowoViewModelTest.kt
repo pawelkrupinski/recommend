@@ -87,8 +87,8 @@ class FilmowoViewModelTest {
         flow.value
     }
 
-    // The prod /api/me body: the app hits filmowo.fly.dev directly (no Cloudflare
-    // CF-IPCountry header), so the server can't detect a country and sends null.
+    // An /api/me body for a request with no country signal (no CF-IPCountry, no
+    // X-Device-Country), so the server can't detect a country and sends null.
     private val meNullCountry = """{"user":{"id":41,"email":null,"name":null,"picture":null},
         "anonymous":true,"onboarded":false,"providers":["google","facebook"],"services":[],
         "country":null,"language":"en","watchlistSort":"added","detectedCountry":null,

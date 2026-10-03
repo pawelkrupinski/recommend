@@ -1,6 +1,6 @@
 # Filmowo — Android app
 
-A native Android client for the recommend server (filmowo.fly.dev), reproducing
+A native Android client for the recommend server (filmowo.kinowo.net), reproducing
 the web app's functionality: adaptive Discover (a rate-queue onboarding until the
 rate goal, then personalized picks), the where-to-watch detail sheet, the
 watchlist (with rate-to-remove), the ratings list, and settings (country,
@@ -30,7 +30,7 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties   # or your SDK path
 ./gradlew assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
 ```
 
-The app talks to `https://filmowo.fly.dev` by default. Point a debug build at a
+The app talks to `https://filmowo.kinowo.net` by default. Point a debug build at a
 local server (started with `ALLOW_DEV_LOGIN=1`) via the `FILMOWO_BASE_URL` env
 var — e.g. `FILMOWO_BASE_URL=http://10.0.2.2:3000 ./gradlew assembleDebug` for
 the emulator's view of the host machine.

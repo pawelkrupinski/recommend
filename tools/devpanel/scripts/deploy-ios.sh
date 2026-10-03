@@ -16,7 +16,7 @@ SCHEME="Filmowo"
 PROJECT="$REPO_ROOT/ios/Filmowo.xcodeproj"
 DERIVED="$REPO_ROOT/ios/build/device"
 APP="$DERIVED/Build/Products/Debug-iphoneos/Filmowo.app"
-export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-https://filmowo.fly.dev}"
+export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-https://filmowo.kinowo.net}"
 printf '▶ target base URL: %s\n' "$FILMOWO_BASE_URL"
 
 build_once() { # <team>

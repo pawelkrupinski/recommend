@@ -2,8 +2,8 @@
 
 Adapted from the `../movies` conventions for this project's stack: Node ≥24
 (ESM), `node --test` unit + integration suites, Playwright e2e, SQLite +
-Litestream → Cloudflare R2, OAuth, deployed on Render (service `filmowo`,
-fronted by Cloudflare). External data from Movie of the Night (MotN) and
+Litestream → Cloudflare R2, OAuth, deployed as one pod on the Hetzner k3s node
+(`filmowo.kinowo.net`, fronted by Cloudflare; see DEPLOY.md). External data from Movie of the Night (MotN) and
 Criticker.
 
 ## Always add tests for new or changed functionality — the commit gate
@@ -46,8 +46,8 @@ spend. (See also the standing `update-tests-with-changes` convention.)
   the what). Never amend a published commit.
 - **Auto-commit, push, and deploy once a change is the natural end of the
   asked-for work** — don't sit in a "want me to commit?" prompt. Integrate via
-  local `main` and push `main` to origin (`integrate-via-local-main`); Render
-  deploys on push (`push-deploy-on-feature-complete`).
+  local `main` and push `main` to origin (`integrate-via-local-main`); CI publishes
+  an image on a green push and Flux deploys it (`push-deploy-on-feature-complete`).
 - **Stop and ask only when something can't be cheaply undone:** force-pushes /
   rewriting published history, destructive data ops (dropping tables, wiping
   the R2 replica), or staging anything that smells like a secret. Stage secrets

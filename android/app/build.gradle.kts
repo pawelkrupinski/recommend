@@ -24,7 +24,7 @@ android {
         // Where the app talks to. Defaults to prod; point a debug build at a
         // local server (with ALLOW_DEV_LOGIN=1) via the FILMOWO_BASE_URL env var,
         // e.g. FILMOWO_BASE_URL=http://10.0.2.2:3000 for the emulator's host.
-        val baseUrl = System.getenv("FILMOWO_BASE_URL") ?: "https://filmowo.fly.dev"
+        val baseUrl = System.getenv("FILMOWO_BASE_URL") ?: "https://filmowo.kinowo.net"
         buildConfigField("String", "BASE_URL", "\"$baseUrl\"")
     }
 

@@ -3,7 +3,7 @@
 # Android device (net.pawel.filmowo/pl.filmowo.MainActivity). releaseFast is the
 # release build type (non-debuggable) with R8 off for speed, signed with the
 # debug keystore so it installs without a release keystore. By default the build
-# points at prod (https://filmowo.fly.dev) so the installed app always loads even
+# points at prod (https://filmowo.kinowo.net) so the installed app always loads even
 # with no dev server running; set FILMOWO_BASE_URL=http://localhost:9002 to point
 # a build at the Mac's local dev server (reached over `adb reverse tcp:9002`).
 set -euo pipefail
@@ -14,7 +14,7 @@ APP_ID="net.pawel.filmowo"
 COMPONENT="net.pawel.filmowo/pl.filmowo.MainActivity"
 APK="app/build/outputs/apk/releaseFast/app-releaseFast.apk"
 PORT="${FILMOWO_PORT:-9002}"
-export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-https://filmowo.fly.dev}"
+export FILMOWO_BASE_URL="${FILMOWO_BASE_URL:-https://filmowo.kinowo.net}"
 printf '▶ target base URL: %s\n' "$FILMOWO_BASE_URL"
 
 serial=""

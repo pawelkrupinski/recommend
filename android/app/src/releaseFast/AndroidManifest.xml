@@ -5,7 +5,7 @@
          local smoke test; like the debug overlay it may point at the Mac's dev
          server over http (adb reverse tcp:9002), so re-enable cleartext for this
          local-only variant. The shipped `release` build keeps
-         usesCleartextTraffic=false and talks to https://filmowo.fly.dev. -->
+         usesCleartextTraffic=false and talks to https://filmowo.kinowo.net. -->
     <application
         android:usesCleartextTraffic="true"
         tools:replace="android:usesCleartextTraffic" />

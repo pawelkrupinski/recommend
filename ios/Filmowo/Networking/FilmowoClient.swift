@@ -34,11 +34,11 @@ public final class FilmowoClient {
     }
 
     /// The production client: base URL from `FILMOWO_BASE_URL` (settable via the
-    /// run scheme / launch env for local dev), else the Fly deployment. Uses a
+    /// run scheme / launch env for local dev), else production. Uses a
     /// persistent shared cookie jar so `rid` outlives the process.
     public static func live() -> FilmowoClient {
-        let raw = ProcessInfo.processInfo.environment["FILMOWO_BASE_URL"] ?? "https://filmowo.fly.dev"
-        let base = URL(string: raw) ?? URL(string: "https://filmowo.fly.dev")!
+        let raw = ProcessInfo.processInfo.environment["FILMOWO_BASE_URL"] ?? "https://filmowo.kinowo.net"
+        let base = URL(string: raw) ?? URL(string: "https://filmowo.kinowo.net")!
         let config = URLSessionConfiguration.default
         config.httpCookieStorage = .shared
         config.httpShouldSetCookies = true

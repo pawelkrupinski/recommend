@@ -4,8 +4,8 @@
 # ephemeral disk: writes are replicated as they happen and the DB is restored on
 # boot (see docker-entrypoint.sh).
 #
-# All values come from the environment so no secrets live in the image. Set
-# these in the Render dashboard (Environment tab):
+# All values come from the environment so no secrets live in the image. In
+# production they come from the k8s Secret `filmowo/filmowo-secrets` (DEPLOY.md):
 #   DB_PATH                       e.g. /data/recommend.db   (already set)
 #   LITESTREAM_BUCKET             your bucket name
 #   LITESTREAM_ENDPOINT           R2: https://<account>.r2.cloudflarestorage.com

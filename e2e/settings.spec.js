@@ -52,8 +52,8 @@ test('changing country persists across a reload', async ({ page }) => {
 });
 
 test('settings survives a cold-start 503 on /api/settings', async ({ page }) => {
-  // Render's free tier returns gateway 5xx for the first requests after a
-  // spin-down wake. A blip on the Settings GET must not leave the country
+  // The origin returns gateway 5xx for the first requests while a deploy's
+  // new pod restores its DB. A blip on the Settings GET must not leave the country
   // dropdown empty ("not chosen") with no services — api() retries idempotent
   // GETs, so the page recovers without a manual reload.
   await login(page, uniqEmail('cold'));

@@ -4,7 +4,7 @@
     <!-- Debug builds may point at a local dev server over http (the DevPanel wires
          `adb reverse tcp:9002` so the cabled device's localhost reaches the Mac's
          `npm run dev`). Allow cleartext for DEBUG only; the release build keeps
-         usesCleartextTraffic=false and talks to https://filmowo.fly.dev. -->
+         usesCleartextTraffic=false and talks to https://filmowo.kinowo.net. -->
     <application
         android:usesCleartextTraffic="true"
         tools:replace="android:usesCleartextTraffic" />

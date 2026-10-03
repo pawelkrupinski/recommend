@@ -45,7 +45,7 @@ xcodebuild test -project Filmowo.xcodeproj -scheme Filmowo \
 
 Point the app at a local server by setting `FILMOWO_BASE_URL` (e.g.
 `http://localhost:3000`) in the scheme's run environment; it defaults to
-`https://filmowo.fly.dev`. Run the server with `ALLOW_DEV_LOGIN=1 npm run dev`
+`https://filmowo.kinowo.net`. Run the server with `ALLOW_DEV_LOGIN=1 npm run dev`
 to use `/auth/dev-login` instead of real OAuth.
 
 CI: `.github/workflows/ios.yml`.

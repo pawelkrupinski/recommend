@@ -1,85 +1,67 @@
-# Deploying to Fly.io (cheapest setup)
+# Deploying filmowo (Hetzner k3s)
 
-This app ships as a Docker image and runs on **Fly.io** as the app `filmowo`
-(https://filmowo.fly.dev). It runs on a single `shared-cpu-1x` / 512 MB machine
-that **auto-stops to zero when idle**, so you only pay while it's serving
-requests. There is **no Fly volume** — durability comes from **Litestream**,
-which continuously streams the SQLite database to S3-compatible object storage
-(Cloudflare R2 or Backblaze B2) and restores it on boot. See `fly.toml`,
-`litestream.yml`, and `docker-entrypoint.sh`.
+Production is **https://filmowo.kinowo.net**: one pod on the Hetzner k3s node
+`k3s-worker-1`, shared with kinowo and managed by the same Flux GitOps repo
+(`pawelkrupinski/movies-gitops`). There is no persistent volume. Durability comes
+from **Litestream**, which streams the SQLite database to Cloudflare R2 and
+restores it on boot (`litestream.yml`, `docker-entrypoint.sh`).
 
-## 1. Object-storage bucket (unchanged)
-
-Same as before — a free Cloudflare R2 (or Backblaze B2) bucket. Keep the
-**bucket name**, **endpoint**, **region**, **access key id**, and **secret
-access key** handy.
-
-- **Cloudflare R2** — endpoint `https://<account-id>.r2.cloudflarestorage.com`,
-  region `auto`.
-- **Backblaze B2** — endpoint `https://s3.<region>.backblazeb2.com`,
-  region e.g. `us-west-004`.
-
-## 2. Create the app
-
-```bash
-fly apps create filmowo --org personal
+```
+Cloudflare (proxied, Full strict) → Caddy on k3s-worker-1 → NodePort 30920 → pod :9002
 ```
 
-`fly.toml` already pins `app = "filmowo"`, `internal_port = 9002`, the
-`/health` check, and scale-to-zero. `NODE_ENV`, `DB_PATH`, and `BASE_URL`
-(`https://filmowo.fly.dev`) are set in the `[env]` block.
+## Where each piece lives
 
-## 3. Set secrets
+| Piece | Location |
+|---|---|
+| Image | `ghcr.io/pawelkrupinski/filmowo` (public), built by `.github/workflows/ci.yml` job `publish` |
+| Deployment, Service, ConfigMap | `movies-gitops/filmowo/all.yaml` |
+| Image policy (newest `main-<utc>-<sha7>` wins) | `movies-gitops/image-automation/automation.yaml` |
+| Flux Kustomization | `movies-gitops/flux/gotk-sync.yaml` (hand-applied, like the others) |
+| Caddy vhost | `movies/infra/nix/hosts/k3s-worker-1/default.nix` (`filmowo.kinowo.net`) |
+| Node request budget | `movies/worker/src/test/scala/deploy/Node{Memory,Cpu}BudgetSpec.scala` |
+| DNS | Cloudflare zone `kinowo.net`, proxied A record `filmowo` → the node |
+| Secrets | k8s Secret `filmowo/filmowo-secrets`, never in git |
 
-Everything marked secret lives as a Fly secret, not in the image. From a
-checkout with `.env.local` present:
+## Deploying
 
-```bash
-set -a && . ./.env.local && set +a
-fly secrets set --app filmowo \
-  GOOGLE_CLIENT_ID="$GOOGLE_CLIENT_ID" GOOGLE_CLIENT_SECRET="$GOOGLE_CLIENT_SECRET" \
-  FACEBOOK_APP_ID="$FACEBOOK_APP_ID" FACEBOOK_APP_SECRET="$FACEBOOK_APP_SECRET" \
-  APPLICATION_SECRET="$APPLICATION_SECRET" \
-  TMDB_API_KEY="$TMDB_API_KEY" RAPIDAPI_KEY="$RAPIDAPI_KEY" TRAKT_KEY="$TRAKT_KEY" \
-  ADMIN_ALLOWLIST="$ADMIN_ALLOWLIST" \
-  LITESTREAM_BUCKET="$LITESTREAM_BUCKET" LITESTREAM_ENDPOINT="$LITESTREAM_ENDPOINT" \
-  LITESTREAM_REGION="$LITESTREAM_REGION" \
-  LITESTREAM_ACCESS_KEY_ID="$LITESTREAM_ACCESS_KEY_ID" \
-  LITESTREAM_SECRET_ACCESS_KEY="$LITESTREAM_SECRET_ACCESS_KEY" \
-  FILMOWO_PROXY_USER="$FILMOWO_PROXY_USER" FILMOWO_PROXY_PASS="$FILMOWO_PROXY_PASS"
-```
+Push to `main`. When unit, integration and both e2e jobs pass, `publish` pushes
+the image under `main-<utc>-<sha7>`. Flux image automation commits that tag
+into `filmowo/all.yaml` within about 5 minutes, and the pod is replaced.
 
-## 4. Deploy
+**The pod rolls with `Recreate` and `replicas: 1`, on purpose.** Litestream needs
+exactly one writer on its R2 path; two writers fork the replica's generations.
+So each deploy has a short gap (graceful stop, final sync, then restore on the
+new pod), which `public/app.js` retries over. Never scale it above 1, and never
+run a second copy against the same bucket path.
 
-```bash
-fly deploy --ha=false
-```
+Roll back or pin a version by editing the tag in `movies-gitops/filmowo/all.yaml`.
 
-## 5. OAuth redirect URIs
+## Secrets
 
-Add these authorized redirect URIs in each provider's console (`BASE_URL` is
-now `https://filmowo.fly.dev`):
+`filmowo-secrets` is built from this repo's `.env.local`. It holds these keys:
+`GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET FACEBOOK_APP_ID FACEBOOK_APP_SECRET
+APPLICATION_SECRET TMDB_API_KEY RAPIDAPI_KEY TRAKT_KEY ADMIN_ALLOWLIST
+LITESTREAM_BUCKET LITESTREAM_ENDPOINT LITESTREAM_REGION LITESTREAM_ACCESS_KEY_ID
+LITESTREAM_SECRET_ACCESS_KEY FILMOWO_PROXY_USER FILMOWO_PROXY_PASS`.
 
-- Google:   `https://filmowo.fly.dev/auth/google/callback`
-- Facebook: `https://filmowo.fly.dev/auth/facebook/callback`
+To create or rotate it, apply it on the control-plane host (monitoring-1) with
+`KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl apply -f -`, feeding it a `Secret`
+manifest built from those keys. Reloader restarts the pod when the Secret
+changes. Non-secret env (`NODE_ENV`, `DB_PATH`, `BASE_URL`) is in the ConfigMap
+`filmowo-env`.
 
-## 6. CI auto-deploy
+## OAuth redirect URIs
 
-`.github/workflows/ci.yml` deploys to Fly after unit + integration + e2e tests
-pass on a push to `main`. It needs one repo secret:
-
-- `FLY_API_TOKEN` — an app-scoped deploy token:
-  `fly tokens create deploy -a filmowo`, then add it under
-  repo → Settings → Secrets → Actions.
+- Google: `https://filmowo.kinowo.net/auth/google/callback`
+- Facebook: `https://filmowo.kinowo.net/auth/facebook/callback`
 
 ## Notes
 
-- **Durability:** Litestream replicates each write to object storage and does a
-  final sync on graceful shutdown, so deploys, restarts, and the idle
-  auto-stop lose nothing. A hard kill during machine destruction can lose at
-  most ~1s of un-synced writes.
+- **Country detection:** requests now pass through Cloudflare, so `CF-IPCountry`
+  reaches the server for the web and mobile apps alike (`src/locale.js`).
 - **No replication without config:** if `LITESTREAM_BUCKET` is unset the app
-  still boots — it just won't replicate (data is then ephemeral).
-- **Cold starts:** the machine auto-stops when idle; the first request
-  afterward is slow while it wakes and Litestream restores the DB.
+  still boots, but it does not replicate, so its data is ephemeral.
 - **Node 24:** required for the built-in `node:sqlite` module.
+- The app ran on Render, then on Fly.io (app `filmowo`, `filmowo.fly.dev`),
+  before moving here on 2026-10-03.

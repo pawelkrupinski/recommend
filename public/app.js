@@ -6,9 +6,9 @@ import { newPicks, pickKey } from './recs-queue.js';
 
 const IMG = 'https://image.tmdb.org/t/p';
 const $ = (s, el = document) => el.querySelector(s);
-// Render's free tier spins the service down when idle; the first requests after
-// a wake hit a cold origin and come back as gateway 502/503/504 (or a dropped
-// connection) for up to ~a minute while it boots. Without a retry, a single
+// A deploy replaces the single pod, which restores its DB from R2 before it
+// listens; requests in that window come back as gateway 502/503/504 (or a
+// dropped connection) for up to ~a minute. Without a retry, a single
 // cold-start blip during init() throws straight through loadSettings(), leaving
 // e.g. the Settings country dropdown empty (no options) and no services until a
 // manual reload. Retry idempotent GETs across the wake-up window with capped

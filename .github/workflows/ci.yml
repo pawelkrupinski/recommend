@@ -68,31 +68,9 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-  # Deploy gate: only fires on a push to main, and only after BOTH test jobs
-  # succeed, so no untested commit ever ships. Builds and deploys the Docker
-  # image to Fly.io (app "filmowo"). This is the only path to production.
-  # Secrets (repo → Settings → Secrets → Actions):
-  #   FLY_API_TOKEN — an app-scoped Fly deploy token (`fly tokens create deploy -a filmowo`)
-  deploy:
-    name: Deploy to Fly
-    needs: [unit, e2e, e2e-safari]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-      - name: Deploy to Fly
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          if [ -z "$FLY_API_TOKEN" ]; then
-            echo "::warning::FLY_API_TOKEN not set — skipping deploy."
-            exit 0
-          fi
-          echo "Tests passed — deploying filmowo to Fly…"
-          flyctl deploy --remote-only --ha=false
-
-  # Publishes the image the Hetzner k3s cluster runs. Flux's image automation
+  # Deploy gate: only fires on a push to main, and only after every test job
+  # succeeds, so no untested commit ever ships. Publishes the image the Hetzner
+  # k3s cluster runs. Flux's image automation
   # (movies-gitops/image-automation/automation.yaml) watches this repository for
   # the newest `main-<utc>-<sha7>` tag and commits it into filmowo/all.yaml, so a
   # green push to main IS the deploy. The timestamp makes tags sortable; a bare

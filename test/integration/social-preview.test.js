@@ -38,9 +38,9 @@ test('the crawler-facing absolute URLs point at the live Fly host', async () => 
   // canonical from where the page really lives.
   const html = await (await fetch(base + '/')).text();
   assert.doesNotMatch(html, /onrender\.com/, 'no links to the decommissioned Render host');
-  assert.match(html, /<meta property="og:url" content="https:\/\/filmowo\.fly\.dev\/"/);
-  assert.match(html, /<link rel="canonical" href="https:\/\/filmowo\.fly\.dev\/"/);
-  assert.match(html, /<meta property="og:image" content="https:\/\/filmowo\.fly\.dev\/og-home\.png"/);
+  assert.match(html, /<meta property="og:url" content="https:\/\/filmowo\.kinowo\.net\/"/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/filmowo\.kinowo\.net\/"/);
+  assert.match(html, /<meta property="og:image" content="https:\/\/filmowo\.kinowo\.net\/og-home\.png"/);
 });
 
 test('the og:image is served as a PNG', async () => {
